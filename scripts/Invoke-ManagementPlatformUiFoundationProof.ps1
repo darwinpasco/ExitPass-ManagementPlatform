@@ -49,9 +49,12 @@ if (-not (Test-Path $contractPath)) {
 
 $productionSourceFiles = Get-ChildItem -Path $sourcePath -Recurse -File |
     Where-Object { $_.Name -notlike "*.test.ts" -and $_.Name -notlike "*.test.tsx" -and $_.FullName -notmatch "\\test\\" }
+$foundationSourceFiles = $productionSourceFiles |
+    Where-Object { $_.Name -ne "RbacInventoryPage.tsx" -and $_.Name -ne "rbacInventory.ts" }
 $distFiles = if (Test-Path $distPath) { Get-ChildItem -Path $distPath -Recurse -File } else { @() }
 
 $productionSourceText = ($productionSourceFiles | ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
+$foundationSourceText = ($foundationSourceFiles | ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
 $distText = ($distFiles | ForEach-Object { Get-Content -Raw -LiteralPath $_.FullName }) -join "`n"
 $testSourceText = (Get-ChildItem -Path $sourcePath -Recurse -File |
     Where-Object { $_.Name -like "*.test.ts" -or $_.Name -like "*.test.tsx" } |
@@ -124,7 +127,7 @@ foreach ($forbidden in $forbiddenMutationLabels) {
     }
 }
 
-if ($productionSourceText.Contains("Operator Console") -or $productionSourceText.Contains("WebPay")) {
+if ($foundationSourceText.Contains("Operator Console") -or $foundationSourceText.Contains("WebPay")) {
     throw "Unexpected Operator Console or WebPay branding was found in Management Platform source."
 }
 

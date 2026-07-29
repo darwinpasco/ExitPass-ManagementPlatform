@@ -1,0 +1,98 @@
+{
+  "contractName": "ExitPass Management Platform Statutory RBAC Read-Only Catalog UI",
+  "version": "1.0",
+  "route": "/management-platform/access-control",
+  "navigationLabel": "Access Control",
+  "requiredPermission": "management-platform.identity-rbac.inventory.read",
+  "backendReadEndpoint": {
+    "method": "GET",
+    "path": "/v1/ops/management-platform/identity-rbac/inventory",
+    "source": "Central PMS ManagementPlatformIdentityRbacInventoryEndpoints"
+  },
+  "readOnlyPosture": {
+    "rbacMutation": false,
+    "roleCreation": false,
+    "roleEditing": false,
+    "roleCloning": false,
+    "roleRetirement": false,
+    "permissionAssignment": false,
+    "userRoleAssignment": false,
+    "siteAssignment": false,
+    "siteGroupAssignment": false,
+    "serviceIdentityAdministration": false,
+    "separationOfDutiesWrites": false
+  },
+  "visibleFields": [
+    "generatedAt",
+    "permissions.permissionKey",
+    "permissions.displayLabel",
+    "permissions.category",
+    "permissions.sourceCatalog",
+    "permissions.mappedPolicies",
+    "permissions.status",
+    "permissions.notes",
+    "roleBundles.roleKey",
+    "roleBundles.displayName",
+    "roleBundles.purpose",
+    "roleBundles.typicalAccessRights",
+    "roleBundles.defaultRestrictions",
+    "roleBundles.targetSurface",
+    "policyMappings.policyName",
+    "policyMappings.permissions",
+    "policyMappings.routeOrFeatureArea",
+    "policyMappings.implementedStatus",
+    "policyMappings.notes",
+    "userSiteScopes.siteGroupName",
+    "userSiteScopes.siteName",
+    "userSiteScopes.source",
+    "userSiteScopes.status",
+    "gaps.gapKey",
+    "gaps.severity",
+    "gaps.summary"
+  ],
+  "safeStates": [
+    "loading",
+    "successful inventory",
+    "empty inventory",
+    "access denied",
+    "unauthenticated or session unavailable",
+    "backend temporarily unavailable",
+    "malformed response",
+    "partial data",
+    "target-only inventory",
+    "no current Site context"
+  ],
+  "actorBoundaryWarnings": [
+    "service principals cannot approve or reject",
+    "human reviewers cannot invoke service-only payable application",
+    "queue access does not imply evidence access",
+    "policy administration does not imply review authority",
+    "approval and rejection are independently assignable",
+    "payment-time application is service-only"
+  ],
+  "scopePosture": {
+    "browserSelectedSiteIsGrant": false,
+    "serverOwned": true,
+    "unknownScopeFailsClosed": true,
+    "canonicalPersistenceVerdict": "PRESENT_BUT_INCOMPLETE"
+  },
+  "browserSecurity": {
+    "absoluteBackendUrlAccepted": false,
+    "serviceIdentityHeadersSent": false,
+    "permissionHeadersSent": false,
+    "privilegedCredentialsSent": false,
+    "browserStorageWrites": false,
+    "mutationMethods": false
+  },
+  "testScenarios": [
+    "populated inventory",
+    "implemented and target-only mix",
+    "access denied",
+    "empty inventory",
+    "backend unavailable",
+    "malformed response",
+    "partial scope support",
+    "filter and reset",
+    "responsive keyboard flow"
+  ]
+}

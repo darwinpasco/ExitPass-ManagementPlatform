@@ -1,5 +1,5 @@
 import { createDevelopmentPrincipal } from "./auth";
-import { futureSalesInvoiceProfilePermissions, managementPlatformOverviewPermission } from "./permissions";
+import { futureSalesInvoiceProfilePermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission } from "./permissions";
 import type { ManagementPlatformAuthState, ManagementPlatformSite, ManagementPlatformUiError } from "./types";
 
 export type ManagementPlatformManualScenarioName =
@@ -44,7 +44,8 @@ export function resolveManagementPlatformManualScenario(
   const searchParams = new URLSearchParams(search);
   const scenarioName = normalizeScenarioName(searchParams.get("mpScenario"));
   const profileScenarioName = searchParams.get("mpProfileScenario");
-  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName);
+  const rbacScenarioName = searchParams.get("mpRbacScenario");
+  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName);
 
   switch (scenarioName) {
     case "unauthenticated":
@@ -153,16 +154,35 @@ function normalizeScenarioName(value: string | null): ManagementPlatformManualSc
   }
 }
 
-function resolveDevelopmentPermissions(profileScenarioName: string | null): string[] {
+function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacScenarioName: string | null): string[] {
+  const rbacPermissions = isRbacInventoryScenario(rbacScenarioName)
+    ? [managementPlatformIdentityRbacInventoryReadPermission]
+    : [];
+
   if (isApproveOnlyProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, futureSalesInvoiceProfilePermissions.approve];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, futureSalesInvoiceProfilePermissions.approve];
   }
 
   if (isManageProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, futureSalesInvoiceProfilePermissions.manage];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, futureSalesInvoiceProfilePermissions.manage];
   }
 
-  return defaultDevelopmentPermissions;
+  return [...defaultDevelopmentPermissions, ...rbacPermissions];
+}
+
+function isRbacInventoryScenario(value: string | null): boolean {
+  switch (value) {
+    case "populated":
+    case "mixed":
+    case "api-boundary":
+    case "empty":
+    case "unavailable":
+    case "malformed":
+    case "partial-scope":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function isApproveOnlyProfileScenario(value: string | null): boolean {

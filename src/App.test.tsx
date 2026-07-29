@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App, FeatureUnavailable, MutationUncertainMessage, PageError } from "./App";
-import { managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission } from "./permissions";
+import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission } from "./permissions";
 import type { ManagementPlatformAuthState } from "./types";
 
 const siteA = {
@@ -112,6 +112,21 @@ describe("ManagementPlatformUi foundation shell", () => {
     expect(screen.getByRole("button", { name: /Sales Invoice Configuration Sales Invoice Setups/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Create/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Approve/i })).not.toBeInTheDocument();
+  });
+
+  it("shows Access Control navigation only when inventory-read permission is present", () => {
+    const { rerender } = render(<App authState={authState()} initialPath="/management-platform" />);
+    expect(screen.queryByRole("button", { name: /Access Control/i })).not.toBeInTheDocument();
+
+    rerender(<App authState={authState([managementPlatformOverviewPermission, managementPlatformIdentityRbacInventoryReadPermission])} initialPath="/management-platform" />);
+    expect(screen.getByRole("button", { name: /Access Control RBAC Inventory/i })).toBeInTheDocument();
+  });
+
+  it("blocks direct Access Control route access without inventory-read permission", () => {
+    render(<App authState={authState([managementPlatformOverviewPermission])} initialPath="/management-platform/access-control" />);
+
+    expect(screen.getByRole("alert", { name: "Permission denied" })).toHaveTextContent("does not have permission");
+    expect(screen.queryByRole("heading", { name: "RBAC Inventory" })).not.toBeInTheDocument();
   });
 
   it("exposes accessible error, feature-unavailable, and mutation-uncertain components", () => {
@@ -249,5 +264,15 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
     expect(screen.queryByRole("status", { name: "Development scenario" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Authentication required" })).not.toBeInTheDocument();
+  });
+
+  it("development RBAC scenario exposes Access Control without production authority", async () => {
+    window.history.pushState({}, "", "/management-platform/access-control?mpScenario=authenticated&mpRbacScenario=populated");
+
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByRole("heading", { name: "RBAC Inventory" })).toBeInTheDocument());
+    expect(screen.getByRole("status", { name: "Development RBAC inventory scenario" })).toHaveTextContent("non-authoritative");
+    expect(screen.getByText("Operations Supervisor")).toBeInTheDocument();
   });
 });

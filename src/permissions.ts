@@ -11,6 +11,7 @@ export function hasAllPermissions(permissions: readonly string[], required: read
 }
 
 export const managementPlatformOverviewPermission = "management-platform.overview.read";
+export const managementPlatformIdentityRbacInventoryReadPermission = "management-platform.identity-rbac.inventory.read";
 
 export const futureSalesInvoiceProfilePermissions = {
   read: "sales-invoice-profile.read",

@@ -78,11 +78,15 @@ export function toCentralPmsPath(basePath: string, path: string): string {
     throw createUiError("validation", "MANAGEMENT_PLATFORM_UNSUPPORTED_API_PATH", "The browser can call only Central PMS Management Platform routes.");
   }
 
-  if (!path.startsWith("/v1/management-platform")) {
+  if (!path.startsWith("/v1/management-platform") && !path.startsWith("/v1/ops/management-platform")) {
     throw createUiError("validation", "MANAGEMENT_PLATFORM_ROUTE_REQUIRED", "The browser can call only Management Platform API routes.");
   }
 
   const normalizedBasePath = normalizeBasePath(basePath);
+  if (path.startsWith("/v1/")) {
+    return path;
+  }
+
   return `${normalizedBasePath}${path}`;
 }
 
