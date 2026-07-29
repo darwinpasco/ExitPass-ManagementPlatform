@@ -86,6 +86,12 @@ describe("ManagementPlatformUi Central PMS API client foundation", () => {
     expect(() => toCentralPmsPath("", "/v1/admin/fiscal-identities")).toThrow();
     expect(() => toCentralPmsPath("", "/v1/admin/sales-invoice-header-profiles")).toThrow();
     expect(() => toCentralPmsPath("", "/v1/management-platform/test")).not.toThrow();
+    expect(() => toCentralPmsPath("", "/v1/ops/management-platform/identity-rbac/inventory")).not.toThrow();
+  });
+
+  it("does not prefix an already complete Management Platform API route with the configured base path", () => {
+    expect(toCentralPmsPath("/v1/management-platform", "/v1/management-platform/foundation-readiness")).toBe("/v1/management-platform/foundation-readiness");
+    expect(toCentralPmsPath("/v1/management-platform", "/v1/ops/management-platform/identity-rbac/inventory")).toBe("/v1/ops/management-platform/identity-rbac/inventory");
   });
 
   it("rejects absolute browser API base paths", () => {

@@ -3,7 +3,9 @@ import { createCentralPmsApiClient } from "./apiClient";
 import { createDevelopmentAuthState } from "./auth";
 import { getManagementPlatformConfig } from "./config";
 import { resolveManagementPlatformManualScenario, type ManagementPlatformManualScenarioName } from "./manualScenarios";
-import { managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasPermission } from "./permissions";
+import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasPermission } from "./permissions";
+import { RbacInventoryPage } from "./RbacInventoryPage";
+import { createRbacInventoryClient, rbacInventoryRoute, resolveRbacInventoryScenario, type RbacInventoryClient } from "./rbacInventory";
 import { SalesInvoiceProfilesPage } from "./SalesInvoiceProfilesPage";
 import { createSalesInvoiceProfileReadClient, resolveSalesInvoiceProfileReadScenario, salesInvoiceProfileReadRoute, type SalesInvoiceProfileClient } from "./salesInvoiceProfiles";
 import { useManagementPlatformSiteSelection } from "./siteContext";
@@ -12,7 +14,8 @@ import type { ManagementPlatformAuthState, ManagementPlatformConfig, ManagementP
 const routes = {
   root: "/management-platform",
   overview: "/management-platform/overview",
-  salesInvoiceProfiles: salesInvoiceProfileReadRoute
+  salesInvoiceProfiles: salesInvoiceProfileReadRoute,
+  rbacInventory: rbacInventoryRoute
 };
 
 interface AppProps {
@@ -20,8 +23,10 @@ interface AppProps {
   initialPath?: string;
   config?: ManagementPlatformConfig;
   salesInvoiceProfilesClient?: SalesInvoiceProfileClient;
+  rbacInventoryClient?: RbacInventoryClient;
   developmentScenariosEnabled?: boolean;
   profileScenariosEnabled?: boolean;
+  rbacScenariosEnabled?: boolean;
 }
 
 export function App({
@@ -29,8 +34,10 @@ export function App({
   initialPath,
   config,
   salesInvoiceProfilesClient,
+  rbacInventoryClient,
   developmentScenariosEnabled = import.meta.env.DEV,
-  profileScenariosEnabled = import.meta.env.DEV
+  profileScenariosEnabled = import.meta.env.DEV,
+  rbacScenariosEnabled = import.meta.env.DEV
 }: AppProps) {
   const resolvedConfig = useMemo(() => config ?? getManagementPlatformConfig(), [config]);
   const manualScenario = useMemo(
@@ -41,6 +48,10 @@ export function App({
     () => salesInvoiceProfilesClient ? undefined : resolveSalesInvoiceProfileReadScenario(profileScenariosEnabled, window.location.search),
     [salesInvoiceProfilesClient, profileScenariosEnabled]
   );
+  const rbacScenario = useMemo(
+    () => rbacInventoryClient ? undefined : resolveRbacInventoryScenario(rbacScenariosEnabled, window.location.search),
+    [rbacInventoryClient, rbacScenariosEnabled]
+  );
   const centralPmsClient = useMemo(
     () => createCentralPmsApiClient({ basePath: resolvedConfig.centralPmsApiBasePath }),
     [resolvedConfig.centralPmsApiBasePath]
@@ -48,6 +59,10 @@ export function App({
   const profileClient = useMemo(
     () => salesInvoiceProfilesClient ?? profileScenario?.client ?? createSalesInvoiceProfileReadClient(centralPmsClient),
     [salesInvoiceProfilesClient, profileScenario?.client, centralPmsClient]
+  );
+  const rbacClient = useMemo(
+    () => rbacInventoryClient ?? rbacScenario?.client ?? createRbacInventoryClient(centralPmsClient),
+    [rbacInventoryClient, rbacScenario?.client, centralPmsClient]
   );
   const state = authState ?? manualScenario?.authState ?? createDevelopmentAuthState();
   const scenarioInitialPath = authState ? undefined : manualScenario?.initialPath;
@@ -96,7 +111,8 @@ export function App({
   const canReadSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.read);
   const canManageSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.manage);
   const canApproveSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.approve);
-  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles;
+  const canReadRbacInventory = hasPermission(principal.permissions, managementPlatformIdentityRbacInventoryReadPermission);
+  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory;
   const shellProps = {
     principalName: principal.displayName,
     siteSelection,
@@ -104,6 +120,7 @@ export function App({
     navigate,
     canViewOverview,
     canReadSalesInvoiceProfiles,
+    canReadRbacInventory,
     salesInvoiceFormState,
     environmentName: resolvedConfig.environmentName,
     scenarioIndicator
@@ -118,6 +135,10 @@ export function App({
   }
 
   if (path === routes.salesInvoiceProfiles && !canReadSalesInvoiceProfiles) {
+    return <Shell {...shellProps}><PermissionDenied /></Shell>;
+  }
+
+  if (path === routes.rbacInventory && !canReadRbacInventory) {
     return <Shell {...shellProps}><PermissionDenied /></Shell>;
   }
 
@@ -140,6 +161,18 @@ export function App({
     );
   }
 
+  if (path === routes.rbacInventory) {
+    return (
+      <Shell {...shellProps}>
+        <RbacInventoryPage
+          currentSite={siteSelection.currentSite}
+          client={rbacClient}
+          developmentScenarioName={rbacScenario?.name}
+        />
+      </Shell>
+    );
+  }
+
   return (
     <Shell {...shellProps}>
       <OverviewPage subjectRef={principal.subjectRef} currentSiteName={siteSelection.currentSite?.displayName} hasSites={siteSelection.hasSites} />
@@ -147,13 +180,14 @@ export function App({
   );
 }
 
-function Shell({ principalName, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, salesInvoiceFormState, environmentName, scenarioIndicator, children }: {
+function Shell({ principalName, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, salesInvoiceFormState, environmentName, scenarioIndicator, children }: {
   principalName?: string;
   siteSelection: ReturnType<typeof useManagementPlatformSiteSelection>;
   path: string;
   navigate: (path: string) => void;
   canViewOverview: boolean;
   canReadSalesInvoiceProfiles: boolean;
+  canReadRbacInventory: boolean;
   salesInvoiceFormState: { hasUnsavedChanges: boolean; mutationPending: boolean };
   environmentName: string;
   scenarioIndicator?: React.ReactNode;
@@ -191,6 +225,11 @@ function Shell({ principalName, siteSelection, path, navigate, canViewOverview, 
             {canReadSalesInvoiceProfiles && (
               <button className={`navLink ${path === routes.salesInvoiceProfiles ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.salesInvoiceProfiles)}>
                 Sales Invoice Configuration <span className="navMeta">Sales Invoice Setups</span>
+              </button>
+            )}
+            {canReadRbacInventory && (
+              <button className={`navLink ${path === routes.rbacInventory ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.rbacInventory)}>
+                Access Control <span className="navMeta">RBAC Inventory</span>
               </button>
             )}
           </nav>
@@ -313,6 +352,10 @@ function StateMessage({ title, message, tone = "neutral" }: { title: string; mes
 }
 
 function routeTitle(path: string): string {
+  if (path === routes.rbacInventory) {
+    return "Access Control - ExitPass Management Platform";
+  }
+
   if (path === routes.salesInvoiceProfiles) {
     return "Sales Invoice Configuration - ExitPass Management Platform";
   }

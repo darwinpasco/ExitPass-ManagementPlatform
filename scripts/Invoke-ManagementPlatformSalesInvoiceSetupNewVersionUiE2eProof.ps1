@@ -6,7 +6,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path $PSScriptRoot -Parent
 $resolvedProjectPath = Join-Path $repoRoot $ProjectPath
 $expectedRepoRoot = $repoRoot -replace "/", "\"
-$expectedBranch = "develop"
+$expectedBranch = if ($env:MANAGEMENT_PLATFORM_EXPECTED_BRANCH) { $env:MANAGEMENT_PLATFORM_EXPECTED_BRANCH } else { "develop" }
 $e2ePort = if ($env:MANAGEMENT_PLATFORM_E2E_PORT) { $env:MANAGEMENT_PLATFORM_E2E_PORT } else { "5179" }
 $productionPort = if ($env:MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT) { $env:MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT } else { "5180" }
 
@@ -38,6 +38,20 @@ function Invoke-NpxCommand {
     if ($LASTEXITCODE -ne 0) {
         throw "npx $($Arguments -join ' ') failed with exit code $LASTEXITCODE."
     }
+}
+
+function Ensure-PlaywrightChromium {
+    $browserInventory = & npx.cmd playwright install --list
+    if ($LASTEXITCODE -ne 0) {
+        throw "npx playwright install --list failed with exit code $LASTEXITCODE."
+    }
+
+    if (($browserInventory -join "`n") -match "chromium") {
+        Write-Host "Proof passed: Playwright Chromium is already available."
+        return
+    }
+
+    Invoke-NpxCommand @("playwright", "install", "chromium", "--no-progress")
 }
 
 function Invoke-ProofScript {
@@ -142,7 +156,7 @@ Assert-RepositoryAndBranch
 Push-Location $resolvedProjectPath
 try {
     Invoke-NpmCommand @("ci")
-    Invoke-NpxCommand @("playwright", "install", "chromium")
+    Ensure-PlaywrightChromium
     Invoke-NpmCommand @("run", "typecheck")
     Invoke-NpmCommand @("test")
     Invoke-NpmCommand @("run", "build")

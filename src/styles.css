@@ -645,10 +645,120 @@ input[type="datetime-local"]:focus-visible {
   margin: 0;
 }
 
+.rbacPage {
+  display: grid;
+  gap: 16px;
+}
+
+.rbacNotice {
+  background: #f7fafb;
+  border: 1px solid #dfe5ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+}
+
+.rbacNotice h3,
+.rbacNotice p,
+.rbacSummaryCard h3,
+.rbacSummaryCard p,
+.rbacCard h4,
+.rbacCard h5,
+.rbacCard p {
+  margin: 0;
+}
+
+.rbacSummaryGrid,
+.rbacCardGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.rbacCardGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rbacSummaryCard,
+.rbacCard,
+.rbacDomainGroup {
+  background: #f7fafb;
+  border: 1px solid #dfe5ea;
+  border-radius: 8px;
+  min-width: 0;
+  padding: 14px;
+}
+
+.rbacSummaryCard h3,
+.rbacCard h4,
+.rbacDomainGroup h4 {
+  font-size: 1rem;
+}
+
+.rbacSummaryCard p,
+.rbacCard p,
+.rbacCard li,
+.rbacNotice p {
+  color: #344756;
+}
+
+.rbacCard {
+  display: grid;
+  gap: 10px;
+}
+
+.rbacCard dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.rbacCard dl div {
+  display: grid;
+  gap: 3px;
+}
+
+.rbacCard dt {
+  color: #61717e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.rbacCard dd {
+  margin: 0;
+}
+
+.rbacCard ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.rbacDomainGroup {
+  display: grid;
+  gap: 10px;
+}
+
+.rbacTable {
+  min-width: 1040px;
+}
+
+code {
+  background: #eef2f4;
+  border-radius: 4px;
+  color: #1b252f;
+  font-family: "Cascadia Mono", Consolas, monospace;
+  font-size: 0.88em;
+  padding: 1px 4px;
+}
+
 @media (max-width: 1180px) {
   .salesProfileLayout,
   .detailGrid,
-  .findingGroups {
+  .findingGroups,
+  .rbacSummaryGrid,
+  .rbacCardGrid {
     grid-template-columns: 1fr;
   }
 }

@@ -25,7 +25,7 @@ Related products remain separate: Operator Console performs operational workflow
 ## Setup
 
 ```powershell
-cd D:\SourceCodes\ExitPass-ManagementPlatform
+cd D:\SourceCodes\ExitPass-H-StatutoryRbacReadOnly
 npm.cmd ci
 ```
 
@@ -38,7 +38,7 @@ Production must supply an authenticated Central PMS principal through the hostin
 ## Local Development
 
 ```powershell
-cd D:\SourceCodes\ExitPass-ManagementPlatform
+cd D:\SourceCodes\ExitPass-H-StatutoryRbacReadOnly
 $env:MANAGEMENT_PLATFORM_DEV_PORT = "5178"
 npm.cmd run dev
 ```
@@ -50,7 +50,7 @@ Codex H parallel-work isolation uses development port 5178, Playwright E2E port 
 ## Validation
 
 ```powershell
-cd D:\SourceCodes\ExitPass-ManagementPlatform
+cd D:\SourceCodes\ExitPass-H-StatutoryRbacReadOnly
 npm.cmd run typecheck
 npm.cmd test
 npm.cmd run build
@@ -68,6 +68,7 @@ powershell -ExecutionPolicy Bypass -File scripts\Invoke-ManagementPlatformSalesI
 powershell -ExecutionPolicy Bypass -File scripts\Invoke-ManagementPlatformSalesInvoiceProfileApproveRetireUiProof.ps1
 powershell -ExecutionPolicy Bypass -File scripts\Invoke-ManagementPlatformSalesInvoiceSetupNewVersionUiProof.ps1
 powershell -ExecutionPolicy Bypass -File scripts\Invoke-ManagementPlatformSalesInvoiceSetupNewVersionUiE2eProof.ps1
+powershell -ExecutionPolicy Bypass -File scripts\Invoke-ManagementPlatformStatutoryRbacReadOnlyCatalogUiProof.ps1
 ```
 
 ## Current Features
@@ -76,9 +77,16 @@ powershell -ExecutionPolicy Bypass -File scripts\Invoke-ManagementPlatformSalesI
 - Site selector driven by the current authenticated principal's authorized Sites.
 - Permission-aware navigation and route denial.
 - Sales Invoice Setup route at `/management-platform/sales-invoice-profiles`.
+- Access Control route at `/management-platform/access-control` for read-only RBAC Inventory.
 - Registered Business read/create/edit workflows.
 - Sales Invoice Configuration read, Draft create/edit, validation, activation, retirement, Sales Invoice readiness, Effective period and status history, and Issuance history.
-- Development scenarios through `mpProfileScenario` in local development only.
+- Development scenarios through `mpProfileScenario` and `mpRbacScenario` in local development only.
+
+## Access Control
+
+Access Control is a read-only RBAC Inventory surface gated by `management-platform.identity-rbac.inventory.read`. It calls Central PMS through `GET /v1/ops/management-platform/identity-rbac/inventory` and displays permissions, role bundles, named policies, implementation status, actor-boundary warnings, Site and Site Group scope posture, separation-of-duties warnings, and backend gaps.
+
+This page does not create, edit, clone, retire, assign, revoke, approve grants, rotate service identities, disable service identities, or write separation-of-duties configuration. Browser-selected Site context is not an authorization grant; Central PMS remains authoritative. Local `mpRbacScenario` fixtures are synthetic and non-authoritative.
 
 ## Sales Invoice Setup Controls
 
@@ -92,7 +100,7 @@ The create-new-version flow uses business-facing terminology: Registered Busines
 
 Unsaved form state remains in component memory only. Site switching with unsaved form state requires confirmation; Site switching while a mutation is pending is blocked. Current production source does not implement localStorage, sessionStorage, or IndexedDB writes for profile, statutory, credential, role, permission, or unsaved-form data.
 
-The API client accepts only relative Central PMS Management Platform routes under `/v1/management-platform`, attaches a correlation id, maps errors to browser-safe messages, and rejects privileged browser headers.
+The API client accepts only relative Central PMS Management Platform routes under `/v1/management-platform` or `/v1/ops/management-platform`, attaches a correlation id, maps errors to browser-safe messages, and rejects privileged browser headers.
 
 ## Current Limitations
 
@@ -109,6 +117,8 @@ Darwin owns staging, commits, remote creation, pushes, pull requests, merges, an
 The local development harness supports `mpScenario` and `mpProfileScenario` query values for repeatable manual and E2E checks. Use `mpProfileScenario=read-only` to verify read-only permission posture, `mpProfileScenario=manage` for `sales-invoice-profile.manage`, and the new-version scenarios for Create New Setup Version coverage. Timeout and conflict scenarios display `Result uncertain` guidance when the authoritative mutation result must be refreshed before another attempt.
 
 Required Create New Setup Version scenarios include `new-version-manage`, `new-version-read-only`, `new-version-approve-only`, `new-version-success`, `new-version-duplicate-conflict`, `new-version-overlap-conflict`, `new-version-timeout`, `new-version-site-mismatch`, `new-version-source-not-active`, `new-version-source-not-found`, `new-version-cancel`, `new-version-unsaved-site-switch`, `new-version-pending-site-switch`, `new-version-double-submit`, and `new-version-source-preserved`.
+
+Required RBAC Inventory scenarios include `populated`, `mixed`, `empty`, `unavailable`, `malformed`, and `partial-scope`. Use them with `/management-platform/access-control?mpScenario=authenticated&mpRbacScenario=populated`.
 
 ## Activation And Retirement Scenarios
 
