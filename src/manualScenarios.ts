@@ -1,5 +1,5 @@
 import { createDevelopmentPrincipal } from "./auth";
-import { futureSalesInvoiceProfilePermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission } from "./permissions";
+import { futureSalesInvoiceProfilePermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, statutoryDiscountPolicyCoverageReadPermission } from "./permissions";
 import type { ManagementPlatformAuthState, ManagementPlatformSite, ManagementPlatformUiError } from "./types";
 
 export type ManagementPlatformManualScenarioName =
@@ -21,12 +21,16 @@ export interface ManagementPlatformManualScenario {
 
 const oneSite: ManagementPlatformSite = {
   siteId: "71000000-0000-0000-0000-000000000101",
+  siteGroupId: "71000000-0000-0000-0000-000000000900",
+  siteGroupDisplayName: "Development Site Group",
   sitePosServerId: "72000000-0000-0000-0000-000000000101",
   displayName: "Development Site Alpha"
 };
 
 const secondSite: ManagementPlatformSite = {
   siteId: "71000000-0000-0000-0000-000000000102",
+  siteGroupId: "71000000-0000-0000-0000-000000000900",
+  siteGroupDisplayName: "Development Site Group",
   sitePosServerId: "72000000-0000-0000-0000-000000000102",
   displayName: "Development Site Beta"
 };
@@ -45,7 +49,8 @@ export function resolveManagementPlatformManualScenario(
   const scenarioName = normalizeScenarioName(searchParams.get("mpScenario"));
   const profileScenarioName = searchParams.get("mpProfileScenario");
   const rbacScenarioName = searchParams.get("mpRbacScenario");
-  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName);
+  const policyCoverageScenarioName = searchParams.get("mpPolicyCoverageScenario");
+  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName, policyCoverageScenarioName);
 
   switch (scenarioName) {
     case "unauthenticated":
@@ -154,20 +159,23 @@ function normalizeScenarioName(value: string | null): ManagementPlatformManualSc
   }
 }
 
-function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacScenarioName: string | null): string[] {
+function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacScenarioName: string | null, policyCoverageScenarioName: string | null): string[] {
   const rbacPermissions = isRbacInventoryScenario(rbacScenarioName)
     ? [managementPlatformIdentityRbacInventoryReadPermission]
     : [];
+  const coveragePermissions = isPolicyCoverageScenario(policyCoverageScenarioName)
+    ? [statutoryDiscountPolicyCoverageReadPermission]
+    : [];
 
   if (isApproveOnlyProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, ...rbacPermissions, futureSalesInvoiceProfilePermissions.approve];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, futureSalesInvoiceProfilePermissions.approve];
   }
 
   if (isManageProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, ...rbacPermissions, futureSalesInvoiceProfilePermissions.manage];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, futureSalesInvoiceProfilePermissions.manage];
   }
 
-  return [...defaultDevelopmentPermissions, ...rbacPermissions];
+  return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions];
 }
 
 function isRbacInventoryScenario(value: string | null): boolean {
@@ -179,6 +187,30 @@ function isRbacInventoryScenario(value: string | null): boolean {
     case "unavailable":
     case "malformed":
     case "partial-scope":
+      return true;
+    default:
+      return false;
+  }
+}
+
+function isPolicyCoverageScenario(value: string | null): boolean {
+  switch (value) {
+    case "site-group-covered":
+    case "site-covered":
+    case "mixed":
+    case "senior-citizen":
+    case "pwd":
+    case "no-coverage":
+    case "empty":
+    case "scope-denied":
+    case "scope-not-found":
+    case "source-unavailable":
+    case "timeout":
+    case "malformed-response":
+    case "malformed-authoritative":
+    case "unexpected-failure":
+    case "ambiguous-scope":
+    case "api-boundary":
       return true;
     default:
       return false;

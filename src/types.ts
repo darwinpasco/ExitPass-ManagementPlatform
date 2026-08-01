@@ -16,6 +16,8 @@ export interface ManagementPlatformAuthState {
 
 export interface ManagementPlatformSite {
   siteId: string;
+  siteGroupId?: string;
+  siteGroupDisplayName?: string;
   sitePosServerId?: string;
   displayName: string;
 }

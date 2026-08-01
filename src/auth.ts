@@ -4,6 +4,8 @@ import { managementPlatformOverviewPermission } from "./permissions";
 const defaultSites: ManagementPlatformSite[] = [
   {
     siteId: "77000000-0000-0000-0000-000000000002",
+    siteGroupId: "77000000-0000-0000-0000-000000000200",
+    siteGroupDisplayName: "Local Development Site Group",
     sitePosServerId: "88000000-0000-0000-0000-000000000002",
     displayName: "Terminal Parking / North Exit"
   }
