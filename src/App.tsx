@@ -3,7 +3,9 @@ import { createCentralPmsApiClient } from "./apiClient";
 import { createDevelopmentAuthState } from "./auth";
 import { getManagementPlatformConfig } from "./config";
 import { resolveManagementPlatformManualScenario, type ManagementPlatformManualScenarioName } from "./manualScenarios";
-import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasPermission } from "./permissions";
+import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasPermission, statutoryDiscountPolicyCoverageReadPermission } from "./permissions";
+import { PolicyCoveragePage } from "./PolicyCoveragePage";
+import { createPolicyCoverageClient, policyCoverageRoute, resolvePolicyCoverageScenario, type PolicyCoverageClient } from "./policyCoverage";
 import { RbacInventoryPage } from "./RbacInventoryPage";
 import { createRbacInventoryClient, rbacInventoryRoute, resolveRbacInventoryScenario, type RbacInventoryClient } from "./rbacInventory";
 import { SalesInvoiceProfilesPage } from "./SalesInvoiceProfilesPage";
@@ -15,7 +17,8 @@ const routes = {
   root: "/management-platform",
   overview: "/management-platform/overview",
   salesInvoiceProfiles: salesInvoiceProfileReadRoute,
-  rbacInventory: rbacInventoryRoute
+  rbacInventory: rbacInventoryRoute,
+  policyCoverage: policyCoverageRoute
 };
 
 interface AppProps {
@@ -24,9 +27,11 @@ interface AppProps {
   config?: ManagementPlatformConfig;
   salesInvoiceProfilesClient?: SalesInvoiceProfileClient;
   rbacInventoryClient?: RbacInventoryClient;
+  policyCoverageClient?: PolicyCoverageClient;
   developmentScenariosEnabled?: boolean;
   profileScenariosEnabled?: boolean;
   rbacScenariosEnabled?: boolean;
+  policyCoverageScenariosEnabled?: boolean;
 }
 
 export function App({
@@ -35,9 +40,11 @@ export function App({
   config,
   salesInvoiceProfilesClient,
   rbacInventoryClient,
+  policyCoverageClient,
   developmentScenariosEnabled = import.meta.env.DEV,
   profileScenariosEnabled = import.meta.env.DEV,
-  rbacScenariosEnabled = import.meta.env.DEV
+  rbacScenariosEnabled = import.meta.env.DEV,
+  policyCoverageScenariosEnabled = import.meta.env.DEV
 }: AppProps) {
   const resolvedConfig = useMemo(() => config ?? getManagementPlatformConfig(), [config]);
   const manualScenario = useMemo(
@@ -52,6 +59,10 @@ export function App({
     () => rbacInventoryClient ? undefined : resolveRbacInventoryScenario(rbacScenariosEnabled, window.location.search),
     [rbacInventoryClient, rbacScenariosEnabled]
   );
+  const policyCoverageScenario = useMemo(
+    () => policyCoverageClient ? undefined : resolvePolicyCoverageScenario(policyCoverageScenariosEnabled, window.location.search),
+    [policyCoverageClient, policyCoverageScenariosEnabled]
+  );
   const centralPmsClient = useMemo(
     () => createCentralPmsApiClient({ basePath: resolvedConfig.centralPmsApiBasePath }),
     [resolvedConfig.centralPmsApiBasePath]
@@ -63,6 +74,10 @@ export function App({
   const rbacClient = useMemo(
     () => rbacInventoryClient ?? rbacScenario?.client ?? createRbacInventoryClient(centralPmsClient),
     [rbacInventoryClient, rbacScenario?.client, centralPmsClient]
+  );
+  const coverageClient = useMemo(
+    () => policyCoverageClient ?? policyCoverageScenario?.client ?? createPolicyCoverageClient(centralPmsClient),
+    [policyCoverageClient, policyCoverageScenario?.client, centralPmsClient]
   );
   const state = authState ?? manualScenario?.authState ?? createDevelopmentAuthState();
   const scenarioInitialPath = authState ? undefined : manualScenario?.initialPath;
@@ -112,7 +127,8 @@ export function App({
   const canManageSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.manage);
   const canApproveSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.approve);
   const canReadRbacInventory = hasPermission(principal.permissions, managementPlatformIdentityRbacInventoryReadPermission);
-  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory;
+  const canReadPolicyCoverage = hasPermission(principal.permissions, statutoryDiscountPolicyCoverageReadPermission);
+  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage;
   const shellProps = {
     principalName: principal.displayName,
     siteSelection,
@@ -121,6 +137,7 @@ export function App({
     canViewOverview,
     canReadSalesInvoiceProfiles,
     canReadRbacInventory,
+    canReadPolicyCoverage,
     salesInvoiceFormState,
     environmentName: resolvedConfig.environmentName,
     scenarioIndicator
@@ -139,6 +156,10 @@ export function App({
   }
 
   if (path === routes.rbacInventory && !canReadRbacInventory) {
+    return <Shell {...shellProps}><PermissionDenied /></Shell>;
+  }
+
+  if (path === routes.policyCoverage && !canReadPolicyCoverage) {
     return <Shell {...shellProps}><PermissionDenied /></Shell>;
   }
 
@@ -173,6 +194,19 @@ export function App({
     );
   }
 
+  if (path === routes.policyCoverage) {
+    return (
+      <Shell {...shellProps}>
+        <PolicyCoveragePage
+          authorizedSites={principal.authorizedSites}
+          currentSite={siteSelection.currentSite}
+          client={coverageClient}
+          developmentScenarioName={policyCoverageScenario?.name}
+        />
+      </Shell>
+    );
+  }
+
   return (
     <Shell {...shellProps}>
       <OverviewPage subjectRef={principal.subjectRef} currentSiteName={siteSelection.currentSite?.displayName} hasSites={siteSelection.hasSites} />
@@ -180,7 +214,7 @@ export function App({
   );
 }
 
-function Shell({ principalName, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, salesInvoiceFormState, environmentName, scenarioIndicator, children }: {
+function Shell({ principalName, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, salesInvoiceFormState, environmentName, scenarioIndicator, children }: {
   principalName?: string;
   siteSelection: ReturnType<typeof useManagementPlatformSiteSelection>;
   path: string;
@@ -188,6 +222,7 @@ function Shell({ principalName, siteSelection, path, navigate, canViewOverview, 
   canViewOverview: boolean;
   canReadSalesInvoiceProfiles: boolean;
   canReadRbacInventory: boolean;
+  canReadPolicyCoverage: boolean;
   salesInvoiceFormState: { hasUnsavedChanges: boolean; mutationPending: boolean };
   environmentName: string;
   scenarioIndicator?: React.ReactNode;
@@ -230,6 +265,11 @@ function Shell({ principalName, siteSelection, path, navigate, canViewOverview, 
             {canReadRbacInventory && (
               <button className={`navLink ${path === routes.rbacInventory ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.rbacInventory)}>
                 Access Control <span className="navMeta">RBAC Inventory</span>
+              </button>
+            )}
+            {canReadPolicyCoverage && (
+              <button className={`navLink ${path === routes.policyCoverage ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.policyCoverage)}>
+                Statutory Policy Coverage <span className="navMeta">Read-only</span>
               </button>
             )}
           </nav>
@@ -354,6 +394,10 @@ function StateMessage({ title, message, tone = "neutral" }: { title: string; mes
 function routeTitle(path: string): string {
   if (path === routes.rbacInventory) {
     return "Access Control - ExitPass Management Platform";
+  }
+
+  if (path === routes.policyCoverage) {
+    return "Statutory Policy Coverage - ExitPass Management Platform";
   }
 
   if (path === routes.salesInvoiceProfiles) {

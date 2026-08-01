@@ -1,6 +1,15 @@
 import type { CentralPmsApiClient, ManagementPlatformUiError, ApiRequestOptions } from "./types";
 
-const forbiddenHeaderNames = new Set(["authorization", "proxy-authorization", "cookie", "set-cookie"]);
+const forbiddenHeaderNames = new Set([
+  "authorization",
+  "proxy-authorization",
+  "cookie",
+  "set-cookie",
+  "x-exitpass-permissions",
+  "x-management-platform-permissions",
+  "x-exitpass-service-identity-id",
+  "x-exitpass-user-id"
+]);
 
 export function createCentralPmsApiClient(options: { basePath?: string; fetchImpl?: typeof fetch } = {}): CentralPmsApiClient {
   const basePath = normalizeBasePath(options.basePath ?? "");

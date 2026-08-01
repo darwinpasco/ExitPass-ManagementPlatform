@@ -243,6 +243,24 @@ textarea:focus-visible {
   white-space: nowrap;
 }
 
+.successPill {
+  background: #dcfce7;
+  border-color: #15803d;
+  color: #14532d;
+}
+
+.warningPill {
+  background: #fef9c3;
+  border-color: #ca8a04;
+  color: #713f12;
+}
+
+.dangerPill {
+  background: #fee2e2;
+  border-color: #b91c1c;
+  color: #7f1d1d;
+}
+
 .overviewGrid {
   display: grid;
   gap: 14px;
@@ -511,6 +529,22 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
+.checkboxField {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+}
+
+.checkboxField input {
+  min-height: 20px;
+  width: 20px;
+}
+
+.fieldHint {
+  color: #475569;
+  margin: 0;
+}
+
 .formSummary {
   background: #fff6df;
   border: 1px solid #ecd289;
@@ -676,6 +710,22 @@ input[type="datetime-local"]:focus-visible {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
+.policyCoverageFilterGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.policyCoverageTable {
+  min-width: 1180px;
+}
+
+.policyCoverageTable small {
+  color: #475569;
+  display: block;
+  margin-top: 6px;
+}
+
 .rbacCardGrid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
@@ -758,7 +808,8 @@ code {
   .detailGrid,
   .findingGroups,
   .rbacSummaryGrid,
-  .rbacCardGrid {
+  .rbacCardGrid,
+  .policyCoverageFilterGrid {
     grid-template-columns: 1fr;
   }
 }
