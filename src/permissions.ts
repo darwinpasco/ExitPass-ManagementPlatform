@@ -13,6 +13,7 @@ export function hasAllPermissions(permissions: readonly string[], required: read
 export const managementPlatformOverviewPermission = "management-platform.overview.read";
 export const managementPlatformIdentityRbacInventoryReadPermission = "management-platform.identity-rbac.inventory.read";
 export const statutoryDiscountPolicyCoverageReadPermission = "statutory-discount-policy.view";
+export const statutoryEvidenceGovernanceReadPermission = "statutory-discounts.evidence-governance.view";
 
 export const futureSalesInvoiceProfilePermissions = {
   read: "sales-invoice-profile.read",

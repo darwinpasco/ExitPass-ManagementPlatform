@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { createCentralPmsApiClient } from "./apiClient";
 import { createDevelopmentAuthState } from "./auth";
 import { getManagementPlatformConfig } from "./config";
+import { EvidenceGovernancePage } from "./EvidenceGovernancePage";
+import { createEvidenceGovernanceClient, evidenceGovernanceRoute, resolveEvidenceGovernanceScenario, type EvidenceGovernanceClient } from "./evidenceGovernance";
 import { resolveManagementPlatformManualScenario, type ManagementPlatformManualScenarioName } from "./manualScenarios";
-import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasPermission, statutoryDiscountPolicyCoverageReadPermission } from "./permissions";
+import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasPermission, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import { PolicyCoveragePage } from "./PolicyCoveragePage";
 import { createPolicyCoverageClient, policyCoverageRoute, resolvePolicyCoverageScenario, type PolicyCoverageClient } from "./policyCoverage";
 import { RbacInventoryPage } from "./RbacInventoryPage";
@@ -18,7 +20,8 @@ const routes = {
   overview: "/management-platform/overview",
   salesInvoiceProfiles: salesInvoiceProfileReadRoute,
   rbacInventory: rbacInventoryRoute,
-  policyCoverage: policyCoverageRoute
+  policyCoverage: policyCoverageRoute,
+  evidenceGovernance: evidenceGovernanceRoute
 };
 
 interface AppProps {
@@ -28,10 +31,12 @@ interface AppProps {
   salesInvoiceProfilesClient?: SalesInvoiceProfileClient;
   rbacInventoryClient?: RbacInventoryClient;
   policyCoverageClient?: PolicyCoverageClient;
+  evidenceGovernanceClient?: EvidenceGovernanceClient;
   developmentScenariosEnabled?: boolean;
   profileScenariosEnabled?: boolean;
   rbacScenariosEnabled?: boolean;
   policyCoverageScenariosEnabled?: boolean;
+  evidenceGovernanceScenariosEnabled?: boolean;
 }
 
 export function App({
@@ -41,10 +46,12 @@ export function App({
   salesInvoiceProfilesClient,
   rbacInventoryClient,
   policyCoverageClient,
+  evidenceGovernanceClient,
   developmentScenariosEnabled = import.meta.env.DEV,
   profileScenariosEnabled = import.meta.env.DEV,
   rbacScenariosEnabled = import.meta.env.DEV,
-  policyCoverageScenariosEnabled = import.meta.env.DEV
+  policyCoverageScenariosEnabled = import.meta.env.DEV,
+  evidenceGovernanceScenariosEnabled = import.meta.env.DEV
 }: AppProps) {
   const resolvedConfig = useMemo(() => config ?? getManagementPlatformConfig(), [config]);
   const manualScenario = useMemo(
@@ -63,6 +70,10 @@ export function App({
     () => policyCoverageClient ? undefined : resolvePolicyCoverageScenario(policyCoverageScenariosEnabled, window.location.search),
     [policyCoverageClient, policyCoverageScenariosEnabled]
   );
+  const evidenceGovernanceScenario = useMemo(
+    () => evidenceGovernanceClient ? undefined : resolveEvidenceGovernanceScenario(evidenceGovernanceScenariosEnabled, window.location.search),
+    [evidenceGovernanceClient, evidenceGovernanceScenariosEnabled]
+  );
   const centralPmsClient = useMemo(
     () => createCentralPmsApiClient({ basePath: resolvedConfig.centralPmsApiBasePath }),
     [resolvedConfig.centralPmsApiBasePath]
@@ -78,6 +89,10 @@ export function App({
   const coverageClient = useMemo(
     () => policyCoverageClient ?? policyCoverageScenario?.client ?? createPolicyCoverageClient(centralPmsClient),
     [policyCoverageClient, policyCoverageScenario?.client, centralPmsClient]
+  );
+  const governanceClient = useMemo(
+    () => evidenceGovernanceClient ?? evidenceGovernanceScenario?.client ?? createEvidenceGovernanceClient(centralPmsClient),
+    [evidenceGovernanceClient, evidenceGovernanceScenario?.client, centralPmsClient]
   );
   const state = authState ?? manualScenario?.authState ?? createDevelopmentAuthState();
   const scenarioInitialPath = authState ? undefined : manualScenario?.initialPath;
@@ -128,7 +143,8 @@ export function App({
   const canApproveSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.approve);
   const canReadRbacInventory = hasPermission(principal.permissions, managementPlatformIdentityRbacInventoryReadPermission);
   const canReadPolicyCoverage = hasPermission(principal.permissions, statutoryDiscountPolicyCoverageReadPermission);
-  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage;
+  const canReadEvidenceGovernance = hasPermission(principal.permissions, statutoryEvidenceGovernanceReadPermission);
+  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance;
   const shellProps = {
     principalName: principal.displayName,
     siteSelection,
@@ -138,6 +154,7 @@ export function App({
     canReadSalesInvoiceProfiles,
     canReadRbacInventory,
     canReadPolicyCoverage,
+    canReadEvidenceGovernance,
     salesInvoiceFormState,
     environmentName: resolvedConfig.environmentName,
     scenarioIndicator
@@ -160,6 +177,10 @@ export function App({
   }
 
   if (path === routes.policyCoverage && !canReadPolicyCoverage) {
+    return <Shell {...shellProps}><PermissionDenied /></Shell>;
+  }
+
+  if (path === routes.evidenceGovernance && !canReadEvidenceGovernance) {
     return <Shell {...shellProps}><PermissionDenied /></Shell>;
   }
 
@@ -207,6 +228,19 @@ export function App({
     );
   }
 
+  if (path === routes.evidenceGovernance) {
+    return (
+      <Shell {...shellProps}>
+        <EvidenceGovernancePage
+          authorizedSites={principal.authorizedSites}
+          currentSite={siteSelection.currentSite}
+          client={governanceClient}
+          developmentScenarioName={evidenceGovernanceScenario?.name}
+        />
+      </Shell>
+    );
+  }
+
   return (
     <Shell {...shellProps}>
       <OverviewPage subjectRef={principal.subjectRef} currentSiteName={siteSelection.currentSite?.displayName} hasSites={siteSelection.hasSites} />
@@ -214,7 +248,7 @@ export function App({
   );
 }
 
-function Shell({ principalName, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, salesInvoiceFormState, environmentName, scenarioIndicator, children }: {
+function Shell({ principalName, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, salesInvoiceFormState, environmentName, scenarioIndicator, children }: {
   principalName?: string;
   siteSelection: ReturnType<typeof useManagementPlatformSiteSelection>;
   path: string;
@@ -223,6 +257,7 @@ function Shell({ principalName, siteSelection, path, navigate, canViewOverview, 
   canReadSalesInvoiceProfiles: boolean;
   canReadRbacInventory: boolean;
   canReadPolicyCoverage: boolean;
+  canReadEvidenceGovernance: boolean;
   salesInvoiceFormState: { hasUnsavedChanges: boolean; mutationPending: boolean };
   environmentName: string;
   scenarioIndicator?: React.ReactNode;
@@ -270,6 +305,11 @@ function Shell({ principalName, siteSelection, path, navigate, canViewOverview, 
             {canReadPolicyCoverage && (
               <button className={`navLink ${path === routes.policyCoverage ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.policyCoverage)}>
                 Statutory Policy Coverage <span className="navMeta">Read-only</span>
+              </button>
+            )}
+            {canReadEvidenceGovernance && (
+              <button className={`navLink ${path === routes.evidenceGovernance ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.evidenceGovernance)}>
+                Evidence Governance <span className="navMeta">Read-only readiness</span>
               </button>
             )}
           </nav>
@@ -398,6 +438,10 @@ function routeTitle(path: string): string {
 
   if (path === routes.policyCoverage) {
     return "Statutory Policy Coverage - ExitPass Management Platform";
+  }
+
+  if (path === routes.evidenceGovernance) {
+    return "Statutory Evidence Governance - ExitPass Management Platform";
   }
 
   if (path === routes.salesInvoiceProfiles) {

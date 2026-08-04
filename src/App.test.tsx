@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App, FeatureUnavailable, MutationUncertainMessage, PageError } from "./App";
-import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission } from "./permissions";
+import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import type { ManagementPlatformAuthState } from "./types";
 
 const siteA = {
@@ -127,6 +127,20 @@ describe("ManagementPlatformUi foundation shell", () => {
 
     expect(screen.getByRole("alert", { name: "Permission denied" })).toHaveTextContent("does not have permission");
     expect(screen.queryByRole("heading", { name: "RBAC Inventory" })).not.toBeInTheDocument();
+  });
+
+  it("shows Evidence Governance navigation only with the dedicated permission", () => {
+    const { rerender } = render(<App authState={authState()} initialPath="/management-platform" />);
+    expect(screen.queryByRole("button", { name: /Evidence Governance/i })).not.toBeInTheDocument();
+
+    rerender(<App authState={authState([managementPlatformOverviewPermission, statutoryEvidenceGovernanceReadPermission])} initialPath="/management-platform" />);
+    expect(screen.getByRole("button", { name: /Evidence Governance Read-only readiness/i })).toBeInTheDocument();
+  });
+
+  it("blocks direct Evidence Governance route access without the dedicated permission", () => {
+    render(<App authState={authState([managementPlatformOverviewPermission])} initialPath="/management-platform/statutory-evidence-governance" />);
+    expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Statutory Evidence Governance" })).not.toBeInTheDocument();
   });
 
   it("exposes accessible error, feature-unavailable, and mutation-uncertain components", () => {
