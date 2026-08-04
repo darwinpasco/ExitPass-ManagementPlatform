@@ -1,5 +1,5 @@
 import { createDevelopmentPrincipal } from "./auth";
-import { futureSalesInvoiceProfilePermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, statutoryDiscountPolicyCoverageReadPermission } from "./permissions";
+import { futureSalesInvoiceProfilePermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import type { ManagementPlatformAuthState, ManagementPlatformSite, ManagementPlatformUiError } from "./types";
 
 export type ManagementPlatformManualScenarioName =
@@ -50,7 +50,8 @@ export function resolveManagementPlatformManualScenario(
   const profileScenarioName = searchParams.get("mpProfileScenario");
   const rbacScenarioName = searchParams.get("mpRbacScenario");
   const policyCoverageScenarioName = searchParams.get("mpPolicyCoverageScenario");
-  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName, policyCoverageScenarioName);
+  const evidenceGovernanceScenarioName = searchParams.get("mpEvidenceGovernanceScenario");
+  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName, policyCoverageScenarioName, evidenceGovernanceScenarioName);
 
   switch (scenarioName) {
     case "unauthenticated":
@@ -159,23 +160,49 @@ function normalizeScenarioName(value: string | null): ManagementPlatformManualSc
   }
 }
 
-function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacScenarioName: string | null, policyCoverageScenarioName: string | null): string[] {
+function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacScenarioName: string | null, policyCoverageScenarioName: string | null, evidenceGovernanceScenarioName: string | null): string[] {
   const rbacPermissions = isRbacInventoryScenario(rbacScenarioName)
     ? [managementPlatformIdentityRbacInventoryReadPermission]
     : [];
   const coveragePermissions = isPolicyCoverageScenario(policyCoverageScenarioName)
     ? [statutoryDiscountPolicyCoverageReadPermission]
     : [];
+  const evidenceGovernancePermissions = isEvidenceGovernanceScenario(evidenceGovernanceScenarioName)
+    ? [statutoryEvidenceGovernanceReadPermission]
+    : [];
 
   if (isApproveOnlyProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, futureSalesInvoiceProfilePermissions.approve];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, futureSalesInvoiceProfilePermissions.approve];
   }
 
   if (isManageProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, futureSalesInvoiceProfilePermissions.manage];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, futureSalesInvoiceProfilePermissions.manage];
   }
 
-  return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions];
+  return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions];
+}
+
+function isEvidenceGovernanceScenario(value: string | null): boolean {
+  switch (value) {
+    case "ready":
+    case "partially-ready":
+    case "incomplete":
+    case "capture-disabled":
+    case "configuration-unavailable":
+    case "stale":
+    case "unknown":
+    case "empty-scope":
+    case "permission-denied":
+    case "site-denied":
+    case "site-group-denied":
+    case "malformed":
+    case "unavailable":
+    case "transient-failure":
+    case "api-boundary":
+      return true;
+    default:
+      return false;
+  }
 }
 
 function isRbacInventoryScenario(value: string | null): boolean {

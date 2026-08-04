@@ -1,0 +1,141 @@
+{
+  "contract": "management-platform-statutory-evidence-governance-read-only-ui:v1",
+  "status": "implemented",
+  "frontendRoute": "/management-platform/statutory-evidence-governance",
+  "navigationLabel": "Evidence Governance",
+  "permission": "statutory-discounts.evidence-governance.view",
+  "namedPolicy": "StatutoryEvidenceGovernanceView",
+  "backendContractVersion": "management-platform-statutory-evidence-governance:v1",
+  "backendRoutes": [
+    "GET /v1/ops/management-platform/statutory-discounts/evidence-governance",
+    "GET /v1/ops/management-platform/statutory-discounts/evidence-governance/sites/{siteReference}",
+    "GET /v1/ops/management-platform/statutory-discounts/evidence-governance/site-groups/{siteGroupReference}"
+  ],
+  "authority": {
+    "source": "Central PMS",
+    "browserPermissionState": "advisory navigation visibility only",
+    "scopeEnforcement": "server-owned Site and Site Group authorization",
+    "antiEnumeration": "server-owned and fail-closed",
+    "readiness": "server-provided classifications only"
+  },
+  "governanceClassifications": [
+    "CONFIGURED_READY",
+    "CONFIGURED_PARTIALLY_READY",
+    "CONFIGURATION_INCOMPLETE",
+    "CAPTURE_DISABLED",
+    "CONFIGURATION_UNAVAILABLE",
+    "UNKNOWN"
+  ],
+  "capabilityClassifications": [
+    "READY",
+    "PARTIALLY_READY",
+    "NOT_CONFIGURED",
+    "DISABLED",
+    "NOT_IMPLEMENTED",
+    "UNAVAILABLE",
+    "STALE",
+    "UNKNOWN"
+  ],
+  "serverFilters": [
+    "Site",
+    "Site Group",
+    "entitlementType",
+    "governanceStatus",
+    "readinessStatus",
+    "captureEnabled",
+    "includeStale"
+  ],
+  "authorizedResultFilters": [
+    "freshness",
+    "safe display-text search"
+  ],
+  "visibleSections": [
+    "scope and status",
+    "capture and upload posture",
+    "required document profiles",
+    "protected-storage posture",
+    "lifecycle capability matrix",
+    "operational readiness",
+    "warning and blocker codes",
+    "freshness and support reference"
+  ],
+  "safeStates": [
+    "loading",
+    "refreshing with retained marked result",
+    "configured ready",
+    "configured partially ready",
+    "configuration incomplete",
+    "capture disabled",
+    "configuration unavailable",
+    "unknown",
+    "stale",
+    "empty authorized scope",
+    "filtered empty",
+    "permission denied",
+    "Site scope denied",
+    "Site Group scope denied",
+    "invalid filter",
+    "malformed response",
+    "service unavailable",
+    "transient failure"
+  ],
+  "allowedControls": [
+    "filters",
+    "safe display-text search",
+    "refresh",
+    "open details",
+    "close details",
+    "copy safe support reference"
+  ],
+  "prohibitedMutations": [
+    "create",
+    "edit",
+    "enable",
+    "disable",
+    "upload",
+    "preview",
+    "download",
+    "provider-operation retry",
+    "approve",
+    "reject",
+    "lock",
+    "hold",
+    "delete",
+    "deletion request",
+    "retention change",
+    "media-policy change",
+    "storage-configuration change",
+    "entitlement-policy change"
+  ],
+  "browserSecurity": {
+    "sameOriginOnly": true,
+    "absoluteBackendUrlAccepted": false,
+    "privilegedHeaders": false,
+    "serviceCredentials": false,
+    "siteAuthorityHeaders": false,
+    "siteGroupAuthorityHeaders": false,
+    "durableGovernanceAuthority": false
+  },
+  "excludedResponseData": [
+    "customer identity",
+    "statutory identifiers",
+    "evidence-set and evidence-item references",
+    "request and decision references",
+    "parking, ticket, plate, payment, and payable-basis references",
+    "signed URLs",
+    "object keys",
+    "checksum values",
+    "bucket, container, and storage endpoint details",
+    "provider credentials",
+    "reviewer identity and notes"
+  ],
+  "validation": {
+    "unit": "Vitest",
+    "browser": "Playwright Chromium",
+    "responsiveWidths": [1366, 768, 390],
+    "networkProof": true,
+    "storageProof": true,
+    "h002Regression": true,
+    "h003Regression": true
+  }
+}

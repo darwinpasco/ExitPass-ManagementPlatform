@@ -8,7 +8,11 @@ const forbiddenHeaderNames = new Set([
   "x-exitpass-permissions",
   "x-management-platform-permissions",
   "x-exitpass-service-identity-id",
-  "x-exitpass-user-id"
+  "x-exitpass-user-id",
+  "x-exitpass-site-id",
+  "x-exitpass-site-group-id",
+  "x-management-platform-site-id",
+  "x-management-platform-site-group-id"
 ]);
 
 export function createCentralPmsApiClient(options: { basePath?: string; fetchImpl?: typeof fetch } = {}): CentralPmsApiClient {

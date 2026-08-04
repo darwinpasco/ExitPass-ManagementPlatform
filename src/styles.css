@@ -803,14 +803,205 @@ code {
   padding: 1px 4px;
 }
 
+.evidenceGovernancePage {
+  display: grid;
+  gap: 16px;
+}
+
+.evidenceGovernanceFilterGrid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.evidenceGovernanceSearch {
+  grid-column: span 2;
+}
+
+.evidenceGovernanceList {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.evidenceGovernanceCard {
+  background: #f7fafb;
+  border: 1px solid #dfe5ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.evidenceGovernanceCard h4,
+.evidenceGovernanceCard p,
+.evidenceGovernanceCard dl {
+  margin: 0;
+}
+
+.evidenceGovernanceCardHeader,
+.evidenceGovernanceCardFooter {
+  align-items: flex-start;
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+}
+
+.evidenceGovernanceCardFooter {
+  align-items: center;
+  border-top: 1px solid #dfe5ea;
+  padding-top: 12px;
+}
+
+.statusStack {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.compactFacts,
+.detailFacts {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.compactFacts div,
+.detailFacts div {
+  min-width: 0;
+}
+
+.compactFacts dt,
+.detailFacts dt {
+  color: #61717e;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.compactFacts dd,
+.detailFacts dd {
+  margin: 3px 0 0;
+  overflow-wrap: anywhere;
+}
+
+.governanceCodeNotice {
+  border: 1px solid #d3a923;
+  border-radius: 8px;
+  padding: 14px;
+}
+
+.governanceCodeNotice.danger {
+  border-color: #b44b4b;
+}
+
+.governanceCodeNotice h3,
+.governanceCodeNotice ul {
+  margin: 0;
+}
+
+.governanceCodeNotice ul {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+  padding-left: 20px;
+}
+
+.governanceCodeNotice li span {
+  display: block;
+  margin-top: 3px;
+}
+
+.governanceDialogBackdrop {
+  align-items: center;
+  background: rgb(15 23 42 / 72%);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 24px;
+  position: fixed;
+  z-index: 20;
+}
+
+.governanceDialog {
+  background: #fff;
+  border: 1px solid #aab6c0;
+  border-radius: 8px;
+  box-shadow: 0 20px 48px rgb(15 23 42 / 24%);
+  max-block-size: calc(100vh - 48px);
+  max-inline-size: 1120px;
+  overflow: auto;
+  padding: 20px;
+  width: 100%;
+}
+
+.governanceDialogTitle {
+  background: #fff;
+  border-bottom: 1px solid #dfe5ea;
+  padding-bottom: 14px;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.governanceDetailBody {
+  display: grid;
+  gap: 14px;
+  padding-top: 16px;
+}
+
+.governanceDetailSection {
+  border-top: 1px solid #dfe5ea;
+  padding-top: 14px;
+}
+
+.governanceDetailSection:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.governanceDetailSection h3 {
+  font-size: 1rem;
+  margin: 0 0 12px;
+}
+
+.capabilityMatrix {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.capabilityMatrix > div {
+  align-items: center;
+  background: #f7fafb;
+  border: 1px solid #dfe5ea;
+  border-radius: 6px;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 10px;
+}
+
+.copyStatus {
+  min-height: 1.4em;
+}
+
 @media (max-width: 1180px) {
   .salesProfileLayout,
   .detailGrid,
   .findingGroups,
   .rbacSummaryGrid,
   .rbacCardGrid,
-  .policyCoverageFilterGrid {
+  .policyCoverageFilterGrid,
+  .evidenceGovernanceFilterGrid {
     grid-template-columns: 1fr;
+  }
+
+  .evidenceGovernanceSearch {
+    grid-column: auto;
   }
 }
 
@@ -825,5 +1016,43 @@ code {
 
   .inlineField {
     min-width: 0;
+  }
+
+  .evidenceGovernanceList,
+  .capabilityMatrix {
+    grid-template-columns: 1fr;
+  }
+
+  .evidenceGovernanceCardHeader,
+  .evidenceGovernanceCardFooter,
+  .governanceDialogTitle {
+    align-items: stretch;
+    display: grid;
+  }
+
+  .statusStack {
+    align-items: flex-start;
+  }
+
+  .governanceDialogBackdrop {
+    align-items: stretch;
+    padding: 8px;
+  }
+
+  .governanceDialog {
+    max-block-size: calc(100vh - 16px);
+    padding: 14px;
+  }
+}
+
+@media (max-width: 520px) {
+  .compactFacts,
+  .detailFacts {
+    grid-template-columns: 1fr;
+  }
+
+  .evidenceGovernanceCardFooter button,
+  .governanceDialogTitle button {
+    width: 100%;
   }
 }
