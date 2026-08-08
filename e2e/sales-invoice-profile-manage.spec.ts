@@ -431,7 +431,7 @@ test.describe("Management Platform Sales Invoice Profile Manage UI E2E", () => {
       expect(headerNames).not.toContain("x-posserver-admin-permission");
     });
 
-    await page.goto(route);
+    await page.goto(`${route}?mpScenario=authenticated`);
     await expect(page.getByRole("button", { name: "ROUTE-2026" })).toBeVisible();
     await page.getByRole("button", { name: "ROUTE-2026" }).click();
     await expect(page.getByRole("heading", { name: "Sales Invoice Setup details" })).toBeVisible();

@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import { createCentralPmsApiClient } from "./apiClient";
-import { createDevelopmentAuthState } from "./auth";
 import { getManagementPlatformConfig } from "./config";
 import { EvidenceGovernancePage } from "./EvidenceGovernancePage";
 import { createEvidenceGovernanceClient, evidenceGovernanceRoute, resolveEvidenceGovernanceScenario, type EvidenceGovernanceClient } from "./evidenceGovernance";
@@ -32,6 +31,9 @@ interface AppProps {
   rbacInventoryClient?: RbacInventoryClient;
   policyCoverageClient?: PolicyCoverageClient;
   evidenceGovernanceClient?: EvidenceGovernanceClient;
+  onAuthenticationRequired?: () => void;
+  onLogout?: () => void;
+  logoutPending?: boolean;
   developmentScenariosEnabled?: boolean;
   profileScenariosEnabled?: boolean;
   rbacScenariosEnabled?: boolean;
@@ -47,6 +49,9 @@ export function App({
   rbacInventoryClient,
   policyCoverageClient,
   evidenceGovernanceClient,
+  onAuthenticationRequired,
+  onLogout,
+  logoutPending = false,
   developmentScenariosEnabled = import.meta.env.DEV,
   profileScenariosEnabled = import.meta.env.DEV,
   rbacScenariosEnabled = import.meta.env.DEV,
@@ -55,7 +60,9 @@ export function App({
 }: AppProps) {
   const resolvedConfig = useMemo(() => config ?? getManagementPlatformConfig(), [config]);
   const manualScenario = useMemo(
-    () => authState ? undefined : resolveManagementPlatformManualScenario(developmentScenariosEnabled, window.location.search),
+    () => authState || !import.meta.env.DEV || !developmentScenariosEnabled
+      ? undefined
+      : resolveManagementPlatformManualScenario(true, window.location.search),
     [authState, developmentScenariosEnabled]
   );
   const profileScenario = useMemo(
@@ -75,8 +82,8 @@ export function App({
     [evidenceGovernanceClient, evidenceGovernanceScenariosEnabled]
   );
   const centralPmsClient = useMemo(
-    () => createCentralPmsApiClient({ basePath: resolvedConfig.centralPmsApiBasePath }),
-    [resolvedConfig.centralPmsApiBasePath]
+    () => createCentralPmsApiClient({ basePath: resolvedConfig.centralPmsApiBasePath, onAuthenticationRequired }),
+    [onAuthenticationRequired, resolvedConfig.centralPmsApiBasePath]
   );
   const profileClient = useMemo(
     () => salesInvoiceProfilesClient ?? profileScenario?.client ?? createSalesInvoiceProfileReadClient(centralPmsClient),
@@ -94,7 +101,7 @@ export function App({
     () => evidenceGovernanceClient ?? evidenceGovernanceScenario?.client ?? createEvidenceGovernanceClient(centralPmsClient),
     [evidenceGovernanceClient, evidenceGovernanceScenario?.client, centralPmsClient]
   );
-  const state = authState ?? manualScenario?.authState ?? createDevelopmentAuthState();
+  const state = authState ?? manualScenario?.authState ?? { status: "unauthenticated" as const };
   const scenarioInitialPath = authState ? undefined : manualScenario?.initialPath;
   const [path, setPath] = useState(initialPath ?? scenarioInitialPath ?? normalizePath(window.location.pathname));
   const [salesInvoiceFormState, setSalesInvoiceFormState] = useState({ hasUnsavedChanges: false, mutationPending: false });
@@ -147,6 +154,10 @@ export function App({
   const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance;
   const shellProps = {
     principalName: principal.displayName,
+    username: principal.username,
+    sessionExpiresAt: principal.sessionExpiresAt,
+    siteGroupScopeCount: principal.authorizedSiteGroupReferences?.length ?? 0,
+    hasGlobalScope: principal.hasGlobalScope ?? false,
     siteSelection,
     path,
     navigate,
@@ -157,6 +168,8 @@ export function App({
     canReadEvidenceGovernance,
     salesInvoiceFormState,
     environmentName: resolvedConfig.environmentName,
+    onLogout,
+    logoutPending,
     scenarioIndicator
   };
 
@@ -243,13 +256,17 @@ export function App({
 
   return (
     <Shell {...shellProps}>
-      <OverviewPage subjectRef={principal.subjectRef} currentSiteName={siteSelection.currentSite?.displayName} hasSites={siteSelection.hasSites} />
+      <OverviewPage principalName={principal.displayName} currentSiteName={siteSelection.currentSite?.displayName} siteScopeCount={principal.authorizedSites.length} siteGroupScopeCount={principal.authorizedSiteGroupReferences?.length ?? 0} hasGlobalScope={principal.hasGlobalScope ?? false} />
     </Shell>
   );
 }
 
-function Shell({ principalName, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, salesInvoiceFormState, environmentName, scenarioIndicator, children }: {
+function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, salesInvoiceFormState, environmentName, onLogout, logoutPending, scenarioIndicator, children }: {
   principalName?: string;
+  username?: string;
+  sessionExpiresAt?: string;
+  siteGroupScopeCount: number;
+  hasGlobalScope: boolean;
   siteSelection: ReturnType<typeof useManagementPlatformSiteSelection>;
   path: string;
   navigate: (path: string) => void;
@@ -260,6 +277,8 @@ function Shell({ principalName, siteSelection, path, navigate, canViewOverview, 
   canReadEvidenceGovernance: boolean;
   salesInvoiceFormState: { hasUnsavedChanges: boolean; mutationPending: boolean };
   environmentName: string;
+  onLogout?: () => void;
+  logoutPending: boolean;
   scenarioIndicator?: React.ReactNode;
   children: React.ReactNode;
 }) {
@@ -274,7 +293,11 @@ function Shell({ principalName, siteSelection, path, navigate, canViewOverview, 
         <div className="identityPanel" aria-label="Authenticated Management Platform user">
           <span>User</span>
           <strong>{principalName ?? "Authenticated user"}</strong>
+          {username && <small>{username}</small>}
+          <small>{scopeSummary(hasGlobalScope, siteSelection.sites.length, siteGroupScopeCount)}</small>
+          {sessionExpiresAt && <small>Session expires {formatSessionExpiry(sessionExpiresAt)}</small>}
           <small>{environmentName}</small>
+          {onLogout && <button className="secondaryButton identityLogout" type="button" disabled={logoutPending} onClick={onLogout}>{logoutPending ? "Signing out" : "Sign out"}</button>}
         </div>
       </header>
 
@@ -365,7 +388,7 @@ function SiteSelector({ siteSelection, formState }: {
   );
 }
 
-function OverviewPage({ subjectRef, currentSiteName, hasSites }: { subjectRef?: string; currentSiteName?: string; hasSites: boolean }) {
+function OverviewPage({ principalName, currentSiteName, siteScopeCount, siteGroupScopeCount, hasGlobalScope }: { principalName?: string; currentSiteName?: string; siteScopeCount: number; siteGroupScopeCount: number; hasGlobalScope: boolean }) {
   return (
     <section className="panel" aria-labelledby="overview-title">
       <div className="pageTitle">
@@ -382,16 +405,29 @@ function OverviewPage({ subjectRef, currentSiteName, hasSites }: { subjectRef?: 
         </article>
         <article>
           <h3>Access posture</h3>
-          <p>Authenticated as {subjectRef ?? "a governed Management Platform principal"}.</p>
+          <p>Authenticated as {principalName ?? "a governed Management Platform user"}. Permissions are presented from the current server session and remain server-enforced.</p>
         </article>
         <article>
           <h3>Site context</h3>
-          <p>{hasSites ? `Current Site: ${currentSiteName}` : "No authorized Site is available."}</p>
+          <p>{siteScopeCount > 0 ? `Current Site: ${currentSiteName}` : "No authorized Site is available."}</p>
+          <p>{scopeSummary(hasGlobalScope, siteScopeCount, siteGroupScopeCount)}</p>
         </article>
       </div>
       <StateMessage title="Administrative modules" message="Sales Invoice Configuration is available to read-authorized users. This shell does not edit fiscal data, issue documents, print receipts, authorize exits, or operate gates." />
     </section>
   );
+}
+
+function scopeSummary(hasGlobalScope: boolean, siteCount: number, siteGroupCount: number): string {
+  if (hasGlobalScope) {
+    return "Global scope from current session";
+  }
+  return `${siteCount} Site scope${siteCount === 1 ? "" : "s"}; ${siteGroupCount} Site Group scope${siteGroupCount === 1 ? "" : "s"}`;
+}
+
+function formatSessionExpiry(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "at the server-defined time" : date.toLocaleString();
 }
 
 export function AuthenticationRequired() {

@@ -15,7 +15,7 @@ const forbiddenHeaderNames = new Set([
   "x-management-platform-site-group-id"
 ]);
 
-export function createCentralPmsApiClient(options: { basePath?: string; fetchImpl?: typeof fetch } = {}): CentralPmsApiClient {
+export function createCentralPmsApiClient(options: { basePath?: string; fetchImpl?: typeof fetch; onAuthenticationRequired?: () => void } = {}): CentralPmsApiClient {
   const basePath = normalizeBasePath(options.basePath ?? "");
   const fetchImpl = options.fetchImpl ?? fetch;
 
@@ -70,6 +70,9 @@ export function createCentralPmsApiClient(options: { basePath?: string; fetchImp
       const parsed = parseResponseBody(text, responseCorrelationId);
 
       if (!response.ok) {
+        if (response.status === 401) {
+          options.onAuthenticationRequired?.();
+        }
         throw mapErrorResponse(response.status, parsed, responseCorrelationId, method !== "GET");
       }
 

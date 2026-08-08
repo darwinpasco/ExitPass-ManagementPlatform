@@ -1,6 +1,9 @@
 param(
     [string]$E2ePort = $(if ($env:MANAGEMENT_PLATFORM_E2E_PORT) { $env:MANAGEMENT_PLATFORM_E2E_PORT } else { "5179" }),
-    [string]$ProductionPort = $(if ($env:MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT) { $env:MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT } else { "5180" })
+    [string]$ProductionPort = $(if ($env:MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT) { $env:MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT } else { "5180" }),
+    [string]$TestFile = "",
+    [switch]$Headed,
+    [switch]$Debug
 )
 
 $ErrorActionPreference = "Stop"
@@ -100,7 +103,27 @@ try {
     Wait-ForServer "http://127.0.0.1:$E2ePort/management-platform/" $devProcess
     Wait-ForServer "http://127.0.0.1:$ProductionPort/management-platform/" $previewProcess
 
-    & npx.cmd playwright test --reporter=list
+    $playwrightArguments = @("playwright", "test")
+    if ($TestFile) {
+        if ([IO.Path]::IsPathRooted($TestFile)) {
+            throw "The Playwright test file must be relative to the project root: $TestFile"
+        }
+        $resolvedTestFile = [IO.Path]::GetFullPath((Join-Path $projectRoot $TestFile))
+        if (-not $resolvedTestFile.StartsWith($projectRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
+            -not (Test-Path -LiteralPath $resolvedTestFile)) {
+            throw "The requested Playwright test file is outside the project or does not exist: $TestFile"
+        }
+        $playwrightArguments += $TestFile.Replace("\", "/")
+    }
+    $playwrightArguments += "--reporter=list"
+    if ($Debug) {
+        $playwrightArguments += "--debug=inspector"
+    }
+    elseif ($Headed) {
+        $playwrightArguments += "--headed"
+    }
+
+    & npx.cmd @playwrightArguments
     if ($LASTEXITCODE -ne 0) {
         throw "Playwright E2E failed with exit code $LASTEXITCODE."
     }

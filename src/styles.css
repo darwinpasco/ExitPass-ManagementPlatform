@@ -152,6 +152,102 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
+.identityLogout {
+  margin-top: 6px;
+  width: 100%;
+}
+
+.authenticationShell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.authenticationHeader,
+.authenticationWorkspace {
+  margin: 0 auto;
+  max-width: 520px;
+  width: 100%;
+}
+
+.authenticationHeader {
+  padding: 8vh 0 24px;
+}
+
+.authenticationHeader h1,
+.loginForm h2,
+.authState h2 {
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.authenticationHeader h1 {
+  font-size: 2rem;
+  line-height: 1.15;
+}
+
+.authenticationHeader > p:last-child,
+.loginForm p,
+.authState p {
+  color: #344756;
+  margin: 8px 0 0;
+}
+
+.loginForm,
+.authState {
+  background: #fff;
+  border: 1px solid #dfe5ea;
+  border-radius: 8px;
+  box-shadow: 0 12px 28px rgb(25 39 52 / 7%);
+  display: grid;
+  gap: 12px;
+  padding: 24px;
+}
+
+.loginForm label {
+  color: #344756;
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: -6px;
+}
+
+.authActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.authInlineError,
+.globalAuthError {
+  background: #fae7e7;
+  border: 1px solid #e5b0b0;
+  border-radius: 6px;
+  color: #7a2727;
+  padding: 10px 12px;
+}
+
+.globalAuthError {
+  margin: 12px auto 0;
+  max-width: 1680px;
+  width: calc(100% - 56px);
+}
+
+.authState.warning {
+  background: #fff6df;
+  border-color: #ecd289;
+}
+
+.authState.danger {
+  background: #fae7e7;
+  border-color: #e5b0b0;
+}
+
+.authAccount {
+  overflow-wrap: anywhere;
+}
+
 .platformShell {
   align-items: start;
   display: grid;
@@ -315,6 +411,25 @@ textarea:focus-visible {
 
   .identityPanel {
     min-width: 0;
+  }
+}
+
+@media (max-width: 520px) {
+  .authenticationShell {
+    padding: 18px;
+  }
+
+  .authenticationHeader {
+    padding-top: 24px;
+  }
+
+  .authenticationHeader h1 {
+    font-size: 1.65rem;
+  }
+
+  .authActions,
+  .authActions button {
+    width: 100%;
   }
 }
 

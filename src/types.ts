@@ -3,9 +3,19 @@ export type LoadStatus = "idle" | "loading" | "loaded" | "error";
 export interface ManagementPlatformPrincipal {
   authenticated: boolean;
   subjectRef?: string;
+  username?: string;
   displayName?: string;
+  audience?: string;
+  privilegedAccount?: boolean;
+  mfaRequired?: boolean;
+  mfaSatisfied?: boolean;
+  passwordChangeRequired?: boolean;
+  sessionExpiresAt?: string;
   permissions: string[];
   authorizedSites: ManagementPlatformSite[];
+  authorizedSiteReferences?: string[];
+  authorizedSiteGroupReferences?: string[];
+  hasGlobalScope?: boolean;
 }
 
 export interface ManagementPlatformAuthState {

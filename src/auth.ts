@@ -12,6 +12,7 @@ const defaultSites: ManagementPlatformSite[] = [
 ];
 
 export function createDevelopmentAuthState(): ManagementPlatformAuthState {
+  assertDevelopmentRuntime();
   return {
     status: "authenticated",
     principal: createDevelopmentPrincipal()
@@ -19,6 +20,7 @@ export function createDevelopmentAuthState(): ManagementPlatformAuthState {
 }
 
 export function createDevelopmentPrincipal(overrides: Partial<ManagementPlatformPrincipal> = {}): ManagementPlatformPrincipal {
+  assertDevelopmentRuntime();
   return {
     authenticated: true,
     subjectRef: localFallback(import.meta.env.VITE_MANAGEMENT_PLATFORM_SUBJECT_REF, "local-management-platform-user"),
@@ -29,6 +31,12 @@ export function createDevelopmentPrincipal(overrides: Partial<ManagementPlatform
     authorizedSites: defaultSites,
     ...overrides
   };
+}
+
+function assertDevelopmentRuntime(): void {
+  if (!import.meta.env.DEV) {
+    throw new Error("Development authentication fixtures are unavailable outside development builds.");
+  }
 }
 
 export function parseList(value: string): string[] {
