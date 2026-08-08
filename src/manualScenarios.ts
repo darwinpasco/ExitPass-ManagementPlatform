@@ -1,5 +1,5 @@
 import { createDevelopmentPrincipal } from "./auth";
-import { futureSalesInvoiceProfilePermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { futureSalesInvoiceProfilePermissions, identityAdministrationPresentationPermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import type { ManagementPlatformAuthState, ManagementPlatformSite, ManagementPlatformUiError } from "./types";
 
 export type ManagementPlatformManualScenarioName =
@@ -51,7 +51,8 @@ export function resolveManagementPlatformManualScenario(
   const rbacScenarioName = searchParams.get("mpRbacScenario");
   const policyCoverageScenarioName = searchParams.get("mpPolicyCoverageScenario");
   const evidenceGovernanceScenarioName = searchParams.get("mpEvidenceGovernanceScenario");
-  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName, policyCoverageScenarioName, evidenceGovernanceScenarioName);
+  const identityScenarioName = searchParams.get("mpIdentityScenario");
+  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName, policyCoverageScenarioName, evidenceGovernanceScenarioName, identityScenarioName);
 
   switch (scenarioName) {
     case "unauthenticated":
@@ -160,7 +161,7 @@ function normalizeScenarioName(value: string | null): ManagementPlatformManualSc
   }
 }
 
-function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacScenarioName: string | null, policyCoverageScenarioName: string | null, evidenceGovernanceScenarioName: string | null): string[] {
+function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacScenarioName: string | null, policyCoverageScenarioName: string | null, evidenceGovernanceScenarioName: string | null, identityScenarioName: string | null): string[] {
   const rbacPermissions = isRbacInventoryScenario(rbacScenarioName)
     ? [managementPlatformIdentityRbacInventoryReadPermission]
     : [];
@@ -170,16 +171,17 @@ function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacS
   const evidenceGovernancePermissions = isEvidenceGovernanceScenario(evidenceGovernanceScenarioName)
     ? [statutoryEvidenceGovernanceReadPermission]
     : [];
+  const identityPermissions = identityScenarioName ? [...identityAdministrationPresentationPermissions] : [];
 
   if (isApproveOnlyProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, futureSalesInvoiceProfilePermissions.approve];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, ...identityPermissions, futureSalesInvoiceProfilePermissions.approve];
   }
 
   if (isManageProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, futureSalesInvoiceProfilePermissions.manage];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, ...identityPermissions, futureSalesInvoiceProfilePermissions.manage];
   }
 
-  return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions];
+  return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, ...identityPermissions];
 }
 
 function isEvidenceGovernanceScenario(value: string | null): boolean {

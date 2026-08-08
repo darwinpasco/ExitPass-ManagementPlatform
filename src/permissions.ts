@@ -15,6 +15,22 @@ export const managementPlatformIdentityRbacInventoryReadPermission = "management
 export const statutoryDiscountPolicyCoverageReadPermission = "statutory-discount-policy.view";
 export const statutoryEvidenceGovernanceReadPermission = "statutory-discounts.evidence-governance.view";
 
+export const identityAdministrationPresentationPermissions = [
+  "user.view",
+  "user.manage",
+  "role.view",
+  "permission.view",
+  "identity.role-assignment.manage",
+  "identity.scope-assignment.manage",
+  "identity.privileged-access.decide",
+  "identity.access-review.manage",
+  "human-authentication.session.admin.view",
+  "human-authentication.session.admin.revoke",
+  "human-authentication.mfa.status.view",
+  "human-authentication.mfa.reset",
+  "human-authentication.mfa.remove"
+] as const;
+
 export const futureSalesInvoiceProfilePermissions = {
   read: "sales-invoice-profile.read",
   manage: "sales-invoice-profile.manage",

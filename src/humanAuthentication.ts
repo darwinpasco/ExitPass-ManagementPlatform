@@ -98,6 +98,7 @@ export interface HumanAuthenticationClient {
   logout(signal?: AbortSignal): Promise<void>;
   clearRuntimeState(): void;
   hasCsrfToken(): boolean;
+  authorizeUnsafeRequest(headers: Headers): void;
 }
 
 export function createHumanAuthenticationClient(options: { fetchImpl?: typeof fetch } = {}): HumanAuthenticationClient {
@@ -186,6 +187,13 @@ export function createHumanAuthenticationClient(options: { fetchImpl?: typeof fe
     },
     hasCsrfToken() {
       return Boolean(csrfToken);
+    },
+    authorizeUnsafeRequest(headers) {
+      if (!csrfToken) {
+        throw new HumanAuthenticationError("csrf", "CSRF_TOKEN_UNAVAILABLE", "The secure administration request could not be completed. Refresh and try again.");
+      }
+      headers.set(csrfHeaderName, csrfToken);
+      assertSafeAuthenticationHeaders(headers);
     }
   };
 }

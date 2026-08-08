@@ -1,0 +1,46 @@
+{
+  "contract": "management-platform-human-identity-administration-ui:v1",
+  "authority": "Central PMS I-021",
+  "route": "/management-platform/identity-administration",
+  "backendBaseRoute": "/v1/management-platform/identity",
+  "authentication": "shared H-006 I-020 session",
+  "csrf": "shared H-006 runtime-memory X-CSRF-Token decorator",
+  "capabilities": [
+    "user list and detail",
+    "Add User without credentials",
+    "profile, access dates, and Account Status",
+    "Roles & Permissions catalog and assignment",
+    "Site Access for Site and Site Group",
+    "Elevated Access requests and decisions",
+    "Two-Factor Authentication status and authenticator reset or remove",
+    "Active Sessions and sign-out",
+    "Access Review",
+    "Activity Log"
+  ],
+  "globalScope": {
+    "enabled": false,
+    "classification": "GLOBAL_SCOPE_POLICY_NOT_APPROVED",
+    "nullScopeIsGlobal": false
+  },
+  "privilegedAccess": {
+    "approvalIsEvidence": true,
+    "approvalImpliesActiveAuthority": false
+  },
+  "browserAuthority": {
+    "authentication": false,
+    "permissions": false,
+    "siteScope": false,
+    "siteGroupScope": false,
+    "selectedSite": false
+  },
+  "prohibitedData": [
+    "password",
+    "TOTP seed or code",
+    "provisioning URI or QR payload",
+    "session secret or cookie",
+    "bearer or refresh token",
+    "client-authored actor, role, permission, Site, or Site Group authority"
+  ],
+  "safeErrors": [400, 401, 403, 404, 409, 429, 503, "network", "malformed response"],
+  "sessionLoss": "H-006 removes the workspace and never replays a mutation"
+}

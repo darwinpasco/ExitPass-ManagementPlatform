@@ -4,7 +4,9 @@ import { getManagementPlatformConfig } from "./config";
 import { EvidenceGovernancePage } from "./EvidenceGovernancePage";
 import { createEvidenceGovernanceClient, evidenceGovernanceRoute, resolveEvidenceGovernanceScenario, type EvidenceGovernanceClient } from "./evidenceGovernance";
 import { resolveManagementPlatformManualScenario, type ManagementPlatformManualScenarioName } from "./manualScenarios";
-import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasPermission, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { IdentityAdministrationPage } from "./IdentityAdministrationPage";
+import { createIdentityAdministrationClient, identityAdministrationRoute, resolveIdentityAdministrationScenario, type IdentityAdministrationClient } from "./identityAdministration";
+import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasAnyPermission, hasPermission, identityAdministrationPresentationPermissions, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import { PolicyCoveragePage } from "./PolicyCoveragePage";
 import { createPolicyCoverageClient, policyCoverageRoute, resolvePolicyCoverageScenario, type PolicyCoverageClient } from "./policyCoverage";
 import { RbacInventoryPage } from "./RbacInventoryPage";
@@ -20,7 +22,8 @@ const routes = {
   salesInvoiceProfiles: salesInvoiceProfileReadRoute,
   rbacInventory: rbacInventoryRoute,
   policyCoverage: policyCoverageRoute,
-  evidenceGovernance: evidenceGovernanceRoute
+  evidenceGovernance: evidenceGovernanceRoute,
+  identityAdministration: identityAdministrationRoute
 };
 
 interface AppProps {
@@ -31,7 +34,9 @@ interface AppProps {
   rbacInventoryClient?: RbacInventoryClient;
   policyCoverageClient?: PolicyCoverageClient;
   evidenceGovernanceClient?: EvidenceGovernanceClient;
+  identityAdministrationClient?: IdentityAdministrationClient;
   onAuthenticationRequired?: () => void;
+  authorizeUnsafeRequest?: (headers: Headers) => void;
   onLogout?: () => void;
   logoutPending?: boolean;
   developmentScenariosEnabled?: boolean;
@@ -39,6 +44,7 @@ interface AppProps {
   rbacScenariosEnabled?: boolean;
   policyCoverageScenariosEnabled?: boolean;
   evidenceGovernanceScenariosEnabled?: boolean;
+  identityAdministrationScenariosEnabled?: boolean;
 }
 
 export function App({
@@ -49,14 +55,17 @@ export function App({
   rbacInventoryClient,
   policyCoverageClient,
   evidenceGovernanceClient,
+  identityAdministrationClient,
   onAuthenticationRequired,
+  authorizeUnsafeRequest,
   onLogout,
   logoutPending = false,
   developmentScenariosEnabled = import.meta.env.DEV,
   profileScenariosEnabled = import.meta.env.DEV,
   rbacScenariosEnabled = import.meta.env.DEV,
   policyCoverageScenariosEnabled = import.meta.env.DEV,
-  evidenceGovernanceScenariosEnabled = import.meta.env.DEV
+  evidenceGovernanceScenariosEnabled = import.meta.env.DEV,
+  identityAdministrationScenariosEnabled = import.meta.env.DEV
 }: AppProps) {
   const resolvedConfig = useMemo(() => config ?? getManagementPlatformConfig(), [config]);
   const manualScenario = useMemo(
@@ -82,8 +91,8 @@ export function App({
     [evidenceGovernanceClient, evidenceGovernanceScenariosEnabled]
   );
   const centralPmsClient = useMemo(
-    () => createCentralPmsApiClient({ basePath: resolvedConfig.centralPmsApiBasePath, onAuthenticationRequired }),
-    [onAuthenticationRequired, resolvedConfig.centralPmsApiBasePath]
+    () => createCentralPmsApiClient({ basePath: resolvedConfig.centralPmsApiBasePath, onAuthenticationRequired, authorizeUnsafeRequest }),
+    [authorizeUnsafeRequest, onAuthenticationRequired, resolvedConfig.centralPmsApiBasePath]
   );
   const profileClient = useMemo(
     () => salesInvoiceProfilesClient ?? profileScenario?.client ?? createSalesInvoiceProfileReadClient(centralPmsClient),
@@ -100,6 +109,14 @@ export function App({
   const governanceClient = useMemo(
     () => evidenceGovernanceClient ?? evidenceGovernanceScenario?.client ?? createEvidenceGovernanceClient(centralPmsClient),
     [evidenceGovernanceClient, evidenceGovernanceScenario?.client, centralPmsClient]
+  );
+  const identityScenario = useMemo(
+    () => identityAdministrationClient ? undefined : resolveIdentityAdministrationScenario(identityAdministrationScenariosEnabled, window.location.search),
+    [identityAdministrationClient, identityAdministrationScenariosEnabled]
+  );
+  const identityClient = useMemo(
+    () => identityAdministrationClient ?? identityScenario?.client ?? createIdentityAdministrationClient(centralPmsClient),
+    [centralPmsClient, identityAdministrationClient, identityScenario?.client]
   );
   const state = authState ?? manualScenario?.authState ?? { status: "unauthenticated" as const };
   const scenarioInitialPath = authState ? undefined : manualScenario?.initialPath;
@@ -151,7 +168,8 @@ export function App({
   const canReadRbacInventory = hasPermission(principal.permissions, managementPlatformIdentityRbacInventoryReadPermission);
   const canReadPolicyCoverage = hasPermission(principal.permissions, statutoryDiscountPolicyCoverageReadPermission);
   const canReadEvidenceGovernance = hasPermission(principal.permissions, statutoryEvidenceGovernanceReadPermission);
-  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance;
+  const canUseIdentityAdministration = hasAnyPermission(principal.permissions, identityAdministrationPresentationPermissions);
+  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance || path === routes.identityAdministration;
   const shellProps = {
     principalName: principal.displayName,
     username: principal.username,
@@ -166,6 +184,7 @@ export function App({
     canReadRbacInventory,
     canReadPolicyCoverage,
     canReadEvidenceGovernance,
+    canUseIdentityAdministration,
     salesInvoiceFormState,
     environmentName: resolvedConfig.environmentName,
     onLogout,
@@ -194,6 +213,10 @@ export function App({
   }
 
   if (path === routes.evidenceGovernance && !canReadEvidenceGovernance) {
+    return <Shell {...shellProps}><PermissionDenied /></Shell>;
+  }
+
+  if (path === routes.identityAdministration && !canUseIdentityAdministration) {
     return <Shell {...shellProps}><PermissionDenied /></Shell>;
   }
 
@@ -254,6 +277,11 @@ export function App({
     );
   }
 
+
+  if (path === routes.identityAdministration) {
+    return <Shell {...shellProps}><IdentityAdministrationPage client={identityClient} permissions={principal.permissions} authorizedSites={principal.authorizedSites} authorizedSiteGroupReferences={principal.authorizedSiteGroupReferences ?? []} /></Shell>;
+  }
+
   return (
     <Shell {...shellProps}>
       <OverviewPage principalName={principal.displayName} currentSiteName={siteSelection.currentSite?.displayName} siteScopeCount={principal.authorizedSites.length} siteGroupScopeCount={principal.authorizedSiteGroupReferences?.length ?? 0} hasGlobalScope={principal.hasGlobalScope ?? false} />
@@ -261,7 +289,7 @@ export function App({
   );
 }
 
-function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, salesInvoiceFormState, environmentName, onLogout, logoutPending, scenarioIndicator, children }: {
+function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, salesInvoiceFormState, environmentName, onLogout, logoutPending, scenarioIndicator, children }: {
   principalName?: string;
   username?: string;
   sessionExpiresAt?: string;
@@ -275,6 +303,7 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
   canReadRbacInventory: boolean;
   canReadPolicyCoverage: boolean;
   canReadEvidenceGovernance: boolean;
+  canUseIdentityAdministration: boolean;
   salesInvoiceFormState: { hasUnsavedChanges: boolean; mutationPending: boolean };
   environmentName: string;
   onLogout?: () => void;
@@ -288,7 +317,7 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
         <div>
           <p className="eyebrow">Management Platform</p>
           <h1 id="app-title">ExitPass Management Platform</h1>
-          <p className="headerCopy">Administrative control plane for governed configuration and lifecycle workflows.</p>
+          <p className="headerCopy">Manage governed configuration and access workflows.</p>
         </div>
         <div className="identityPanel" aria-label="Authenticated Management Platform user">
           <span>User</span>
@@ -323,6 +352,11 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
             {canReadRbacInventory && (
               <button className={`navLink ${path === routes.rbacInventory ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.rbacInventory)}>
                 Access Control <span className="navMeta">RBAC Inventory</span>
+              </button>
+            )}
+            {canUseIdentityAdministration && (
+              <button className={`navLink ${path === routes.identityAdministration ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.identityAdministration)}>
+                User Administration <span className="navMeta">Users and access</span>
               </button>
             )}
             {canReadPolicyCoverage && (
@@ -383,7 +417,7 @@ function SiteSelector({ siteSelection, formState }: {
           <option key={site.siteId} value={site.siteId}>{site.displayName}</option>
         ))}
       </select>
-      <p>{siteSelection.currentSite?.sitePosServerId ? `Site POS Server: ${siteSelection.currentSite.sitePosServerId}` : "Site POS Server not selected"}</p>
+      <p>{siteSelection.currentSite?.siteGroupDisplayName ? `Site Group: ${siteSelection.currentSite.siteGroupDisplayName}` : "Site authority is resolved by Central PMS"}</p>
     </div>
   );
 }
@@ -420,9 +454,9 @@ function OverviewPage({ principalName, currentSiteName, siteScopeCount, siteGrou
 
 function scopeSummary(hasGlobalScope: boolean, siteCount: number, siteGroupCount: number): string {
   if (hasGlobalScope) {
-    return "Global scope from current session";
+    return "Organization-wide access from current session";
   }
-  return `${siteCount} Site scope${siteCount === 1 ? "" : "s"}; ${siteGroupCount} Site Group scope${siteGroupCount === 1 ? "" : "s"}`;
+  return `${siteCount} Site access grant${siteCount === 1 ? "" : "s"}; ${siteGroupCount} Site Group access grant${siteGroupCount === 1 ? "" : "s"}`;
 }
 
 function formatSessionExpiry(value: string): string {
@@ -468,6 +502,9 @@ function StateMessage({ title, message, tone = "neutral" }: { title: string; mes
 }
 
 function routeTitle(path: string): string {
+  if (path === routes.identityAdministration) {
+    return "User Administration - ExitPass Management Platform";
+  }
   if (path === routes.rbacInventory) {
     return "Access Control - ExitPass Management Platform";
   }

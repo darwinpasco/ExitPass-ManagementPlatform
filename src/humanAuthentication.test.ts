@@ -69,6 +69,19 @@ describe("I-020 human authentication client", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
+  it("decorates administration requests from the same bounded runtime CSRF source", async () => {
+    const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(successResponse(), 200, { "X-CSRF-Token": "runtime-only-token" }));
+    const client = createHumanAuthenticationClient({ fetchImpl });
+    await client.getCurrentSession();
+    const headers = new Headers();
+
+    client.authorizeUnsafeRequest(headers);
+
+    expect(headers.get("X-CSRF-Token")).toBe("runtime-only-token");
+    client.clearRuntimeState();
+    expect(() => client.authorizeUnsafeRequest(new Headers())).toThrowError(/secure administration request/i);
+  });
+
   it.each([
     ["TOTP_REQUIRED", 401, "mfa-required"],
     ["TOTP_INVALID", 401, "invalid-totp"],

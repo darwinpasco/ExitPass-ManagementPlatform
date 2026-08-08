@@ -25,7 +25,7 @@ describe("Management Platform I-020 session shell", () => {
     expect(client.getCurrentSession).toHaveBeenCalledTimes(2);
     expect(screen.queryByLabelText("Verification code")).not.toBeInTheDocument();
     expect(screen.getByText("Ordinary Management User")).toBeInTheDocument();
-    expect(screen.getAllByText(/1 Site scope; 1 Site Group scope/)).toHaveLength(2);
+    expect(screen.getAllByText(/1 Site access grant; 1 Site Group access grant/)).toHaveLength(2);
   });
 
   it("shows TOTP only after the server requires it and accepts a privileged TOTP login", async () => {
@@ -172,7 +172,8 @@ function mockClient(): MockedClient {
     continueSession: vi.fn<HumanAuthenticationClient["continueSession"]>(),
     logout: vi.fn<HumanAuthenticationClient["logout"]>(),
     clearRuntimeState: vi.fn<HumanAuthenticationClient["clearRuntimeState"]>(),
-    hasCsrfToken: vi.fn<HumanAuthenticationClient["hasCsrfToken"]>(() => true)
+    hasCsrfToken: vi.fn<HumanAuthenticationClient["hasCsrfToken"]>(() => true),
+    authorizeUnsafeRequest: vi.fn<HumanAuthenticationClient["authorizeUnsafeRequest"]>()
   };
 }
 

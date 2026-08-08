@@ -244,7 +244,9 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
         rbacScenariosEnabled={false}
         policyCoverageScenariosEnabled={false}
         evidenceGovernanceScenariosEnabled={false}
+        identityAdministrationScenariosEnabled={false}
         onAuthenticationRequired={authenticationLost}
+        authorizeUnsafeRequest={client.authorizeUnsafeRequest}
         onLogout={() => void logout()}
         logoutPending={logoutPending}
       />

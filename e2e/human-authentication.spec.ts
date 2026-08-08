@@ -25,7 +25,7 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     await expect(page.getByRole("heading", { name: "Management Platform foundation" })).toBeVisible();
     await expect(page.getByLabel("Verification code")).toHaveCount(0);
     await expect(page.getByText("Ordinary Management User", { exact: true })).toBeVisible();
-    await expect(page.getByText(/1 Site scope; 1 Site Group scope/).first()).toBeVisible();
+    await expect(page.getByText(/1 Site access grant; 1 Site Group access grant/).first()).toBeVisible();
 
     await page.reload();
     await expect(page.getByRole("heading", { name: "Management Platform foundation" })).toBeVisible();
