@@ -2,6 +2,19 @@ import { describe, expect, it, vi } from "vitest";
 import { assertBrowserSafeHeaderName, createCentralPmsApiClient, createUiError, mapErrorResponse, toCentralPmsPath } from "./apiClient";
 
 describe("ManagementPlatformUi Central PMS API client foundation", () => {
+  it("notifies the session boundary on 401 but not on 403", async () => {
+    const onAuthenticationRequired = vi.fn();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errorCode: "SESSION_REVOKED" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errorCode: "SCOPE_DENIED" }), { status: 403 }));
+    const client = createCentralPmsApiClient({ fetchImpl, onAuthenticationRequired });
+
+    await expect(client.request("/v1/management-platform/example")).rejects.toMatchObject({ kind: "authentication-required" });
+    expect(onAuthenticationRequired).toHaveBeenCalledTimes(1);
+
+    await expect(client.request("/v1/management-platform/example")).rejects.toMatchObject({ kind: "permission-denied" });
+    expect(onAuthenticationRequired).toHaveBeenCalledTimes(1);
+  });
   it("uses relative Central PMS Management Platform routes and sends a correlation ID", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(input).toBe("/v1/management-platform/foundation-readiness");

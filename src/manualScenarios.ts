@@ -40,9 +40,9 @@ const defaultDevelopmentPermissions = [managementPlatformOverviewPermission, fut
 export function resolveManagementPlatformManualScenario(
   isDevelopment: boolean,
   search: string
-): ManagementPlatformManualScenario {
+): ManagementPlatformManualScenario | undefined {
   if (!isDevelopment) {
-    return authenticatedScenario(false, defaultDevelopmentPermissions);
+    return undefined;
   }
 
   const searchParams = new URLSearchParams(search);

@@ -270,14 +270,14 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
     expect(screen.getByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
   });
 
-  it("production mode ignores mpScenario and exposes no development scenario indicator", () => {
+  it("production mode ignores mpScenario and never falls back to a development principal", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=unauthenticated");
 
     render(<App developmentScenariosEnabled={false} />);
 
     expect(screen.queryByRole("status", { name: "Development scenario" })).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
-    expect(screen.queryByRole("status", { name: "Authentication required" })).not.toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "Authentication required" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
   });
 
   it("development RBAC scenario exposes Access Control without production authority", async () => {

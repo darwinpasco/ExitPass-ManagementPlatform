@@ -1,0 +1,80 @@
+{
+  "contract": "management-platform-human-authentication-consumer-ui:v1",
+  "status": "implemented",
+  "authority": "Central PMS I-020",
+  "audience": "MANAGEMENT_PLATFORM",
+  "routes": {
+    "login": "POST /v1/human-authentication/login",
+    "currentSession": "GET /v1/human-authentication/session",
+    "continueSession": "POST /v1/human-authentication/session/continue",
+    "logout": "POST /v1/human-authentication/logout"
+  },
+  "ordinaryLogin": [
+    "username",
+    "password",
+    "server session cookie",
+    "current-session readback",
+    "workspace"
+  ],
+  "privilegedLogin": [
+    "username",
+    "password",
+    "server-issued TOTP_REQUIRED classification",
+    "TOTP code",
+    "server session cookie",
+    "current-session readback",
+    "workspace"
+  ],
+  "sessionAuthority": {
+    "cookie": "server-issued secure HttpOnly cookie",
+    "browserReadableSecret": false,
+    "shadowBearerToken": false,
+    "frontendRefreshToken": false,
+    "startupAuthority": "GET /v1/human-authentication/session",
+    "permissionAuthority": "Central PMS effective permission readback",
+    "scopeAuthority": "Central PMS effective global, Site Group, and Site readback"
+  },
+  "csrf": {
+    "responseHeader": "X-CSRF-Token",
+    "runtimeMemoryOnly": true,
+    "requiredFor": [
+      "POST /v1/human-authentication/session/continue",
+      "POST /v1/human-authentication/logout"
+    ],
+    "persistentAuthority": false
+  },
+  "safeStates": [
+    "session loading",
+    "unauthenticated login",
+    "TOTP required",
+    "invalid credentials",
+    "invalid TOTP",
+    "throttled",
+    "restricted account action required",
+    "authenticated",
+    "expired",
+    "revoked",
+    "unavailable",
+    "malformed response",
+    "logout unconfirmed"
+  ],
+  "browserSecurity": {
+    "sameOriginCredentials": true,
+    "cacheMode": "no-store",
+    "privilegedIdentityHeaders": false,
+    "browserAuthStorage": false,
+    "totpPersistence": false,
+    "rawBackendErrors": false,
+    "developmentPrincipalInProduction": false
+  },
+  "nonGoals": [
+    "user administration",
+    "role assignment",
+    "scope administration",
+    "MFA administration",
+    "session administration",
+    "access review",
+    "WebAuthn",
+    "passkeys"
+  ]
+}
