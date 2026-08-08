@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App, FeatureUnavailable, MutationUncertainMessage, PageError } from "./App";
-import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { identityAdministrationPresentationPermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import type { ManagementPlatformAuthState } from "./types";
 
 const siteA = {
@@ -120,6 +120,19 @@ describe("ManagementPlatformUi foundation shell", () => {
 
     rerender(<App authState={authState([managementPlatformOverviewPermission, managementPlatformIdentityRbacInventoryReadPermission])} initialPath="/management-platform" />);
     expect(screen.getByRole("button", { name: /Access Control RBAC Inventory/i })).toBeInTheDocument();
+  });
+
+  it("shows User Administration navigation from current-session presentation permissions", () => {
+    const { rerender } = render(<App authState={authState()} initialPath="/management-platform" />);
+    expect(screen.queryByRole("button", { name: /User Administration/ })).not.toBeInTheDocument();
+
+    rerender(<App authState={authState([managementPlatformOverviewPermission, "user.view"])} initialPath="/management-platform" />);
+    expect(screen.getByRole("button", { name: /User Administration/ })).toBeInTheDocument();
+  });
+
+  it("denies direct identity-administration navigation without presentation permission", () => {
+    render(<App authState={authState([managementPlatformOverviewPermission])} initialPath="/management-platform/identity-administration" />);
+    expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
   });
 
   it("blocks direct Access Control route access without inventory-read permission", () => {
@@ -288,5 +301,13 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
     await waitFor(() => expect(screen.getByRole("heading", { name: "RBAC Inventory" })).toBeInTheDocument());
     expect(screen.getByRole("status", { name: "Development RBAC inventory scenario" })).toHaveTextContent("non-authoritative");
     expect(screen.getByText("Operations Supervisor")).toBeInTheDocument();
+  });
+
+  it("development identity scenario remains synthetic and non-production", async () => {
+    window.history.pushState({}, "", "/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=populated");
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "User Administration" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Synthetic Administration User/ })).toBeInTheDocument();
+    expect(identityAdministrationPresentationPermissions.length).toBeGreaterThan(0);
   });
 });

@@ -15,7 +15,12 @@ const forbiddenHeaderNames = new Set([
   "x-management-platform-site-group-id"
 ]);
 
-export function createCentralPmsApiClient(options: { basePath?: string; fetchImpl?: typeof fetch; onAuthenticationRequired?: () => void } = {}): CentralPmsApiClient {
+export function createCentralPmsApiClient(options: {
+  basePath?: string;
+  fetchImpl?: typeof fetch;
+  onAuthenticationRequired?: () => void;
+  authorizeUnsafeRequest?: (headers: Headers) => void;
+} = {}): CentralPmsApiClient {
   const basePath = normalizeBasePath(options.basePath ?? "");
   const fetchImpl = options.fetchImpl ?? fetch;
 
@@ -38,6 +43,10 @@ export function createCentralPmsApiClient(options: { basePath?: string; fetchImp
           assertBrowserSafeHeaderName(name, correlationId);
           headers.set(name, value);
         }
+      }
+
+      if (!isSafeMethod(method)) {
+        options.authorizeUnsafeRequest?.(headers);
       }
 
       for (const headerName of headers.keys()) {
@@ -81,6 +90,10 @@ export function createCentralPmsApiClient(options: { basePath?: string; fetchImp
   };
 }
 
+function isSafeMethod(method: ApiRequestOptions["method"]): boolean {
+  return method === undefined || method === "GET";
+}
+
 export function createCorrelationId(): string {
   return globalThis.crypto?.randomUUID?.() ?? `mp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
@@ -114,7 +127,7 @@ export function assertBrowserSafeHeaderName(headerName: string, correlationId?: 
 }
 
 export function mapErrorResponse(status: number, body: unknown, correlationId: string, mutation: boolean): ManagementPlatformUiError {
-  const safeCode = readSafeString(body, "code") ?? readSafeString(body, "errorCode") ?? `HTTP_${status}`;
+  const safeCode = readSafeString(body, "classification") ?? readSafeString(body, "code") ?? readSafeString(body, "errorCode") ?? `HTTP_${status}`;
   const serverMessage = readSafeString(body, "message");
 
   if (safeCode === "SALES_INVOICE_PROFILE_ADMINISTRATION_DISABLED") {

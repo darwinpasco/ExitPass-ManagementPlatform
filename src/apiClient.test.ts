@@ -28,6 +28,21 @@ describe("ManagementPlatformUi Central PMS API client foundation", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("uses the shared H-006 decorator for unsafe requests without changing GET requests", async () => {
+    const authorizeUnsafeRequest = vi.fn((headers: Headers) => headers.set("X-CSRF-Token", "runtime-token"));
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      const headers = new Headers(init?.headers);
+      expect(headers.get("X-CSRF-Token")).toBe(init?.method === "POST" ? "runtime-token" : null);
+      return jsonResponse({ ok: true }, 200, "shared-csrf-test");
+    });
+    const client = createCentralPmsApiClient({ fetchImpl, authorizeUnsafeRequest });
+
+    await client.request("/v1/management-platform/identity/users");
+    await client.request("/v1/management-platform/identity/users", { method: "POST", body: {} });
+
+    expect(authorizeUnsafeRequest).toHaveBeenCalledTimes(1);
+  });
+
   it("preserves one logical correlation ID for the caller-supplied request", async () => {
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("X-Correlation-Id")).toBe("logical-correlation");
