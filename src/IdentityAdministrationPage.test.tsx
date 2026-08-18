@@ -1,8 +1,8 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { IdentityAdministrationPage } from "./IdentityAdministrationPage";
-import { identityAdministrationPermissions, type IdentityAdministrationClient, type IdentityUserDetail } from "./identityAdministration";
+import { identityAdministrationPermissions, type IdentityAdministrationClient, type IdentityUserDetail, type IdentityUserSummary } from "./identityAdministration";
 
 describe("IdentityAdministrationPage", () => {
   it("renders a populated governed user list and coherent detail without raw identifiers", async () => {
@@ -70,8 +70,162 @@ describe("IdentityAdministrationPage", () => {
     await userEvent.type(within(roleForm).getByLabelText("Reason"), "TEMPORARY_SUPPORT");
     await userEvent.click(within(roleForm).getByRole("button", { name: "Add Role or Request Access" }));
     expect(await screen.findByText(/Approval records the decision but does not activate access/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Request reference")).toHaveValue("request-1");
     expect(screen.getByRole("heading", { name: "Elevated Access" })).toBeInTheDocument();
     expect(screen.queryByText("Active Authority")).not.toBeInTheDocument();
+  });
+
+  it("distinguishes successful empty catalogs from failed secondary requests and retries only the affected section", async () => {
+    const client = mockClient();
+    client.listRoles.mockRejectedValueOnce(uiError("integration-unavailable", "Role catalog is temporarily unavailable.", true)).mockResolvedValueOnce([]);
+    client.listPermissions.mockRejectedValue(uiError("integration-unavailable", "Permission catalog is temporarily unavailable.", true));
+    client.listSessions.mockRejectedValue(uiError("integration-unavailable", "Active Sessions are temporarily unavailable.", true));
+    client.getMfaStatus.mockRejectedValue(uiError("permission-denied", "Two-Factor Authentication access is denied."));
+    client.listAuditEvents.mockRejectedValue(uiError("integration-unavailable", "Activity Log is temporarily unavailable.", true));
+
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
+
+    expect(await screen.findByText("Role catalog: Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("No assignable roles were returned.")).not.toBeInTheDocument();
+    expect(screen.getByText("Permission catalog: Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText(/0 permissions are available/)).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Alex Rivera" })).toBeInTheDocument();
+    expect(client.listPermissions).toHaveBeenCalledOnce();
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry Role catalog" }));
+    expect(await screen.findByText("No assignable roles were returned.")).toBeInTheDocument();
+    expect(client.listRoles).toHaveBeenCalledTimes(2);
+    expect(client.listPermissions).toHaveBeenCalledOnce();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Security" }));
+    expect(await screen.findByText("Active Sessions: Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("No active sessions returned.")).not.toBeInTheDocument();
+    expect(screen.getByText("Two-Factor Authentication: Access denied")).toBeInTheDocument();
+    expect(screen.queryByText("Not set up")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry Two-Factor Authentication" })).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Alex Rivera" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Activity Log" }));
+    expect(await screen.findByText("Activity Log: Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("No activity was returned for this user.")).not.toBeInTheDocument();
+  });
+
+  it("renders returned GLOBAL access as transparent read-only data while retaining governed Site revocation", async () => {
+    const prompt = vi.spyOn(window, "prompt").mockReturnValue("GOVERNED_SCOPE_REMOVAL");
+    const client = mockClient();
+    const detail = userDetail();
+    detail.scopeGrants.push({ ...detail.scopeGrants[0], grantReference: "global-grant", scopeType: "GLOBAL", siteReference: null, siteGroupReference: null });
+    client.getUser.mockResolvedValue(detail);
+
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
+    const globalRow = screen.getByText(/Organization.*access unavailable/i).closest("article")!;
+    expect(within(globalRow).getByText("Read-only in Management Platform")).toBeInTheDocument();
+    expect(within(globalRow).queryByRole("button")).not.toBeInTheDocument();
+    globalRow.focus();
+    await userEvent.keyboard("{Enter}");
+    expect(client.revokeScope).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole("button", { name: "Remove Access" }));
+    await waitFor(() => expect(client.revokeScope).toHaveBeenCalledOnce());
+    expect(client.revokeScope.mock.calls[0][2]).toBe("grant-1");
+    expect(within(screen.getByLabelText("Access level")).queryByRole("option", { name: /global/i })).not.toBeInTheDocument();
+    prompt.mockRestore();
+  });
+
+  it("pages the directory with bounded offset controls and resets filters to the first page", async () => {
+    const client = mockClient();
+    client.listUsers.mockImplementation(async (filters = {}) => filters.offset === 50 ? pagedUsers(7, 50) : pagedUsers(50, 0));
+    renderPage(client);
+
+    expect(await screen.findByText("Page 1 · Showing 1-50")).toBeInTheDocument();
+    expect(client.listUsers).toHaveBeenNthCalledWith(1, { query: undefined, status: undefined, offset: 0, limit: 50 });
+    expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("Page 2 · Showing 51-57")).toBeInTheDocument();
+    expect(client.listUsers).toHaveBeenLastCalledWith({ query: undefined, status: undefined, offset: 50, limit: 50 });
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+    await userEvent.click(screen.getByRole("button", { name: "Previous" }));
+    expect(await screen.findByText("Page 1 · Showing 1-50")).toBeInTheDocument();
+
+    await userEvent.type(screen.getByLabelText("Search users"), "alex");
+    await userEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(client.listUsers).toHaveBeenLastCalledWith({ query: "alex", status: undefined, offset: 0, limit: 50 });
+    await userEvent.selectOptions(screen.getByLabelText("Status"), "SUSPENDED");
+    await userEvent.click(screen.getByRole("button", { name: "Apply" }));
+    expect(client.listUsers).toHaveBeenLastCalledWith({ query: "alex", status: "SUSPENDED", offset: 0, limit: 50 });
+  });
+
+  it("prevents an older page response from replacing a newer filtered request", async () => {
+    const client = mockClient();
+    const olderPage = deferred<IdentityUserSummary[]>();
+    client.listUsers.mockImplementation((filters = {}) => {
+      if (filters.query === "current") return Promise.resolve([{ ...userDetail().user, username: "current.user", displayName: "Current Result" }]);
+      if (filters.offset === 50) return olderPage.promise;
+      return Promise.resolve(pagedUsers(50, 0));
+    });
+    renderPage(client);
+    await screen.findByText("Page 1 · Showing 1-50");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await userEvent.type(screen.getByLabelText("Search users"), "current");
+    fireEvent.submit(screen.getByRole("button", { name: "Apply" }).closest("form")!);
+    expect(await screen.findByRole("button", { name: /Current Result/ })).toBeInTheDocument();
+    olderPage.resolve([{ ...userDetail().user, username: "stale.user", displayName: "Stale Result" }]);
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Stale Result/ })).not.toBeInTheDocument());
+  });
+
+  it("shows a failed later page as a directory failure instead of an empty result", async () => {
+    const client = mockClient();
+    client.listUsers.mockImplementation(async (filters = {}) => {
+      if (filters.offset === 50) throw uiError("integration-unavailable", "The requested user page is temporarily unavailable.", true);
+      return pagedUsers(50, 0);
+    });
+    renderPage(client);
+    await screen.findByText("Page 1 · Showing 1-50");
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    expect(await screen.findByText("User directory: Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("No users match the current search.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry User directory" })).toBeInTheDocument();
+  });
+
+  it("reopens an authoritative Elevated Access request after remount without activating access", async () => {
+    const client = mockClient();
+    client.getPrivilegedAccessRequest.mockResolvedValue(privilegedRequest("APPROVED"));
+    const first = renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
+    await userEvent.type(screen.getByLabelText("Request reference"), "request-persisted");
+    await userEvent.click(screen.getByRole("button", { name: "Load Request" }));
+    expect(await screen.findByText("Approved")).toBeInTheDocument();
+    expect(client.getPrivilegedAccessRequest).toHaveBeenLastCalledWith("request-persisted");
+    expect(screen.queryByText("Active Authority")).not.toBeInTheDocument();
+    first.unmount();
+
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
+    await userEvent.type(screen.getByLabelText("Request reference"), "request-persisted");
+    await userEvent.click(screen.getByRole("button", { name: "Load Request" }));
+    expect(await screen.findByText("Approved")).toBeInTheDocument();
+    expect(client.getPrivilegedAccessRequest).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["not-found", "Elevated Access request: Not found"],
+    ["permission-denied", "Elevated Access request: Access denied"],
+    ["integration-unavailable", "Elevated Access request: Unavailable"]
+  ] as const)("distinguishes %s Elevated Access lookup failures", async (kind, expected) => {
+    const client = mockClient();
+    client.getPrivilegedAccessRequest.mockRejectedValue(uiError(kind, "The request could not be loaded safely.", kind === "integration-unavailable"));
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
+    await userEvent.type(screen.getByLabelText("Request reference"), "request-unavailable");
+    await userEvent.click(screen.getByRole("button", { name: "Load Request" }));
+    expect(await screen.findByText(expected)).toBeInTheDocument();
   });
 
   it("shows MFA and sessions without secrets and uses deliberate revoke confirmation", async () => {
@@ -91,7 +245,7 @@ describe("IdentityAdministrationPage", () => {
   });
 
   it("renders safe 403, anti-enumerating 404, conflict, and unavailable errors", async () => {
-    for (const [kind, expected] of [["permission-denied", "Permission denied"], ["not-found", "User unavailable"], ["conflict", "Current information changed"], ["integration-unavailable", "User Administration unavailable"]] as const) {
+    for (const [kind, expected] of [["permission-denied", "User directory: Access denied"], ["not-found", "User directory: Not found"], ["conflict", "User directory: Current information changed"], ["integration-unavailable", "User directory: Unavailable"]] as const) {
       const client = mockClient();
       client.listUsers.mockRejectedValue({ kind, code: "SAFE", message: "Safe message", retryable: false, mutationUncertain: false });
       const { unmount } = renderPage(client);
@@ -113,14 +267,28 @@ function renderPage(client = mockClient()) {
   return render(<IdentityAdministrationPage client={client} permissions={Object.values(identityAdministrationPermissions)} authorizedSites={[{ siteId: "site-1", siteGroupId: "group-1", siteGroupDisplayName: "Metro Group", displayName: "Central Site" }]} authorizedSiteGroupReferences={["group-1"]} />);
 }
 
+function pagedUsers(count: number, start: number): IdentityUserSummary[] {
+  return Array.from({ length: count }, (_, index) => ({ ...userDetail().user, userReference: `user-${start + index + 1}`, username: `user.${start + index + 1}`, displayName: `User ${start + index + 1}` }));
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((complete) => { resolve = complete; });
+  return { promise, resolve };
+}
+
+function uiError(kind: string, message: string, retryable = false) {
+  return { kind, code: "SAFE_H007_ERROR", message, retryable, mutationUncertain: false };
+}
+
 function mockClient() {
   const user = userDetail();
   return {
-    listUsers: vi.fn(async () => [user.user]), getUser: vi.fn(async () => user),
+    listUsers: vi.fn(async (_filters: { query?: string; status?: string; offset?: number; limit?: number } = {}) => [user.user]), getUser: vi.fn(async () => user),
     createUser: vi.fn(async (_body: Record<string, unknown>) => user.user), updateUser: vi.fn(async (_reference: string, _body: Record<string, unknown>) => user.user), changeLifecycle: vi.fn(async () => user.user),
     listRoles: vi.fn(async () => [{ roleReference: "22222222-2222-4222-8222-222222222222", code: "SITE_OPERATOR", name: "Site Operator", description: "Site operations", type: "CUSTOM", status: "ACTIVE", isPrivileged: true, requiresElevatedApproval: true, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1 }]),
     listPermissions: vi.fn(async () => [{ permissionReference: "permission-1", code: "user.view", name: "View users", domain: "Identity", action: "VIEW", status: "ACTIVE", isSensitive: false, requiresAudit: true, rowVersion: 1 }]),
-    assignRole: vi.fn(async () => user.roleAssignments[0]), revokeRole: vi.fn(async () => user.roleAssignments[0]), grantScope: vi.fn(async () => user.scopeGrants[0]), revokeScope: vi.fn(async () => user.scopeGrants[0]),
+    assignRole: vi.fn(async () => user.roleAssignments[0]), revokeRole: vi.fn(async () => user.roleAssignments[0]), grantScope: vi.fn(async () => user.scopeGrants[0]), revokeScope: vi.fn(async (_userReference: string, _assignmentReference: string, _grantReference: string, _body: Record<string, unknown>) => user.scopeGrants[0]),
     createPrivilegedAccessRequest: vi.fn(async () => privilegedRequest("REQUESTED")), getPrivilegedAccessRequest: vi.fn(async () => privilegedRequest("REQUESTED")), decidePrivilegedAccess: vi.fn(async () => privilegedRequest("APPROVED")), reviewAccess: vi.fn(async () => true),
     listSessions: vi.fn(async () => [{ sessionReference: "session-1", audience: "MANAGEMENT_PLATFORM", status: "ACTIVE", assurance: "PASSWORD_TOTP", mfaRequirementSatisfied: true, deviceServiceIdentityReference: null, authenticatedAt: "2030-01-01T00:00:00Z", lastSeenAt: "2030-01-01T00:10:00Z", idleExpiresAt: "2030-01-01T00:30:00Z", absoluteExpiresAt: "2030-01-01T08:00:00Z", revokedAt: null, rowVersion: 1 }]),
     revokeSession: vi.fn(async () => undefined), getMfaStatus: vi.fn(async () => ({ requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-01-01T00:00:00Z", resetAt: null, revokedAt: null, rowVersion: 1 })), changeMfa: vi.fn(async () => ({ requiredForPrivilegedManagementPlatform: true, enrolled: false, status: "RESET_REQUIRED", enrollmentStartedAt: null, activatedAt: null, lastSuccessfullyUsedAt: null, resetAt: "2030-01-01T00:00:00Z", revokedAt: null, rowVersion: 2 })),

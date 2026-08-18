@@ -41,10 +41,10 @@ test.describe("governed User Administration", () => {
     await expect(page.getByText("No users match the current search.")).toBeVisible();
 
     await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=permission-denied");
-    await expect(page.getByRole("alert")).toContainText("Permission denied");
+    await expect(page.getByRole("alert")).toContainText("User directory: Access denied");
 
     await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=unavailable");
-    await expect(page.getByRole("alert")).toContainText("User Administration unavailable");
+    await expect(page.getByRole("alert")).toContainText("User directory: Unavailable");
 
     await page.goto("/management-platform/identity-administration?mpScenario=permission-denied&mpIdentityScenario=populated");
     await expect(page.getByRole("alert", { name: "Permission denied" })).toBeVisible();
@@ -75,5 +75,65 @@ test.describe("governed User Administration", () => {
       indexedDb: await indexedDB.databases()
     }));
     expect(JSON.stringify(storage)).not.toMatch(/synthetic\.admin|SITE_ACCESS_ADMINISTRATOR|user\.manage|csrf|sessionReference/i);
+  });
+
+  test("secondary request failures remain section-level and never appear empty", async ({ page }) => {
+    await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=partial-failure");
+    await page.getByRole("button", { name: /Synthetic Administration User/ }).click();
+    await expect(page.getByRole("heading", { name: "Synthetic Administration User" })).toBeVisible();
+    await page.getByRole("tab", { name: "Roles & Permissions" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Role catalog: Unavailable" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Permission catalog: Unavailable" })).toBeVisible();
+    await expect(page.getByText("No assignable roles were returned.")).toHaveCount(0);
+
+    await page.getByRole("tab", { name: "Security" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Two-Factor Authentication: Access denied" })).toBeVisible();
+    await expect(page.getByRole("alert").filter({ hasText: "Active Sessions: Unavailable" })).toBeVisible();
+    await expect(page.getByText("No active sessions returned.")).toHaveCount(0);
+
+    await page.getByRole("tab", { name: "Activity Log" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "Activity Log: Unavailable" })).toBeVisible();
+    await expect(page.getByText("No activity was returned for this user.")).toHaveCount(0);
+  });
+
+  test("GLOBAL access is transparent and read-only while governed scope creation stays bounded", async ({ page }) => {
+    await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=global-readonly");
+    await page.getByRole("button", { name: /Synthetic Administration User/ }).click();
+    await page.getByRole("tab", { name: "Roles & Permissions" }).click();
+    const globalRow = page.locator(".recordList article").filter({ hasText: "Organization-wide access unavailable" });
+    await expect(globalRow).toContainText("Read-only in Management Platform");
+    await expect(globalRow.getByRole("button")).toHaveCount(0);
+    await globalRow.focus();
+    await page.keyboard.press("Enter");
+    await expect(globalRow.getByRole("button")).toHaveCount(0);
+    await expect(page.getByLabel("Access level").getByRole("option", { name: /global/i })).toHaveCount(0);
+  });
+
+  test("user directory continues beyond fifty records with bounded previous and next controls", async ({ page }) => {
+    await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=paginated");
+    await expect(page.getByText("Page 1 · Showing 1-50")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
+    await page.getByRole("button", { name: "Next" }).click();
+    await expect(page.getByText("Page 2 · Showing 51-53")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
+    await page.getByRole("button", { name: "Previous" }).click();
+    await expect(page.getByText("Page 1 · Showing 1-50")).toBeVisible();
+  });
+
+  test("persisted Elevated Access requests can be reopened without browser authority", async ({ page }) => {
+    await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=elevated-rediscovery");
+    await page.getByRole("button", { name: /Synthetic Administration User/ }).click();
+    await page.getByRole("tab", { name: "Roles & Permissions" }).click();
+    await page.getByLabel("Request reference").fill("synthetic-request-reference");
+    await page.getByRole("button", { name: "Load Request" }).click();
+    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
+    await expect(page.getByText(/does not activate access/)).toBeVisible();
+    await expect(page.getByText("Active Authority")).toHaveCount(0);
+    const storage = await page.evaluate(async () => ({
+      local: Object.fromEntries(Object.entries(localStorage)),
+      session: Object.fromEntries(Object.entries(sessionStorage)),
+      indexedDb: await indexedDB.databases()
+    }));
+    expect(JSON.stringify(storage)).not.toMatch(/synthetic-request-reference|privileged|elevated|authority/i);
   });
 });

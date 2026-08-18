@@ -7,11 +7,12 @@
   "csrf": "shared H-006 runtime-memory X-CSRF-Token decorator",
   "capabilities": [
     "user list and detail",
+    "offset user-directory continuation with a page size of 50",
     "Add User without credentials",
     "profile, access dates, and Account Status",
     "Roles & Permissions catalog and assignment",
     "Site Access for Site and Site Group",
-    "Elevated Access requests and decisions",
+    "Elevated Access requests, request-reference rediscovery, and decisions",
     "Two-Factor Authentication status and authenticator reset or remove",
     "Active Sessions and sign-out",
     "Access Review",
@@ -19,6 +20,7 @@
   ],
   "globalScope": {
     "enabled": false,
+    "returnedGrantPresentation": "visible and read-only with no mutation control",
     "classification": "GLOBAL_SCOPE_POLICY_NOT_APPROVED",
     "nullScopeIsGlobal": false
   },
@@ -42,5 +44,6 @@
     "client-authored actor, role, permission, Site, or Site Group authority"
   ],
   "safeErrors": [400, 401, 403, 404, 409, 429, 503, "network", "malformed response"],
+  "partialFailure": "secondary sections retain successful user detail and render independent loading, empty, denied, unavailable, and retry states",
   "sessionLoss": "H-006 removes the workspace and never replays a mutation"
 }

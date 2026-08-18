@@ -3,7 +3,7 @@
 ## Start
 
 ```powershell
-cd D:\wt\H007
+cd D:\wt\H007UserAdministrationUI
 npm.cmd ci
 npx.cmd playwright install chromium
 $env:MANAGEMENT_PLATFORM_E2E_PORT = "5179"
@@ -15,7 +15,7 @@ Open:
 
 `http://127.0.0.1:5178/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=populated`
 
-State URLs replace `populated` with `empty`, `permission-denied`, `conflict`, or `unavailable`.
+State URLs replace `populated` with `empty`, `permission-denied`, `conflict`, `unavailable`, `partial-failure`, `global-readonly`, `paginated`, or `elevated-rediscovery`.
 
 ## Walkthrough
 
@@ -29,5 +29,13 @@ State URLs replace `populated` with `empty`, `permission-denied`, `conflict`, or
 8. Use keyboard-only navigation at 1366x768 and 390x844. Confirm visible focus and no horizontal overflow.
 9. Inspect Network: requests stay same-origin, unsafe calls contain `X-CSRF-Token`, and no actor/permission/scope authority headers appear.
 10. Inspect localStorage, sessionStorage, IndexedDB, and Cache Storage. Confirm no auth, permission, scope, MFA, session, or draft authority is persisted.
+
+## Completion correction checks
+
+1. Open `partial-failure`; confirm user details remain visible while role, MFA, session, and Activity Log failures are explicit and are not presented as empty data. Use a section Retry control and confirm only that section reloads.
+2. Open `global-readonly`; confirm the returned organization-wide grant is marked read-only and has no Remove Access control. Confirm Site and Site Group access remains governed and actionable.
+3. Open `paginated`; use Next to move from records 1-50 to 51-53, then Previous to return. Apply a search or status filter and confirm the directory returns to page 1.
+4. Open `elevated-rediscovery`; select the synthetic user, open Roles & Permissions, enter a synthetic request reference, and choose Load Request. Confirm the server-returned status is displayed and approval is not described as active access.
+5. Reinspect browser storage after request rediscovery; confirm the request reference and returned request are not persisted.
 
 Stop the Vite process with `Ctrl+C`. Remove generated `dist`, `test-results`, and `playwright-report` after evidence review. Darwin completed and passed the direct headed walkthrough before the bounded terminology cleanup.

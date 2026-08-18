@@ -1143,6 +1143,15 @@ code {
 .operationNotice { background: #edf7ef; border-color: #8bc49a; }
 .identityError { background: #fff1f0; border-color: #dca19b; }
 .identityError button { margin-top: 8px; }
+.identitySectionError {
+  background: #fff6f0;
+  border: 1px solid #deb49b;
+  border-radius: 5px;
+  padding: 12px;
+}
+.identitySectionError p { margin: 5px 0; }
+.identitySectionError small { display: block; overflow-wrap: anywhere; }
+.identitySectionError button { margin-top: 8px; }
 
 .identityFilters,
 .administrationForm,
@@ -1209,6 +1218,17 @@ code {
 .identityUserList li button:hover,
 .identityUserList li button.selectedUser { background: #edf4f7; box-shadow: inset 3px 0 #176b7a; }
 
+.identityPagination {
+  align-items: center;
+  border-top: 1px solid #e4e9ed;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding-top: 12px;
+}
+.identityPagination span { color: #53656e; font-size: .85rem; }
+
 .identityTabs {
   border-bottom: 1px solid #d5dce1;
   margin: 14px 0;
@@ -1238,6 +1258,13 @@ code {
 .dangerTextButton { background: transparent; border-color: #b75e58; color: #8b2929; }
 .warningText { background: #fff8e4; border-left: 4px solid #b7790d; padding: 10px; }
 .privacyNote { color: #53656e; font-size: .88rem; }
+.readOnlyLabel {
+  color: #6d4e10;
+  display: inline-block;
+  font-size: .8rem;
+  font-weight: 700;
+  margin-top: 6px;
+}
 
 .statusLabel {
   background: #e8eef1;
@@ -1285,6 +1312,7 @@ code {
   .factGrid,
   .auditTable [role="row"] { grid-template-columns: 1fr; }
   .identityUserList ul { grid-template-columns: 1fr; }
+  .identityPagination { align-items: stretch; display: grid; }
   .pageActions button,
   .formActions button { width: 100%; }
 }
