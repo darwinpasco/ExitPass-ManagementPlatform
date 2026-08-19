@@ -28,6 +28,21 @@ describe("ManagementPlatformUi Central PMS API client foundation", () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it("notifies the H-006 session shell after successful authenticated activity", async () => {
+    const onAuthenticatedActivity = vi.fn();
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ ok: true }, 200, "activity-200"))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(jsonResponse({ code: "SCOPE_DENIED" }, 403, "activity-403"));
+    const client = createCentralPmsApiClient({ fetchImpl, onAuthenticatedActivity });
+
+    await client.request("/v1/management-platform/identity/users");
+    await client.request("/v1/management-platform/identity/users", { method: "POST", body: {} });
+    await expect(client.request("/v1/management-platform/identity/users")).rejects.toMatchObject({ kind: "permission-denied" });
+
+    expect(onAuthenticatedActivity).toHaveBeenCalledTimes(2);
+  });
+
   it("uses the shared H-006 decorator for unsafe requests without changing GET requests", async () => {
     const authorizeUnsafeRequest = vi.fn((headers: Headers) => headers.set("X-CSRF-Token", "runtime-token"));
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {

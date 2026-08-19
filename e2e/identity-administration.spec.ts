@@ -32,8 +32,16 @@ test.describe("governed User Administration", () => {
     await page.goto(route);
     await page.getByRole("button", { name: "Add User" }).click();
     await expect(page.getByRole("heading", { name: "Add User" })).toBeVisible();
+    await expect(page.getByLabel("User type")).toHaveValue("");
+    await expect(page.getByLabel("User type").locator("option")).toHaveCount(2);
+    await expect(page.getByText(/H-007 Denied User|H-007 Synthetic Target User|H-007 View Only/)).toHaveCount(0);
     await expect(page.getByLabel(/password|totp|seed|provisioning/i)).toHaveCount(0);
     await expect(page.getByText(/Account setup and invitation delivery are handled separately/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Add User" }).last()).toBeDisabled();
+    await page.getByLabel("User type").selectOption("SITE_OPERATOR");
+    await page.getByLabel("Initial role").selectOption({ label: "Site Operator" });
+    await page.getByLabel("Assigned Site").selectOption({ index: 1 });
+    await expect(page.getByRole("button", { name: "Add User" }).last()).toBeEnabled();
   });
 
   test("safe empty, denied, conflict, and unavailable scenarios remain distinct", async ({ page }) => {
@@ -59,6 +67,12 @@ test.describe("governed User Administration", () => {
     await page.getByRole("button", { name: /Synthetic Administration User/ }).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { name: "Synthetic Administration User" })).toBeVisible();
+    await expect(page.locator(".identityDetail")).toBeFocused();
+    const responsiveOrder = await page.evaluate(() => ({
+      detailTop: document.querySelector(".identityDetail")?.getBoundingClientRect().top ?? Number.MAX_SAFE_INTEGER,
+      listTop: document.querySelector(".identityUserList")?.getBoundingClientRect().top ?? 0
+    }));
+    expect(responsiveOrder.detailTop).toBeLessThan(responsiveOrder.listTop);
     await page.getByRole("tab", { name: "Roles & Permissions" }).focus();
     await page.keyboard.press("Enter");
     await expect(page.getByText(/Organization-wide access is not available/)).toBeVisible();
@@ -135,5 +149,29 @@ test.describe("governed User Administration", () => {
       indexedDb: await indexedDB.databases()
     }));
     expect(JSON.stringify(storage)).not.toMatch(/synthetic-request-reference|privileged|elevated|authority/i);
+  });
+
+  test("uncertain mutations retain stale read-only data until authoritative refresh succeeds", async ({ page }) => {
+    await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=mutation-uncertain");
+    await page.getByRole("button", { name: /Synthetic Administration User/ }).click();
+    await page.getByRole("button", { name: "Add User" }).click();
+    const form = page.getByRole("heading", { name: "Add User" }).locator("xpath=ancestor::form");
+    await form.getByLabel("Username").fill("uncertain.user");
+    await form.getByLabel("Display name").fill("Uncertain User");
+    await form.getByLabel("Reason").fill("MANUAL_VALIDATION");
+    await form.getByLabel("User type").selectOption("SITE_OPERATOR");
+    await form.getByLabel("Initial role").selectOption({ label: "Site Operator" });
+    await form.getByLabel("Assigned Site").selectOption({ index: 1 });
+    await form.getByRole("button", { name: "Add User" }).click();
+
+    await expect(page.getByText("Information may be out of date.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Synthetic Administration User" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Save Profile" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Update Account Status" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Refresh authoritative state" })).toBeEnabled();
+
+    await page.getByRole("button", { name: "Refresh authoritative state" }).click();
+    await expect(page.getByText("Information may be out of date.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Save Profile" })).toBeEnabled();
   });
 });

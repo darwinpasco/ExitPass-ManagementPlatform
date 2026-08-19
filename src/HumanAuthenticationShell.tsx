@@ -34,6 +34,7 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
   const [logoutError, setLogoutError] = useState<string>();
   const usernameRef = useRef<HTMLInputElement>(null);
   const totpRef = useRef<HTMLInputElement>(null);
+  const sessionRefreshInFlight = useRef<Promise<void> | undefined>(undefined);
 
   const clearCredentials = useCallback(() => {
     setPassword("");
@@ -168,6 +169,16 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
     enterLogin("Your session expired or was revoked. Sign in again. Unsaved operations were not replayed.");
   }, [enterLogin]);
 
+  const authenticatedActivity = useCallback(() => {
+    if (sessionRefreshInFlight.current) return;
+    const refresh = readCurrentSession()
+      .catch(handleSessionReadError)
+      .finally(() => {
+        if (sessionRefreshInFlight.current === refresh) sessionRefreshInFlight.current = undefined;
+      });
+    sessionRefreshInFlight.current = refresh;
+  }, [handleSessionReadError, readCurrentSession]);
+
   if (view.status === "loading") {
     return <AuthenticationFrame><div className="authState" role="status" aria-live="polite"><h2>Checking your session</h2><p>Confirming your current Management Platform session.</p></div></AuthenticationFrame>;
   }
@@ -246,6 +257,7 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
         evidenceGovernanceScenariosEnabled={false}
         identityAdministrationScenariosEnabled={false}
         onAuthenticationRequired={authenticationLost}
+        onAuthenticatedActivity={authenticatedActivity}
         authorizeUnsafeRequest={client.authorizeUnsafeRequest}
         onLogout={() => void logout()}
         logoutPending={logoutPending}

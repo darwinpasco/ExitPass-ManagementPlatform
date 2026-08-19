@@ -1152,6 +1152,16 @@ code {
 .identitySectionError p { margin: 5px 0; }
 .identitySectionError small { display: block; overflow-wrap: anywhere; }
 .identitySectionError button { margin-top: 8px; }
+.identityStaleState {
+  background: #fff7df;
+  border: 1px solid #d5b45b;
+  color: #604900;
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+}
+.identityStaleState p { margin: 0; }
+.identityStaleState button { justify-self: start; }
 
 .identityFilters,
 .administrationForm,
@@ -1298,6 +1308,8 @@ code {
 
 @media (max-width: 1040px) {
   .identityWorkspace { grid-template-columns: 1fr; }
+  .identityWorkspace.hasSelection .identityDetail { order: 1; }
+  .identityWorkspace.hasSelection .identityUserList { order: 2; }
   .identityUserList ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .identityUserList li + li { border-top: 0; }
 }
@@ -1313,6 +1325,7 @@ code {
   .auditTable [role="row"] { grid-template-columns: 1fr; }
   .identityUserList ul { grid-template-columns: 1fr; }
   .identityPagination { align-items: stretch; display: grid; }
+  .identityStaleState button,
   .pageActions button,
   .formActions button { width: 100%; }
 }

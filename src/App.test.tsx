@@ -17,7 +17,7 @@ const siteB = {
   displayName: "City Center Parking"
 };
 
-function authState(permissions = [managementPlatformOverviewPermission], sites = [siteA, siteB]): ManagementPlatformAuthState {
+function authState(permissions = [managementPlatformOverviewPermission], sites = [siteA, siteB], siteGroupReferences: string[] = []): ManagementPlatformAuthState {
   return {
     status: "authenticated",
     principal: {
@@ -25,7 +25,8 @@ function authState(permissions = [managementPlatformOverviewPermission], sites =
       subjectRef: "user-123",
       displayName: "Admin User",
       permissions,
-      authorizedSites: sites
+      authorizedSites: sites,
+      authorizedSiteGroupReferences: siteGroupReferences
     }
   };
 }
@@ -68,11 +69,25 @@ describe("ManagementPlatformUi foundation shell", () => {
     expect(screen.queryByText(/Permission denied/i)).not.toBeInTheDocument();
   });
 
-  it("blocks authenticated users without the Overview permission", () => {
+  it("shows an explicit no-authorized-modules state when no module permission is available", () => {
     render(<App authState={authState(["unrelated.permission"])} initialPath="/management-platform" />);
 
-    expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "No authorized modules" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
+  });
+
+  it("opens User Administration from the root when it is the first authorized module", async () => {
+    render(<App authState={authState(["user.view"], [])} initialPath="/management-platform" />);
+
+    expect(await screen.findByRole("heading", { name: "User Administration" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert", { name: "Permission denied" })).not.toBeInTheDocument();
+  });
+
+  it("retains direct Overview authorization instead of broadening it from another module", () => {
+    render(<App authState={authState(["user.view"], [])} initialPath="/management-platform/overview" />);
+
+    expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "User Administration" })).not.toBeInTheDocument();
   });
 
   it("renders safe principal and Site context without raw claims or tokens", () => {
@@ -102,6 +117,13 @@ describe("ManagementPlatformUi foundation shell", () => {
 
     expect(screen.getByRole("status", { name: "No authorized Sites" })).toBeInTheDocument();
     expect(screen.getByText(/No authorized Site is available/i)).toBeInTheDocument();
+  });
+
+  it("distinguishes indirect Site Group access from zero authorized scope", () => {
+    render(<App authState={authState([managementPlatformOverviewPermission], [], ["site-group-mnt"])} initialPath="/management-platform/overview" />);
+
+    expect(screen.getByRole("status", { name: "No directly assigned Sites" })).toHaveTextContent("Access is available through 1 authorized Site Group");
+    expect(screen.queryByText("No Sites are currently available for your Management Platform permissions.")).not.toBeInTheDocument();
   });
 
   it("shows Sales Invoice profile navigation only when read permission is present", () => {
@@ -215,14 +237,14 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
     expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
   });
 
-  it("permission-denied scenario is authenticated but lacks the Overview permission", () => {
+  it("permission-denied scenario remains authenticated and shows no authorized modules", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=permission-denied");
 
     render(<App />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("permission-denied");
     expect(screen.getByText("Development Permission Denied User")).toBeInTheDocument();
-    expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
+    expect(screen.getByRole("status", { name: "No authorized modules" })).toBeInTheDocument();
     expect(screen.queryByRole("status", { name: "Authentication required" })).not.toBeInTheDocument();
   });
 

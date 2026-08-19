@@ -5,10 +5,21 @@
   "backendBaseRoute": "/v1/management-platform/identity",
   "authentication": "shared H-006 I-020 session",
   "csrf": "shared H-006 runtime-memory X-CSRF-Token decorator",
+  "authoritativeUserTypes": [
+    "INTERNAL_ADMIN",
+    "OPERATIONS_USER",
+    "SITE_OPERATOR",
+    "SUPPORT_USER",
+    "FINANCE_USER",
+    "COMPLIANCE_USER",
+    "MERCHANT_USER",
+    "SECURITY_USER",
+    "OTHER"
+  ],
   "capabilities": [
     "user list and detail",
     "offset user-directory continuation with a page size of 50",
-    "Add User without credentials",
+    "Add User with an atomic initial role and Site or Site Group assignment, without credentials",
     "profile, access dates, and Account Status",
     "Roles & Permissions catalog and assignment",
     "Site Access for Site and Site Group",
@@ -45,5 +56,13 @@
   ],
   "safeErrors": [400, 401, 403, 404, 409, 429, 503, "network", "malformed response"],
   "partialFailure": "secondary sections retain successful user detail and render independent loading, empty, denied, unavailable, and retry states",
+  "uncertainMutation": "retained information is visibly stale and all unsafe controls remain disabled until directory and selected-user authority reload successfully",
+  "authorizedLanding": "the root opens the first permitted module without weakening any destination guard; no available module produces an explicit authenticated state",
+  "siteGroupPresentation": "Site Group authority remains distinct from direct Site grants and is not expanded in the browser",
+  "responsiveMasterDetail": "desktop remains side by side; tablet and narrow selection moves and focuses the selected-user detail before the directory",
+  "authenticationFreshness": "I-021 uses the normal active H-006 session; privileged-account TOTP is enforced at login and no separate step-up flow is used",
+  "atomicUserCreation": "user, initial non-privileged role, and required Site or Site Group grant succeed or fail in one Central PMS transaction",
+  "assignableRoles": "known active Central PMS role codes use business labels; synthetic and test roles are excluded; user type filters compatible directly assignable roles and Central PMS validates the pair",
+  "webSession": "30-minute sliding idle timeout with an eight-hour fixed absolute limit; successful authenticated activity is rediscovered through H-006 current-session readback",
   "sessionLoss": "H-006 removes the workspace and never replays a mutation"
 }

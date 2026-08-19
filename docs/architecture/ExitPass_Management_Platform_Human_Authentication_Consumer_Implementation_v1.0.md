@@ -17,7 +17,9 @@ The login audience is fixed to `MANAGEMENT_PLATFORM`. Central PMS decides whethe
 
 ## Runtime architecture
 
-`HumanAuthenticationShell` owns bounded in-memory presentation state. On startup and browser refresh it calls current-session readback before rendering protected content. A valid response is mapped into display name, username, effective permission codes, Site references, Site Group references, global-scope posture, MFA posture, and the earliest server session expiry. I-020 does not return Site display names, so this slice labels returned references by ordinal scope without inventing names or Site Group relationships. These facts drive presentation only; every protected API remains server-authorized.
+`HumanAuthenticationShell` owns bounded in-memory presentation state. On startup and browser refresh it calls current-session readback before rendering protected content. A valid response is mapped into display name, username, effective permission codes, Site references, Site Group references, global-scope posture, MFA posture, and the earliest server session expiry. After successful authenticated Management Platform API activity, the shell performs a bounded current-session readback so the displayed sliding idle expiry remains server-supplied. I-020 does not return Site display names, so this slice labels returned references by ordinal scope without inventing names or Site Group relationships. These facts drive presentation only; every protected API remains server-authorized.
+
+For local development, Vite proxies relative `/v1` requests to Central PMS at `http://127.0.0.1:8080` by default. `VITE_MANAGEMENT_PLATFORM_API_PROXY_TARGET` may select another HTTP(S) origin, but malformed targets and values containing credentials, paths, queries, or fragments fail startup. This development proxy does not alter production request routing or browser authentication authority.
 
 Ordinary users submit username and password and proceed directly to current-session readback. Privileged users see the TOTP field only after Central PMS returns `TOTP_REQUIRED`. Password and TOTP input remain component memory only and are cleared after success, cancellation, session loss, or unmount.
 
@@ -35,7 +37,7 @@ Synthetic development principals remain available only when a development build 
 
 ## Session loss and authorization
 
-A protected API `401` notifies the session shell, removes protected content, clears sensitive in-memory state, and returns to login without replaying the operation. A `403` remains an authenticated authorization denial and does not create a fake logout. Client-known idle or absolute expiry also locks the workspace at the earlier server timestamp.
+A protected API `401` notifies the session shell, removes protected content, clears sensitive in-memory state, and returns to login without replaying the operation. A `403` remains an authenticated authorization denial and does not create a fake logout. Web sessions use a Central PMS-owned 30-minute sliding idle timeout and fixed eight-hour absolute limit. Client-known idle or absolute expiry also locks the workspace at the earlier server timestamp. MFA remains a login requirement only.
 
 Logout completes the Central PMS request before clearing the workspace. An unavailable logout does not falsely claim that the server session was revoked.
 

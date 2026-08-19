@@ -33,13 +33,16 @@ npm.cmd ci
 
 Use `.env.example` as the placeholder template. Runtime browser calls use a relative Central PMS base path, defaulting to `/v1/management-platform`. Local Vite proxying is configured with `VITE_MANAGEMENT_PLATFORM_API_PROXY_TARGET` and defaults to a local Central PMS instance.
 
+The local proxy target defaults to `http://127.0.0.1:8080`. An explicit override must be an absolute HTTP(S) origin without credentials, a path, query parameters, or a fragment. Vite reports the selected target during local startup and rejects malformed values before serving the application.
+
 Production must supply an authenticated Central PMS principal through the hosting integration. The local development principal is for local UI fixtures only and must not be treated as authoritative.
 
 ## Local Development
 
 ```powershell
-cd D:\SourceCodes\ExitPass-H-StatutoryRbacReadOnly
+cd D:\SourceCodes\ExitPass-ManagementPlatform
 $env:MANAGEMENT_PLATFORM_DEV_PORT = "5178"
+$env:VITE_MANAGEMENT_PLATFORM_API_PROXY_TARGET = "http://127.0.0.1:8080"
 npm.cmd run dev
 ```
 
@@ -50,7 +53,7 @@ Codex H parallel-work isolation uses development port 5178, Playwright E2E port 
 ## Validation
 
 ```powershell
-cd D:\SourceCodes\ExitPass-H-StatutoryRbacReadOnly
+cd D:\SourceCodes\ExitPass-ManagementPlatform
 npm.cmd run typecheck
 npm.cmd test
 npm.cmd run build
