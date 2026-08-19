@@ -36,6 +36,7 @@ interface AppProps {
   evidenceGovernanceClient?: EvidenceGovernanceClient;
   identityAdministrationClient?: IdentityAdministrationClient;
   onAuthenticationRequired?: () => void;
+  onAuthenticatedActivity?: () => void;
   authorizeUnsafeRequest?: (headers: Headers) => void;
   onLogout?: () => void;
   logoutPending?: boolean;
@@ -57,6 +58,7 @@ export function App({
   evidenceGovernanceClient,
   identityAdministrationClient,
   onAuthenticationRequired,
+  onAuthenticatedActivity,
   authorizeUnsafeRequest,
   onLogout,
   logoutPending = false,
@@ -91,8 +93,8 @@ export function App({
     [evidenceGovernanceClient, evidenceGovernanceScenariosEnabled]
   );
   const centralPmsClient = useMemo(
-    () => createCentralPmsApiClient({ basePath: resolvedConfig.centralPmsApiBasePath, onAuthenticationRequired, authorizeUnsafeRequest }),
-    [authorizeUnsafeRequest, onAuthenticationRequired, resolvedConfig.centralPmsApiBasePath]
+    () => createCentralPmsApiClient({ basePath: resolvedConfig.centralPmsApiBasePath, onAuthenticationRequired, onAuthenticatedActivity, authorizeUnsafeRequest }),
+    [authorizeUnsafeRequest, onAuthenticatedActivity, onAuthenticationRequired, resolvedConfig.centralPmsApiBasePath]
   );
   const profileClient = useMemo(
     () => salesInvoiceProfilesClient ?? profileScenario?.client ?? createSalesInvoiceProfileReadClient(centralPmsClient),
@@ -196,7 +198,20 @@ export function App({
     return <Shell {...shellProps}><NotFound /></Shell>;
   }
 
-  if ((path === routes.root || path === routes.overview) && !canViewOverview) {
+  if (path === routes.root && !canViewOverview) {
+    const authorizedLandingRoute = resolveAuthorizedLandingRoute({
+      canUseIdentityAdministration,
+      canReadRbacInventory,
+      canReadSalesInvoiceProfiles,
+      canReadPolicyCoverage,
+      canReadEvidenceGovernance
+    });
+    return <Shell {...shellProps}>{authorizedLandingRoute
+      ? <AuthorizedLandingRedirect path={authorizedLandingRoute} onNavigate={navigate} />
+      : <NoAuthorizedModules />}</Shell>;
+  }
+
+  if (path === routes.overview && !canViewOverview) {
     return <Shell {...shellProps}><PermissionDenied /></Shell>;
   }
 
@@ -370,7 +385,7 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
               </button>
             )}
           </nav>
-          <SiteSelector siteSelection={siteSelection} formState={salesInvoiceFormState} />
+          <SiteSelector siteSelection={siteSelection} siteGroupScopeCount={siteGroupScopeCount} formState={salesInvoiceFormState} />
         </aside>
 
         <section className="workspace" aria-live="polite">
@@ -389,12 +404,16 @@ function DevelopmentScenarioIndicator({ scenarioName }: { scenarioName: Manageme
   );
 }
 
-function SiteSelector({ siteSelection, formState }: {
+function SiteSelector({ siteSelection, siteGroupScopeCount, formState }: {
   siteSelection: ReturnType<typeof useManagementPlatformSiteSelection>;
+  siteGroupScopeCount: number;
   formState: { hasUnsavedChanges: boolean; mutationPending: boolean };
 }) {
   if (!siteSelection.hasSites) {
-    return <StateMessage title="No authorized Sites" message="No Sites are currently available for your Management Platform permissions." tone="warning" />;
+    const message = siteGroupScopeCount > 0
+      ? `No directly assigned Sites. Access is available through ${siteGroupScopeCount} authorized Site Group${siteGroupScopeCount === 1 ? "" : "s"}.`
+      : "No Sites are currently available for your Management Platform permissions.";
+    return <StateMessage title={siteGroupScopeCount > 0 ? "No directly assigned Sites" : "No authorized Sites"} message={message} tone="warning" />;
   }
 
   return (
@@ -472,6 +491,15 @@ export function PermissionDenied() {
   return <StateMessage title="Permission denied" message="Your account is authenticated but does not have permission for this Management Platform route." tone="danger" />;
 }
 
+export function NoAuthorizedModules() {
+  return <StateMessage title="No authorized modules" message="Your account is authenticated, but no Management Platform modules are available with its current permissions." tone="warning" />;
+}
+
+function AuthorizedLandingRedirect({ path, onNavigate }: { path: string; onNavigate: (path: string) => void }) {
+  useEffect(() => onNavigate(path), [onNavigate, path]);
+  return <LoadingState message="Opening your first authorized Management Platform module" />;
+}
+
 export function NotFound() {
   return <StateMessage title="Management Platform route not found" message="The requested Management Platform route does not exist." />;
 }
@@ -530,4 +558,19 @@ function routeTitle(path: string): string {
 
 function normalizePath(path: string): string {
   return path.replace(/\/$/, "") || routes.root;
+}
+
+function resolveAuthorizedLandingRoute(access: {
+  canUseIdentityAdministration: boolean;
+  canReadRbacInventory: boolean;
+  canReadSalesInvoiceProfiles: boolean;
+  canReadPolicyCoverage: boolean;
+  canReadEvidenceGovernance: boolean;
+}): string | undefined {
+  if (access.canUseIdentityAdministration) return routes.identityAdministration;
+  if (access.canReadRbacInventory) return routes.rbacInventory;
+  if (access.canReadSalesInvoiceProfiles) return routes.salesInvoiceProfiles;
+  if (access.canReadPolicyCoverage) return routes.policyCoverage;
+  if (access.canReadEvidenceGovernance) return routes.evidenceGovernance;
+  return undefined;
 }

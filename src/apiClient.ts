@@ -19,6 +19,7 @@ export function createCentralPmsApiClient(options: {
   basePath?: string;
   fetchImpl?: typeof fetch;
   onAuthenticationRequired?: () => void;
+  onAuthenticatedActivity?: () => void;
   authorizeUnsafeRequest?: (headers: Headers) => void;
 } = {}): CentralPmsApiClient {
   const basePath = normalizeBasePath(options.basePath ?? "");
@@ -72,6 +73,7 @@ export function createCentralPmsApiClient(options: {
 
       const responseCorrelationId = response.headers.get("X-Correlation-Id") ?? correlationId;
       if (response.status === 204) {
+        options.onAuthenticatedActivity?.();
         return undefined as TResponse;
       }
 
@@ -85,6 +87,7 @@ export function createCentralPmsApiClient(options: {
         throw mapErrorResponse(response.status, parsed, responseCorrelationId, method !== "GET");
       }
 
+      options.onAuthenticatedActivity?.();
       return parsed as TResponse;
     }
   };

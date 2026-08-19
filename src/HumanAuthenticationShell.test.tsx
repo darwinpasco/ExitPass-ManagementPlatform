@@ -3,11 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { HumanAuthenticationShell } from "./HumanAuthenticationShell";
 import { HumanAuthenticationError, managementPlatformAudience, type HumanAuthenticationClient, type HumanAuthenticationResponse, type HumanSessionDto } from "./humanAuthentication";
+import { identityAdministrationPermissions } from "./identityAdministration";
 import { managementPlatformOverviewPermission } from "./permissions";
 
 describe("Management Platform I-020 session shell", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("starts unauthenticated, completes ordinary password login without TOTP, then reads the current session", async () => {
@@ -96,6 +98,33 @@ describe("Management Platform I-020 session shell", () => {
     localStorageSet.mockRestore();
   });
 
+  it("refreshes the displayed idle expiry from current-session readback after authenticated API activity", async () => {
+    const client = mockClient();
+    const initial = successResponse(session({
+      permissions: [identityAdministrationPermissions.userView],
+      idleExpiresAt: "2099-01-01T00:30:00Z",
+      absoluteExpiresAt: "2099-01-01T08:00:00Z"
+    }));
+    const extended = successResponse(session({
+      permissions: [identityAdministrationPermissions.userView],
+      lastSeenAt: "2099-01-01T00:16:00Z",
+      idleExpiresAt: "2099-01-01T00:46:00Z",
+      absoluteExpiresAt: "2099-01-01T08:00:00Z"
+    }));
+    let resolveRefresh!: (value: HumanAuthenticationResponse) => void;
+    client.getCurrentSession
+      .mockResolvedValueOnce(initial)
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveRefresh = resolve; }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } })));
+
+    render(<HumanAuthenticationShell client={client} />);
+    expect(await screen.findByRole("heading", { name: "User Administration" })).toBeInTheDocument();
+    const initialExpiry = screen.getByText(/Session expires/).textContent;
+    await waitFor(() => expect(client.getCurrentSession).toHaveBeenCalledTimes(2));
+    resolveRefresh(extended);
+    await waitFor(() => expect(screen.getByText(/Session expires/).textContent).not.toBe(initialExpiry));
+  });
+
   it("waits for server logout, clears runtime state, and returns to login", async () => {
     const client = mockClient();
     client.getCurrentSession.mockResolvedValue(successResponse());
@@ -118,8 +147,8 @@ describe("Management Platform I-020 session shell", () => {
     render(<HumanAuthenticationShell client={client} />);
     await userEvent.click(await screen.findByRole("button", { name: "Sign out" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("Sign out could not be confirmed");
-    expect(screen.getByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
+    expect(await screen.findByText(/Sign out could not be confirmed/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
   });
 
   it("keeps a restricted server session out of the workspace", async () => {
@@ -153,7 +182,7 @@ describe("Management Platform I-020 session shell", () => {
 
     render(<HumanAuthenticationShell client={client} />);
     const username = await screen.findByLabelText("Username");
-    expect(username).toHaveFocus();
+    await waitFor(() => expect(username).toHaveFocus());
     await fillLogin("privileged.admin", "password");
     expect(await screen.findByLabelText("Verification code")).toHaveFocus();
     expect(storageSet).not.toHaveBeenCalled();
