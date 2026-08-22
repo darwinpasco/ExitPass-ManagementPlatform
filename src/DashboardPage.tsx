@@ -16,6 +16,8 @@ interface DashboardPageProps {
   authorizedSites: readonly ManagementPlatformSite[];
   authorizedSiteGroupReferences: readonly string[];
   currentSite?: ManagementPlatformSite;
+  canViewPaymentReport?: boolean;
+  onOpenPaymentReport?: () => void;
 }
 
 interface ScopeOption extends Pick<DashboardScope, "scopeType" | "scopeReference"> {
@@ -32,7 +34,9 @@ export function DashboardPage({
   canReadCatalog,
   authorizedSites,
   authorizedSiteGroupReferences,
-  currentSite
+  currentSite,
+  canViewPaymentReport = false,
+  onOpenPaymentReport
 }: DashboardPageProps) {
   const scopes = useMemo(
     () => dashboardScopeOptions(authorizedSites, authorizedSiteGroupReferences),
@@ -204,7 +208,7 @@ export function DashboardPage({
         </>
       )}
 
-      <CatalogPanel canRead={canReadCatalog} state={catalogState} onRetry={() => void loadCatalog()} />
+      <CatalogPanel canRead={canReadCatalog} state={catalogState} onRetry={() => void loadCatalog()} canViewPaymentReport={canViewPaymentReport} onOpenPaymentReport={onOpenPaymentReport} />
     </div>
   );
 }
@@ -235,7 +239,7 @@ function preferredDashboardScope(scopes: readonly ScopeOption[], currentSite?: M
     ?? scopes.find((scope) => scope.scopeType === "SITE_GROUP");
 }
 
-function CatalogPanel({ canRead, state, onRetry }: { canRead: boolean; state: LoadState<DashboardCatalog>; onRetry: () => void }) {
+function CatalogPanel({ canRead, state, onRetry, canViewPaymentReport, onOpenPaymentReport }: { canRead: boolean; state: LoadState<DashboardCatalog>; onRetry: () => void; canViewPaymentReport: boolean; onOpenPaymentReport?: () => void }) {
   if (!canRead) return <DashboardState title="Report catalog not available" message="Your current session does not include report catalog presentation access." />;
   return (
     <section className="panel reportCatalog" aria-labelledby="report-catalog-title">
@@ -255,7 +259,10 @@ function CatalogPanel({ canRead, state, onRetry }: { canRead: boolean; state: Lo
                 <div><dt>Freshness</dt><dd>{report.freshnessSemantics}</dd></div>
               </dl>
               <DashboardMessages warnings={report.warnings} limitations={report.limitations} compact />
-              {report.reportId !== "operational-overview" && <p className="futureReport">Unavailable in this phase. No report result or action is provided.</p>}
+              {report.reportId === "payment-reconciliation-summary" && (report.availability === "AVAILABLE" || report.availability === "PARTIAL") && canViewPaymentReport && onOpenPaymentReport && <button type="button" className="secondaryButton" onClick={onOpenPaymentReport}>Open Payment and Reconciliation</button>}
+              {report.reportId === "payment-reconciliation-summary" && (report.availability === "AVAILABLE" || report.availability === "PARTIAL") && !canViewPaymentReport && <p className="futureReport">This report is available only to authorized reporting users.</p>}
+              {report.reportId === "payment-reconciliation-summary" && report.availability !== "AVAILABLE" && report.availability !== "PARTIAL" && <p className="futureReport">This report is unavailable. No report result or action is provided.</p>}
+              {report.reportId !== "operational-overview" && report.reportId !== "payment-reconciliation-summary" && <p className="futureReport">Unavailable in this phase. No report result or action is provided.</p>}
             </article>
           ))}
         </div></>

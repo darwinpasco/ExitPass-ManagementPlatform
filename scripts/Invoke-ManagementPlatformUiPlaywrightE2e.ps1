@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path $PSScriptRoot -Parent
 $viteEntry = Join-Path $projectRoot "node_modules\vite\bin\vite.js"
-$permissionEnv = "management-platform.overview.read,dashboard.view,reports.view,sales-invoice-profile.read,sales-invoice-profile.manage,sales-invoice-profile.approve,management-platform.identity-rbac.inventory.read"
+$permissionEnv = "management-platform.overview.read,dashboard.view,reports.view,reconciliation.view,sales-invoice-profile.read,sales-invoice-profile.manage,sales-invoice-profile.approve,management-platform.identity-rbac.inventory.read"
 $startedProcesses = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
 $previousPermissions = $env:VITE_MANAGEMENT_PLATFORM_PERMISSIONS
 

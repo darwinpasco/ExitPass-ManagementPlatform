@@ -70,6 +70,7 @@ export interface ApiRequestOptions {
   headers?: HeadersInit;
   signal?: AbortSignal;
   correlationId?: string;
+  requireJsonContentType?: boolean;
 }
 
 export interface CentralPmsApiClient {

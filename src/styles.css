@@ -546,6 +546,64 @@ textarea:focus-visible {
   .dashboardPage * { scroll-behavior: auto; }
 }
 
+/* Payment and reconciliation reporting */
+.paymentReportPage,
+.paymentReportSections,
+.paymentReportHeader,
+.reconciliationGrid { display: grid; gap: 16px; min-width: 0; }
+.paymentReportTitleRow { align-items: flex-start; display: flex; gap: 16px; justify-content: space-between; }
+.paymentReportTitleRow h2,
+.paymentReportSection h3,
+.paymentCurrencyCard h4,
+.reconciliationCard h4 { margin: 0; }
+.paymentReportTitleRow p { margin-bottom: 0; }
+.paymentReportFilters { align-items: end; display: grid; gap: 12px; grid-template-columns: minmax(190px, 1.2fr) repeat(2, minmax(180px, 1fr)) auto; }
+.paymentReportFilters label { display: grid; gap: 6px; min-width: 0; }
+.paymentReportFilters label span { font-size: .84rem; font-weight: 700; }
+.paymentReportFilters input,
+.paymentReportFilters select { min-width: 0; width: 100%; }
+.paymentReportFilters button { min-height: 42px; white-space: nowrap; }
+.paymentReportMetadata { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.paymentCurrencyGrid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); min-width: 0; }
+.paymentCurrencyCard { background: #f7faf9; border: 1px solid #d5dfdb; border-radius: 6px; min-width: 0; padding: 14px; }
+.paymentCurrencyCard dl { display: grid; gap: 10px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 12px 0 0; }
+.paymentCurrencyCard dt { color: #61717a; font-size: .78rem; }
+.paymentCurrencyCard dd { font-size: 1rem; font-weight: 700; margin: 3px 0 0; overflow-wrap: anywhere; }
+.paymentReportSection { display: grid; gap: 12px; min-width: 0; }
+.paymentTableScroll { max-width: 100%; overflow-x: auto; }
+.paymentReportTable { border-collapse: collapse; min-width: 620px; width: 100%; }
+.paymentReportTable caption { clip: rect(0 0 0 0); clip-path: inset(50%); height: 1px; overflow: hidden; position: absolute; white-space: nowrap; width: 1px; }
+.paymentReportTable th,
+.paymentReportTable td { border-bottom: 1px solid #dbe3e0; padding: 10px 12px; text-align: left; vertical-align: top; }
+.paymentReportTable thead th { background: #f2f6f4; color: #405159; font-size: .78rem; text-transform: uppercase; }
+.paymentReportTable tbody th { font-weight: 700; }
+.reportBoundary { border-left: 3px solid #748f84; color: #4f6169; font-size: .88rem; margin: 0; padding-left: 10px; }
+.reconciliationGrid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+.reconciliationCard { border: 1px solid #d5dfdb; border-radius: 6px; display: grid; gap: 8px; min-width: 0; padding: 14px; }
+.reconciliationCard > div { align-items: flex-start; display: flex; gap: 8px; justify-content: space-between; }
+.reconciliationCard p { margin: 0; overflow-wrap: anywhere; }
+.reconciliationCard.hasFinding { background: #fff8e4; border-color: #c99a36; }
+.reconciliationClear { background: #edf7f1; border-left: 4px solid #3e7c59; margin: 0; padding: 12px; }
+.reconciliationQualified { background: #fff8e4; border-left: 4px solid #c18b28; margin: 0; padding: 12px; }
+.reportNavLink .navMeta { display: block; }
+
+@media (max-width: 1180px) {
+  .paymentReportFilters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .paymentReportMetadata { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 768px) {
+  .paymentReportTitleRow { display: grid; }
+  .paymentReportFilters { grid-template-columns: 1fr; }
+  .paymentReportMetadata { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .paymentCurrencyGrid,
+  .reconciliationGrid { grid-template-columns: minmax(0, 1fr); }
+  .paymentCurrencyCard dl { grid-template-columns: 1fr; }
+}
+
 .developmentScenario {
   background: #fff6df;
   border: 1px solid #ecd289;

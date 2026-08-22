@@ -1,0 +1,31 @@
+{
+  "contractId": "management-platform-payment-reconciliation-reporting-ui:v1",
+  "route": "/management-platform/reports/payment-reconciliation",
+  "backendContract": "management-platform-payment-reconciliation-reporting:v1",
+  "backendRoute": "/v1/management-platform/dashboard/payment-reconciliation-summary",
+  "permission": "reconciliation.view",
+  "scopeTypes": ["SITE", "SITE_GROUP"],
+  "period": {
+    "standard": "UTC",
+    "semantics": "[periodStart, periodEnd)",
+    "maximumDays": 31,
+    "implicitDefaultRequest": false
+  },
+  "presentation": {
+    "currencySeparation": true,
+    "mixedCurrencyTotal": false,
+    "attemptsSeparateFromConfirmations": true,
+    "internalReconciliationOnly": true,
+    "availability": ["AVAILABLE", "PARTIAL", "UNAVAILABLE", "NOT_APPLICABLE"],
+    "freshness": ["CURRENT", "STALE", "PARTIAL", "UNAVAILABLE", "NOT_APPLICABLE"]
+  },
+  "security": {
+    "sameOriginOnly": true,
+    "getOnly": true,
+    "browserAuthorityHeaders": false,
+    "persistentReportStorage": false,
+    "globalScope": false,
+    "forbiddenData": ["raw provider payload", "provider reference", "credentials", "tokens", "payer information", "plate", "ticket detail"]
+  },
+  "deferred": ["exports", "schedules", "drill-down", "provider settlement", "merchant payout", "bank reconciliation", "cash custody", "fees", "refunds", "chargebacks", "disputes", "fiscal reporting", "annotations", "correction workflows"]
+}
