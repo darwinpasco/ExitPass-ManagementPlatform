@@ -11,6 +11,8 @@ export function hasAllPermissions(permissions: readonly string[], required: read
 }
 
 export const managementPlatformOverviewPermission = "management-platform.overview.read";
+export const managementDashboardPermission = "dashboard.view";
+export const managementReportCatalogPermission = "reports.view";
 export const managementPlatformIdentityRbacInventoryReadPermission = "management-platform.identity-rbac.inventory.read";
 export const statutoryDiscountPolicyCoverageReadPermission = "statutory-discount-policy.view";
 export const statutoryEvidenceGovernanceReadPermission = "statutory-discounts.evidence-governance.view";

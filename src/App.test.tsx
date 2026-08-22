@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { App, FeatureUnavailable, MutationUncertainMessage, PageError } from "./App";
-import { identityAdministrationPresentationPermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import type { ManagementPlatformAuthState } from "./types";
 
 const siteA = {
@@ -17,7 +17,7 @@ const siteB = {
   displayName: "City Center Parking"
 };
 
-function authState(permissions = [managementPlatformOverviewPermission], sites = [siteA, siteB], siteGroupReferences: string[] = []): ManagementPlatformAuthState {
+function authState(permissions = [managementDashboardPermission, managementReportCatalogPermission], sites = [siteA, siteB], siteGroupReferences: string[] = []): ManagementPlatformAuthState {
   return {
     status: "authenticated",
     principal: {
@@ -32,21 +32,21 @@ function authState(permissions = [managementPlatformOverviewPermission], sites =
 }
 
 describe("ManagementPlatformUi foundation shell", () => {
-  it("renders the Management Platform root and Overview without Operator Console or WebPay branding", () => {
+  it("renders the Management Platform root and Dashboard without Operator Console or WebPay branding", () => {
     render(<App authState={authState()} initialPath="/management-platform" />);
 
     expect(screen.getByRole("heading", { name: "ExitPass Management Platform" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByRole("navigation", { name: "Management Platform routes" })).toBeInTheDocument();
     expect(screen.queryByText(/Operator Console/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/WebPay/i)).not.toBeInTheDocument();
   });
 
-  it("resolves the Overview route and updates the browser title", async () => {
+  it("resolves the compatible overview route as Dashboard and updates the browser title", async () => {
     render(<App authState={authState()} initialPath="/management-platform/overview" />);
 
-    expect(screen.getByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
-    await waitFor(() => expect(document.title).toBe("Overview - ExitPass Management Platform"));
+    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe("Dashboard - ExitPass Management Platform"));
   });
 
   it("shows a scoped not-found state for unknown Management Platform routes", () => {
@@ -59,7 +59,7 @@ describe("ManagementPlatformUi foundation shell", () => {
     render(<App authState={{ status: "loading" }} initialPath="/management-platform" />);
 
     expect(screen.getByRole("status", { name: "Loading" })).toHaveTextContent("Loading Management Platform access");
-    expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
   });
 
   it("blocks unauthenticated users distinctly from permission denial", () => {
@@ -73,7 +73,7 @@ describe("ManagementPlatformUi foundation shell", () => {
     render(<App authState={authState(["unrelated.permission"])} initialPath="/management-platform" />);
 
     expect(screen.getByRole("status", { name: "No authorized modules" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
   });
 
   it("opens User Administration from the root when it is the first authorized module", async () => {
@@ -83,18 +83,24 @@ describe("ManagementPlatformUi foundation shell", () => {
     expect(screen.queryByRole("alert", { name: "Permission denied" })).not.toBeInTheDocument();
   });
 
-  it("retains direct Overview authorization instead of broadening it from another module", () => {
+  it("retains direct Dashboard authorization instead of broadening it from another module", () => {
     render(<App authState={authState(["user.view"], [])} initialPath="/management-platform/overview" />);
 
     expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "User Administration" })).not.toBeInTheDocument();
   });
 
+  it("does not treat the legacy overview permission as dashboard endpoint authority", () => {
+    render(<App authState={authState([managementPlatformOverviewPermission])} initialPath="/management-platform/overview" />);
+    expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
+  });
+
   it("renders safe principal and Site context without raw claims or tokens", () => {
     render(<App authState={authState()} initialPath="/management-platform" />);
 
     expect(screen.getByText("Admin User")).toBeInTheDocument();
-    expect(screen.getByText(/Current Site: Terminal Parking/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Reporting scope")).toHaveDisplayValue("Site: Terminal Parking / North Exit");
     expect(screen.queryByText(/access_token/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/raw claims/i)).not.toBeInTheDocument();
   });
@@ -109,18 +115,18 @@ describe("ManagementPlatformUi foundation shell", () => {
     await userEvent.selectOptions(selector, siteB.siteId);
 
     expect(selector).toHaveDisplayValue("City Center Parking");
-    expect(screen.getByText(/Current Site: City Center Parking/i)).toBeInTheDocument();
+    expect(screen.getByLabelText("Current Site")).toHaveDisplayValue("City Center Parking");
   });
 
   it("renders a no-authorized-Site posture safely", () => {
-    render(<App authState={authState([managementPlatformOverviewPermission], [])} initialPath="/management-platform" />);
+    render(<App authState={authState([managementDashboardPermission], [])} initialPath="/management-platform" />);
 
     expect(screen.getByRole("status", { name: "No authorized Sites" })).toBeInTheDocument();
-    expect(screen.getByText(/No authorized Site is available/i)).toBeInTheDocument();
+    expect(screen.getByText(/No Sites are currently available/i)).toBeInTheDocument();
   });
 
   it("distinguishes indirect Site Group access from zero authorized scope", () => {
-    render(<App authState={authState([managementPlatformOverviewPermission], [], ["site-group-mnt"])} initialPath="/management-platform/overview" />);
+    render(<App authState={authState([managementDashboardPermission], [], ["77000000-0000-0000-0000-000000000200"])} initialPath="/management-platform/overview" />);
 
     expect(screen.getByRole("status", { name: "No directly assigned Sites" })).toHaveTextContent("Access is available through 1 authorized Site Group");
     expect(screen.queryByText("No Sites are currently available for your Management Platform permissions.")).not.toBeInTheDocument();
@@ -130,7 +136,7 @@ describe("ManagementPlatformUi foundation shell", () => {
     const { rerender } = render(<App authState={authState()} initialPath="/management-platform" />);
     expect(screen.queryByRole("button", { name: /Sales Invoice Profiles/i })).not.toBeInTheDocument();
 
-    rerender(<App authState={authState([managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions.read])} initialPath="/management-platform" />);
+    rerender(<App authState={authState([managementDashboardPermission, futureSalesInvoiceProfilePermissions.read])} initialPath="/management-platform" />);
     expect(screen.getByRole("button", { name: /Sales Invoice Configuration Sales Invoice Setups/i })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Create/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Approve/i })).not.toBeInTheDocument();
@@ -140,7 +146,7 @@ describe("ManagementPlatformUi foundation shell", () => {
     const { rerender } = render(<App authState={authState()} initialPath="/management-platform" />);
     expect(screen.queryByRole("button", { name: /Access Control/i })).not.toBeInTheDocument();
 
-    rerender(<App authState={authState([managementPlatformOverviewPermission, managementPlatformIdentityRbacInventoryReadPermission])} initialPath="/management-platform" />);
+    rerender(<App authState={authState([managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission])} initialPath="/management-platform" />);
     expect(screen.getByRole("button", { name: /Access Control RBAC Inventory/i })).toBeInTheDocument();
   });
 
@@ -148,7 +154,7 @@ describe("ManagementPlatformUi foundation shell", () => {
     const { rerender } = render(<App authState={authState()} initialPath="/management-platform" />);
     expect(screen.queryByRole("button", { name: /User Administration/ })).not.toBeInTheDocument();
 
-    rerender(<App authState={authState([managementPlatformOverviewPermission, "user.view"])} initialPath="/management-platform" />);
+    rerender(<App authState={authState([managementDashboardPermission, "user.view"])} initialPath="/management-platform" />);
     expect(screen.getByRole("button", { name: /User Administration/ })).toBeInTheDocument();
   });
 
@@ -168,7 +174,7 @@ describe("ManagementPlatformUi foundation shell", () => {
     const { rerender } = render(<App authState={authState()} initialPath="/management-platform" />);
     expect(screen.queryByRole("button", { name: /Evidence Governance/i })).not.toBeInTheDocument();
 
-    rerender(<App authState={authState([managementPlatformOverviewPermission, statutoryEvidenceGovernanceReadPermission])} initialPath="/management-platform" />);
+    rerender(<App authState={authState([managementDashboardPermission, statutoryEvidenceGovernanceReadPermission])} initialPath="/management-platform" />);
     expect(screen.getByRole("button", { name: /Evidence Governance Read-only readiness/i })).toBeInTheDocument();
   });
 
@@ -198,8 +204,8 @@ describe("ManagementPlatformUi foundation shell", () => {
     expect(screen.getByLabelText("Current Site")).toBeInTheDocument();
 
     await userEvent.tab();
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Overview" }));
-    expect(screen.getByText("Foundation ready")).toBeInTheDocument();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Dashboard" }));
+    expect(screen.getByLabelText("Reporting scope")).toBeInTheDocument();
   });
 });
 
@@ -216,25 +222,25 @@ describe("ManagementPlatformUi permission helpers", () => {
 });
 
 describe("ManagementPlatformUi development manual validation scenarios", () => {
-  it("authenticated scenario keeps Overview accessible with one authorized Site", () => {
+  it("authenticated scenario keeps Dashboard accessible with one authorized Site", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=authenticated");
 
     render(<App />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("authenticated");
-    expect(screen.getByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     expect(screen.getByLabelText("Current Site")).toHaveDisplayValue("Development Site Alpha");
     expect(screen.queryByText("Development Site Beta")).not.toBeInTheDocument();
   });
 
-  it("unauthenticated scenario shows authentication-required posture without protected Overview", () => {
+  it("unauthenticated scenario shows authentication-required posture without protected Dashboard", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=unauthenticated");
 
     render(<App />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("unauthenticated");
     expect(screen.getByRole("status", { name: "Authentication required" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
   });
 
   it("permission-denied scenario remains authenticated and shows no authorized modules", () => {
@@ -261,7 +267,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
     await userEvent.selectOptions(selector, "71000000-0000-0000-0000-000000000102");
 
     expect(selector).toHaveDisplayValue("Development Site Beta");
-    expect(screen.getByText(/Current Site: Development Site Beta/i)).toBeInTheDocument();
+    expect(selector).toHaveDisplayValue("Development Site Beta");
   });
 
   it("no-sites scenario renders safe no-authorized-Site posture", () => {
@@ -271,7 +277,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("no-sites");
     expect(screen.getByRole("status", { name: "No authorized Sites" })).toBeInTheDocument();
-    expect(screen.getByText(/No authorized Site is available/i)).toBeInTheDocument();
+    expect(screen.getByText(/No Sites are currently available/i)).toBeInTheDocument();
   });
 
   it("unavailable scenario renders safe error with test correlation and no sensitive material", () => {
@@ -302,7 +308,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
     render(<App />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("authenticated");
-    expect(screen.getByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
   });
 
   it("production mode ignores mpScenario and never falls back to a development principal", () => {
@@ -312,7 +318,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
 
     expect(screen.queryByRole("status", { name: "Development scenario" })).not.toBeInTheDocument();
     expect(screen.getByRole("status", { name: "Authentication required" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
   });
 
   it("development RBAC scenario exposes Access Control without production authority", async () => {

@@ -87,7 +87,7 @@ test.describe("Management Platform statutory RBAC read-only inventory", () => {
     await gotoRbacScenario(page, "mixed");
     await expect(page.getByRole("heading", { name: "RBAC Inventory" })).toBeInViewport();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("button", { name: "Overview" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Dashboard", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: /Sales Invoice Configuration Sales Invoice Setups/i })).toBeFocused();
     await page.keyboard.press("Tab");

@@ -9,7 +9,7 @@ import {
   type PolicyCoverageClient,
   type PolicyCoverageResponse
 } from "./policyCoverage";
-import { managementPlatformOverviewPermission, statutoryDiscountPolicyCoverageReadPermission } from "./permissions";
+import { managementDashboardPermission, managementPlatformOverviewPermission, statutoryDiscountPolicyCoverageReadPermission } from "./permissions";
 import type { ManagementPlatformAuthState } from "./types";
 
 const route = "/management-platform/statutory-policy-coverage";
@@ -28,7 +28,7 @@ const siteB = {
   displayName: "Development Site Beta"
 };
 
-function authState(permissions = [managementPlatformOverviewPermission, statutoryDiscountPolicyCoverageReadPermission]): ManagementPlatformAuthState {
+function authState(permissions = [managementDashboardPermission, statutoryDiscountPolicyCoverageReadPermission]): ManagementPlatformAuthState {
   return {
     status: "authenticated",
     principal: {
@@ -200,7 +200,7 @@ describe("Management Platform statutory policy coverage workspace", () => {
       await expectCoverageLoaded();
 
       await user.tab();
-      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Overview" }));
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "Dashboard" }));
       await user.tab();
       expect(document.activeElement).toBe(screen.getByRole("button", { name: /Statutory Policy Coverage Read-only/i }));
       expect(screen.getByLabelText("Scope type")).toBeInTheDocument();

@@ -22,13 +22,13 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     await page.goto(appRoute);
     await signIn(page, "ordinary.user", "ordinary-password");
 
-    await expect(page.getByRole("heading", { name: "Management Platform foundation" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
     await expect(page.getByLabel("Verification code")).toHaveCount(0);
     await expect(page.getByText("Ordinary Management User", { exact: true })).toBeVisible();
     await expect(page.getByText(/1 Site access grant; 1 Site Group access grant/).first()).toBeVisible();
 
     await page.reload();
-    await expect(page.getByRole("heading", { name: "Management Platform foundation" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
     expect(fixture.sessionReads).toBeGreaterThanOrEqual(2);
     await assertStorageHasNoAuthenticationAuthority(page);
     assertNoPrivilegedIdentityHeaders(requests);
@@ -58,7 +58,7 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     await totp.fill("123456");
     await page.getByRole("button", { name: "Verify and sign in" }).click();
     await expect(page.getByText("Privileged Administrator", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Management Platform foundation" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
   });
 
   test("invalid credentials and throttling remain anti-enumerating", async ({ page }) => {
@@ -106,7 +106,7 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     fixture.sessionMode = "revoked";
     await page.reload();
     await expect(page.getByRole("alert")).toContainText("session is no longer active");
-    await expect(page.getByRole("heading", { name: "Management Platform foundation" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toHaveCount(0);
   });
 
   test("production ignores development-principal query parameters", async ({ browser }) => {
@@ -128,7 +128,7 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     fixture.sessionMode = "unavailable";
     await page.goto(appRoute);
     await expect(page.getByRole("alert", { name: "Sign-in service unavailable" })).toContainText("temporarily unavailable");
-    await expect(page.getByRole("heading", { name: "Management Platform foundation" })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toHaveCount(0);
 
     fixture.sessionMode = "malformed";
     await page.getByRole("button", { name: "Retry session check" }).click();
@@ -150,7 +150,7 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Sign in" })).toBeFocused();
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("heading", { name: "Management Platform foundation" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBe(true);
   });
 });
@@ -165,6 +165,16 @@ interface AuthenticationFixture {
 async function installAuthenticationFixture(page: Page): Promise<AuthenticationFixture> {
   const fixture: AuthenticationFixture = { sessionReads: 0, protectedStatus: 403, sessionMode: "normal" };
   let currentSession: Record<string, unknown> | undefined;
+
+  await page.route("**/v1/management-platform/dashboard/catalog", async (route) => {
+    await safeJson(route, 200, dashboardCatalog());
+  });
+  await page.route("**/v1/management-platform/dashboard/operational-overview?**", async (route) => {
+    const url = new URL(route.request().url());
+    const scopeType = url.searchParams.get("scopeType") ?? "SITE";
+    const scopeReference = url.searchParams.get("scopeReference") ?? "71000000-0000-0000-0000-000000000101";
+    await safeJson(route, 200, dashboardOverview(scopeType, scopeReference));
+  });
 
   await page.route("**/v1/human-authentication/**", async (route) => {
     const request = route.request();
@@ -234,6 +244,33 @@ async function installAuthenticationFixture(page: Page): Promise<AuthenticationF
   return fixture;
 }
 
+function dashboardCatalog() {
+  return {
+    contractVersion: "management-platform-dashboard-reporting:v1",
+    generatedAt: "2030-01-01T00:00:00Z",
+    reports: []
+  };
+}
+
+function dashboardOverview(scopeType: string, scopeReference: string) {
+  const displayName = scopeType === "SITE_GROUP" ? "Site Group fixture" : "Site scope 1";
+  const scope = { scopeType, scopeReference, displayName };
+  return {
+    contractVersion: "management-platform-dashboard-reporting:v1",
+    reportId: "operational-overview",
+    requestedScope: scope,
+    effectiveScope: scope,
+    generatedAt: "2030-01-01T00:00:00Z",
+    dataAsOf: "2030-01-01T00:00:00Z",
+    availability: "AVAILABLE",
+    freshness: "CURRENT",
+    correlationId: "10000000-0000-4000-8000-000000000005",
+    sections: [],
+    warnings: [],
+    limitations: []
+  };
+}
+
 function session(privileged: boolean): Record<string, unknown> {
   return {
     sessionReference: "10000000-0000-0000-0000-000000000001",
@@ -250,7 +287,7 @@ function session(privileged: boolean): Record<string, unknown> {
     lastSeenAt: "2030-01-01T00:00:00Z",
     idleExpiresAt: "2030-01-01T00:30:00Z",
     absoluteExpiresAt: "2030-01-01T08:00:00Z",
-    permissions: ["management-platform.overview.read", "sales-invoice-profile.read"],
+    permissions: ["management-platform.overview.read", "dashboard.view", "reports.view", "sales-invoice-profile.read"],
     siteReferences: ["71000000-0000-0000-0000-000000000101"],
     siteGroupReferences: ["71000000-0000-0000-0000-000000000900"],
     hasGlobalScope: false,

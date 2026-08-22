@@ -433,6 +433,119 @@ textarea:focus-visible {
   }
 }
 
+.dashboardPage,
+.dashboardSections,
+.reportCatalogList,
+.dashboardMessages { display: grid; gap: 16px; min-width: 0; }
+.dashboardHeader { display: grid; gap: 16px; }
+.dashboardTitleRow,
+.dashboardControls,
+.dashboardSectionHeader,
+.reportCatalogHeader {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+}
+.dashboardControls { align-items: end; justify-content: flex-start; }
+.dashboardScopeField { display: grid; gap: 6px; min-width: min(420px, 100%); }
+.dashboardScopeField span { font-size: .84rem; font-weight: 700; }
+.dashboardRefresh { min-height: 42px; }
+.scopeContext,
+.sourceLabel,
+.supportReference,
+.futureReport { color: #53656e; overflow-wrap: anywhere; }
+.dashboardTimestamps {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+}
+.dashboardTimestamps div { min-width: 0; }
+.dashboardTimestamps dt { color: #61717a; font-size: .78rem; font-weight: 700; text-transform: uppercase; }
+.dashboardTimestamps dd { margin: 4px 0 0; overflow-wrap: anywhere; }
+.dashboardStatusPair { align-items: flex-start; display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.dashboardStatusPair.compact { max-width: 340px; }
+.dashboardBadge {
+  border: 1px solid #aab8be;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: .75rem;
+  font-weight: 700;
+  padding: 4px 8px;
+}
+.availability-available,
+.freshness-current { background: #e8f5ec; border-color: #83b893; color: #225f35; }
+.availability-partial,
+.freshness-partial,
+.freshness-stale { background: #fff7df; border-color: #d5b45b; color: #6f5100; }
+.availability-unavailable,
+.freshness-unavailable { background: #fbeceb; border-color: #dca19b; color: #7f2925; }
+.availability-not_applicable,
+.freshness-not_applicable { background: #eef1f2; color: #465860; }
+.dashboardSection,
+.reportCatalogList article {
+  border: 1px solid #d9e0e3;
+  border-radius: 6px;
+  min-width: 0;
+  padding: 16px;
+}
+.dashboardSection h3,
+.reportCatalogList h3 { margin: 0; }
+.dashboardSectionHeader p,
+.reportCatalogHeader p { margin: 4px 0 0; }
+.metricGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-top: 16px;
+}
+.metricCard { background: #f5f8f9; border-left: 3px solid #176b7a; border-radius: 4px; display: grid; gap: 3px; min-width: 0; padding: 12px; }
+.metricCard span { color: #53656e; font-size: .82rem; overflow-wrap: anywhere; }
+.metricCard strong { font-size: 1.55rem; }
+.metricCard small { color: #61717a; }
+.dashboardWarning,
+.dashboardLimitation,
+.dashboardError,
+.dashboardRetainedState,
+.dashboardRefreshState,
+.sectionUnavailable,
+.futureReport { border-left: 4px solid #b7790d; min-width: 0; overflow-wrap: anywhere; padding: 10px 12px; }
+.dashboardWarning,
+.dashboardRefreshState { background: #fff8e4; }
+.dashboardLimitation,
+.sectionUnavailable,
+.futureReport { background: #f2f5f6; border-left-color: #667982; }
+.dashboardError { background: #fbeceb; border-left-color: #a23a35; }
+.dashboardRetainedState { background: #fff3cf; }
+.dashboardMessages.compact { gap: 8px; margin-top: 12px; }
+.dashboardMessages h3 { font-size: .9rem; margin: 0 0 4px; }
+.dashboardMessages ul { margin: 0; padding-left: 20px; }
+.reportCatalogList article { display: grid; gap: 10px; }
+.reportCatalogList dl { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.reportCatalogList dt { color: #61717a; font-size: .78rem; }
+.reportCatalogList dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+
+@media (max-width: 1024px) {
+  .dashboardTitleRow,
+  .dashboardSectionHeader,
+  .reportCatalogHeader { display: grid; }
+  .dashboardStatusPair { justify-content: flex-start; }
+  .dashboardTimestamps,
+  .reportCatalogList dl { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .dashboardControls { align-items: stretch; display: grid; }
+  .dashboardScopeField { min-width: 0; width: 100%; }
+  .dashboardRefresh { width: 100%; }
+  .metricGrid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboardPage * { scroll-behavior: auto; }
+}
+
 .developmentScenario {
   background: #fff6df;
   border: 1px solid #ecd289;
