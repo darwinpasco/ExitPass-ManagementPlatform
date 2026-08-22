@@ -76,14 +76,14 @@ powershell -ExecutionPolicy Bypass -File scripts\Invoke-ManagementPlatformStatut
 
 ## Current Features
 
-- Application shell at `/management-platform/` and `/management-platform/overview`.
+- Management Dashboard at `/management-platform/` and `/management-platform/overview`, backed by the Central PMS reporting catalog and explicit Site or Site Group operational overview.
 - Site selector driven by the current authenticated principal's authorized Sites.
 - Permission-aware navigation and route denial.
 - Sales Invoice Setup route at `/management-platform/sales-invoice-profiles`.
 - Access Control route at `/management-platform/access-control` for read-only RBAC Inventory.
 - Registered Business read/create/edit workflows.
 - Sales Invoice Configuration read, Draft create/edit, validation, activation, retirement, Sales Invoice readiness, Effective period and status history, and Issuance history.
-- Development scenarios through `mpProfileScenario` and `mpRbacScenario` in local development only.
+- Development scenarios through feature-specific query values, including `mpDashboardScenario`, in local development only.
 
 ## Access Control
 
@@ -118,6 +118,8 @@ Darwin owns staging, commits, remote creation, pushes, pull requests, merges, an
 ## Development Scenarios
 
 The local development harness supports `mpScenario` and `mpProfileScenario` query values for repeatable manual and E2E checks. Use `mpProfileScenario=read-only` to verify read-only permission posture, `mpProfileScenario=manage` for `sales-invoice-profile.manage`, and the new-version scenarios for Create New Setup Version coverage. Timeout and conflict scenarios display `Result uncertain` guidance when the authoritative mutation result must be refreshed before another attempt.
+
+Dashboard scenarios use `/management-platform/overview?mpScenario=authenticated&mpDashboardScenario=current`. Supported dashboard values are `current`, `partial-connectors`, `stale-projection`, `unavailable-projection`, `not-configured`, `site`, `site-group`, `feature-disabled`, `permission-denied`, `scope-denied`, `malformed`, and `retryable-failure`. They are synthetic, visibly identified, and unavailable in production builds.
 
 Required Create New Setup Version scenarios include `new-version-manage`, `new-version-read-only`, `new-version-approve-only`, `new-version-success`, `new-version-duplicate-conflict`, `new-version-overlap-conflict`, `new-version-timeout`, `new-version-site-mismatch`, `new-version-source-not-active`, `new-version-source-not-found`, `new-version-cancel`, `new-version-unsaved-site-switch`, `new-version-pending-site-switch`, `new-version-double-submit`, and `new-version-source-preserved`.
 

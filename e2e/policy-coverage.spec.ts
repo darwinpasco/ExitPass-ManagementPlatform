@@ -110,7 +110,7 @@ test.describe("Management Platform statutory policy coverage read-only workspace
     await gotoCoverageScenario(page, "mixed");
     await expect(page.getByRole("heading", { name: "Statutory Policy Coverage" })).toBeInViewport();
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("button", { name: "Overview" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Dashboard", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: /Sales Invoice Configuration Sales Invoice Setups/i })).toBeFocused();
     await page.keyboard.press("Tab");

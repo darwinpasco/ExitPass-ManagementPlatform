@@ -22,12 +22,12 @@ describe("Management Platform I-020 session shell", () => {
     render(<HumanAuthenticationShell client={client} />);
     await fillLogin("ordinary.user", "ordinary-password");
 
-    expect(await screen.findByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     expect(client.login).toHaveBeenCalledWith("ordinary.user", "ordinary-password", undefined);
     expect(client.getCurrentSession).toHaveBeenCalledTimes(2);
     expect(screen.queryByLabelText("Verification code")).not.toBeInTheDocument();
     expect(screen.getByText("Ordinary Management User")).toBeInTheDocument();
-    expect(screen.getAllByText(/1 Site access grant; 1 Site Group access grant/)).toHaveLength(2);
+    expect(screen.getByText(/1 Site access grant; 1 Site Group access grant/)).toBeInTheDocument();
   });
 
   it("shows TOTP only after the server requires it and accepts a privileged TOTP login", async () => {
@@ -88,10 +88,10 @@ describe("Management Platform I-020 session shell", () => {
     const localStorageSet = vi.spyOn(Storage.prototype, "setItem");
 
     const { unmount } = render(<HumanAuthenticationShell client={client} />);
-    expect(await screen.findByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
     unmount();
     render(<HumanAuthenticationShell client={client} />);
-    expect(await screen.findByRole("heading", { name: "Management Platform foundation" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
 
     expect(client.getCurrentSession).toHaveBeenCalledTimes(2);
     expect(localStorageSet).not.toHaveBeenCalled();
@@ -136,7 +136,7 @@ describe("Management Platform I-020 session shell", () => {
     await waitFor(() => expect(client.logout).toHaveBeenCalledTimes(1));
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.getByRole("alert")).toHaveTextContent("signed out");
-    expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
   });
 
   it("does not claim logout when the server cannot confirm revocation", async () => {
@@ -158,7 +158,7 @@ describe("Management Platform I-020 session shell", () => {
     render(<HumanAuthenticationShell client={client} />);
 
     expect(await screen.findByRole("heading", { name: "Workspace access is restricted" })).toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
   });
 
   it("handles unavailable and malformed startup responses without exposing protected content", async () => {
@@ -169,7 +169,7 @@ describe("Management Platform I-020 session shell", () => {
 
     render(<HumanAuthenticationShell client={client} />);
     expect(await screen.findByRole("alert", { name: "Sign-in service unavailable" })).toHaveTextContent("could not be read safely");
-    expect(screen.queryByRole("heading", { name: "Management Platform foundation" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Retry session check" }));
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
@@ -232,7 +232,7 @@ function session(overrides: Partial<HumanSessionDto> = {}): HumanSessionDto {
     lastSeenAt: "2030-01-01T00:00:00Z",
     idleExpiresAt: "2030-01-01T00:30:00Z",
     absoluteExpiresAt: "2030-01-01T08:00:00Z",
-    permissions: [managementPlatformOverviewPermission],
+    permissions: [managementPlatformOverviewPermission, "dashboard.view", "reports.view"],
     siteReferences: ["71000000-0000-0000-0000-000000000101"],
     siteGroupReferences: ["71000000-0000-0000-0000-000000000900"],
     hasGlobalScope: false,

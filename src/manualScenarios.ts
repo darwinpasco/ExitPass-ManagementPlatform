@@ -1,5 +1,5 @@
 import { createDevelopmentPrincipal } from "./auth";
-import { futureSalesInvoiceProfilePermissions, identityAdministrationPresentationPermissions, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { futureSalesInvoiceProfilePermissions, identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import type { ManagementPlatformAuthState, ManagementPlatformSite, ManagementPlatformUiError } from "./types";
 
 export type ManagementPlatformManualScenarioName =
@@ -35,7 +35,7 @@ const secondSite: ManagementPlatformSite = {
   displayName: "Development Site Beta"
 };
 
-const defaultDevelopmentPermissions = [managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions.read];
+const defaultDevelopmentPermissions = [managementPlatformOverviewPermission, managementDashboardPermission, managementReportCatalogPermission, futureSalesInvoiceProfilePermissions.read];
 
 export function resolveManagementPlatformManualScenario(
   isDevelopment: boolean,
@@ -52,6 +52,7 @@ export function resolveManagementPlatformManualScenario(
   const policyCoverageScenarioName = searchParams.get("mpPolicyCoverageScenario");
   const evidenceGovernanceScenarioName = searchParams.get("mpEvidenceGovernanceScenario");
   const identityScenarioName = searchParams.get("mpIdentityScenario");
+  const dashboardScenarioName = searchParams.get("mpDashboardScenario");
   const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName, policyCoverageScenarioName, evidenceGovernanceScenarioName, identityScenarioName);
 
   switch (scenarioName) {
@@ -95,7 +96,8 @@ export function resolveManagementPlatformManualScenario(
           principal: createDevelopmentPrincipal({
             displayName: "Development No Site User",
             permissions: scenarioPermissions,
-            authorizedSites: []
+            authorizedSites: [],
+            authorizedSiteGroupReferences: dashboardScenarioName === "site-group" ? [oneSite.siteGroupId!] : []
           })
         },
         showIndicator: true

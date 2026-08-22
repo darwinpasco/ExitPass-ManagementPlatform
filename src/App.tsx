@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { createCentralPmsApiClient } from "./apiClient";
 import { getManagementPlatformConfig } from "./config";
+import { DashboardPage } from "./DashboardPage";
+import { createDashboardReportingClient, resolveDashboardScenario, type DashboardReportingClient } from "./dashboardReporting";
 import { EvidenceGovernancePage } from "./EvidenceGovernancePage";
 import { createEvidenceGovernanceClient, evidenceGovernanceRoute, resolveEvidenceGovernanceScenario, type EvidenceGovernanceClient } from "./evidenceGovernance";
 import { resolveManagementPlatformManualScenario, type ManagementPlatformManualScenarioName } from "./manualScenarios";
 import { IdentityAdministrationPage } from "./IdentityAdministrationPage";
 import { createIdentityAdministrationClient, identityAdministrationRoute, resolveIdentityAdministrationScenario, type IdentityAdministrationClient } from "./identityAdministration";
-import { managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, futureSalesInvoiceProfilePermissions, hasAnyPermission, hasPermission, identityAdministrationPresentationPermissions, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementReportCatalogPermission, futureSalesInvoiceProfilePermissions, hasAnyPermission, hasPermission, identityAdministrationPresentationPermissions, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import { PolicyCoveragePage } from "./PolicyCoveragePage";
 import { createPolicyCoverageClient, policyCoverageRoute, resolvePolicyCoverageScenario, type PolicyCoverageClient } from "./policyCoverage";
 import { RbacInventoryPage } from "./RbacInventoryPage";
@@ -35,6 +37,7 @@ interface AppProps {
   policyCoverageClient?: PolicyCoverageClient;
   evidenceGovernanceClient?: EvidenceGovernanceClient;
   identityAdministrationClient?: IdentityAdministrationClient;
+  dashboardReportingClient?: DashboardReportingClient;
   onAuthenticationRequired?: () => void;
   onAuthenticatedActivity?: () => void;
   authorizeUnsafeRequest?: (headers: Headers) => void;
@@ -46,6 +49,7 @@ interface AppProps {
   policyCoverageScenariosEnabled?: boolean;
   evidenceGovernanceScenariosEnabled?: boolean;
   identityAdministrationScenariosEnabled?: boolean;
+  dashboardScenariosEnabled?: boolean;
 }
 
 export function App({
@@ -57,6 +61,7 @@ export function App({
   policyCoverageClient,
   evidenceGovernanceClient,
   identityAdministrationClient,
+  dashboardReportingClient,
   onAuthenticationRequired,
   onAuthenticatedActivity,
   authorizeUnsafeRequest,
@@ -67,7 +72,8 @@ export function App({
   rbacScenariosEnabled = import.meta.env.DEV,
   policyCoverageScenariosEnabled = import.meta.env.DEV,
   evidenceGovernanceScenariosEnabled = import.meta.env.DEV,
-  identityAdministrationScenariosEnabled = import.meta.env.DEV
+  identityAdministrationScenariosEnabled = import.meta.env.DEV,
+  dashboardScenariosEnabled = import.meta.env.DEV
 }: AppProps) {
   const resolvedConfig = useMemo(() => config ?? getManagementPlatformConfig(), [config]);
   const manualScenario = useMemo(
@@ -120,12 +126,20 @@ export function App({
     () => identityAdministrationClient ?? identityScenario?.client ?? createIdentityAdministrationClient(centralPmsClient),
     [centralPmsClient, identityAdministrationClient, identityScenario?.client]
   );
+  const dashboardScenario = useMemo(
+    () => dashboardReportingClient ? undefined : resolveDashboardScenario(dashboardScenariosEnabled, window.location.search),
+    [dashboardReportingClient, dashboardScenariosEnabled]
+  );
+  const dashboardClient = useMemo(
+    () => dashboardReportingClient ?? dashboardScenario?.client ?? createDashboardReportingClient(centralPmsClient),
+    [centralPmsClient, dashboardReportingClient, dashboardScenario?.client]
+  );
   const state = authState ?? manualScenario?.authState ?? { status: "unauthenticated" as const };
   const scenarioInitialPath = authState ? undefined : manualScenario?.initialPath;
   const [path, setPath] = useState(initialPath ?? scenarioInitialPath ?? normalizePath(window.location.pathname));
   const [salesInvoiceFormState, setSalesInvoiceFormState] = useState({ hasUnsavedChanges: false, mutationPending: false });
-  const scenarioIndicator = manualScenario?.showIndicator
-    ? <DevelopmentScenarioIndicator scenarioName={manualScenario.name} />
+  const scenarioIndicator = manualScenario?.showIndicator || dashboardScenario
+    ? <DevelopmentScenarioIndicator scenarioName={dashboardScenario ? `dashboard/${dashboardScenario.name}` : manualScenario!.name} />
     : null;
 
   useEffect(() => {
@@ -163,7 +177,8 @@ export function App({
 
   const principal = state.principal;
   const siteSelection = useManagementPlatformSiteSelection(principal.authorizedSites);
-  const canViewOverview = hasPermission(principal.permissions, managementPlatformOverviewPermission);
+  const canViewDashboard = hasPermission(principal.permissions, managementDashboardPermission);
+  const canReadReportCatalog = hasPermission(principal.permissions, managementReportCatalogPermission);
   const canReadSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.read);
   const canManageSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.manage);
   const canApproveSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.approve);
@@ -181,7 +196,7 @@ export function App({
     siteSelection,
     path,
     navigate,
-    canViewOverview,
+    canViewDashboard,
     canReadSalesInvoiceProfiles,
     canReadRbacInventory,
     canReadPolicyCoverage,
@@ -198,7 +213,7 @@ export function App({
     return <Shell {...shellProps}><NotFound /></Shell>;
   }
 
-  if (path === routes.root && !canViewOverview) {
+  if (path === routes.root && !canViewDashboard) {
     const authorizedLandingRoute = resolveAuthorizedLandingRoute({
       canUseIdentityAdministration,
       canReadRbacInventory,
@@ -211,7 +226,7 @@ export function App({
       : <NoAuthorizedModules />}</Shell>;
   }
 
-  if (path === routes.overview && !canViewOverview) {
+  if (path === routes.overview && !canViewDashboard) {
     return <Shell {...shellProps}><PermissionDenied /></Shell>;
   }
 
@@ -299,12 +314,18 @@ export function App({
 
   return (
     <Shell {...shellProps}>
-      <OverviewPage principalName={principal.displayName} currentSiteName={siteSelection.currentSite?.displayName} siteScopeCount={principal.authorizedSites.length} siteGroupScopeCount={principal.authorizedSiteGroupReferences?.length ?? 0} hasGlobalScope={principal.hasGlobalScope ?? false} />
+      <DashboardPage
+        client={dashboardClient}
+        canReadCatalog={canReadReportCatalog}
+        authorizedSites={principal.authorizedSites}
+        authorizedSiteGroupReferences={principal.authorizedSiteGroupReferences ?? []}
+        currentSite={siteSelection.currentSite}
+      />
     </Shell>
   );
 }
 
-function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewOverview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, salesInvoiceFormState, environmentName, onLogout, logoutPending, scenarioIndicator, children }: {
+function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewDashboard, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, salesInvoiceFormState, environmentName, onLogout, logoutPending, scenarioIndicator, children }: {
   principalName?: string;
   username?: string;
   sessionExpiresAt?: string;
@@ -313,7 +334,7 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
   siteSelection: ReturnType<typeof useManagementPlatformSiteSelection>;
   path: string;
   navigate: (path: string) => void;
-  canViewOverview: boolean;
+  canViewDashboard: boolean;
   canReadSalesInvoiceProfiles: boolean;
   canReadRbacInventory: boolean;
   canReadPolicyCoverage: boolean;
@@ -354,9 +375,9 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
             <h2>Navigation</h2>
           </div>
           <nav aria-label="Management Platform routes">
-            {canViewOverview && (
+            {canViewDashboard && (
               <button className={`navLink ${path === routes.root || path === routes.overview ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.overview)}>
-                Overview
+                Dashboard
               </button>
             )}
             {canReadSalesInvoiceProfiles && (
@@ -396,7 +417,7 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
   );
 }
 
-function DevelopmentScenarioIndicator({ scenarioName }: { scenarioName: ManagementPlatformManualScenarioName }) {
+function DevelopmentScenarioIndicator({ scenarioName }: { scenarioName: ManagementPlatformManualScenarioName | string }) {
   return (
     <div className="developmentScenario" role="status" aria-label="Development scenario">
       Development scenario: <strong>{scenarioName}</strong>
@@ -438,36 +459,6 @@ function SiteSelector({ siteSelection, siteGroupScopeCount, formState }: {
       </select>
       <p>{siteSelection.currentSite?.siteGroupDisplayName ? `Site Group: ${siteSelection.currentSite.siteGroupDisplayName}` : "Site authority is resolved by Central PMS"}</p>
     </div>
-  );
-}
-
-function OverviewPage({ principalName, currentSiteName, siteScopeCount, siteGroupScopeCount, hasGlobalScope }: { principalName?: string; currentSiteName?: string; siteScopeCount: number; siteGroupScopeCount: number; hasGlobalScope: boolean }) {
-  return (
-    <section className="panel" aria-labelledby="overview-title">
-      <div className="pageTitle">
-        <div>
-          <p className="eyebrow">Overview</p>
-          <h2 id="overview-title">Management Platform foundation</h2>
-        </div>
-        <span className="statusPill">Foundation ready</span>
-      </div>
-      <div className="overviewGrid">
-        <article>
-          <h3>Purpose</h3>
-          <p>Administrative modules will appear here as they are enabled for your permissions and Site scope.</p>
-        </article>
-        <article>
-          <h3>Access posture</h3>
-          <p>Authenticated as {principalName ?? "a governed Management Platform user"}. Permissions are presented from the current server session and remain server-enforced.</p>
-        </article>
-        <article>
-          <h3>Site context</h3>
-          <p>{siteScopeCount > 0 ? `Current Site: ${currentSiteName}` : "No authorized Site is available."}</p>
-          <p>{scopeSummary(hasGlobalScope, siteScopeCount, siteGroupScopeCount)}</p>
-        </article>
-      </div>
-      <StateMessage title="Administrative modules" message="Sales Invoice Configuration is available to read-authorized users. This shell does not edit fiscal data, issue documents, print receipts, authorize exits, or operate gates." />
-    </section>
   );
 }
 
@@ -550,7 +541,7 @@ function routeTitle(path: string): string {
   }
 
   if (path === routes.root || path === routes.overview) {
-    return "Overview - ExitPass Management Platform";
+    return "Dashboard - ExitPass Management Platform";
   }
 
   return "Not Found - ExitPass Management Platform";

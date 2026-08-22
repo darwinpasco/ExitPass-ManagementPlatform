@@ -283,7 +283,7 @@ test.describe("Management Platform Sales Invoice Profile Manage UI E2E", () => {
     await page.setViewportSize({ width: 1366, height: 768 });
     await gotoScenario(page, "manage");
     await page.keyboard.press("Tab");
-    await expect(page.getByRole("button", { name: "Overview" })).toBeFocused();
+    await expect(page.getByRole("button", { name: "Dashboard", exact: true })).toBeFocused();
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: /Sales Invoice Configuration/i })).toBeFocused();
     await page.keyboard.press("Tab");
