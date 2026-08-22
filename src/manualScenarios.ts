@@ -1,5 +1,5 @@
 import { createDevelopmentPrincipal } from "./auth";
-import { futureSalesInvoiceProfilePermissions, identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { futureSalesInvoiceProfilePermissions, identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, paymentReconciliationPermission, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import type { ManagementPlatformAuthState, ManagementPlatformSite, ManagementPlatformUiError } from "./types";
 
 export type ManagementPlatformManualScenarioName =
@@ -53,7 +53,8 @@ export function resolveManagementPlatformManualScenario(
   const evidenceGovernanceScenarioName = searchParams.get("mpEvidenceGovernanceScenario");
   const identityScenarioName = searchParams.get("mpIdentityScenario");
   const dashboardScenarioName = searchParams.get("mpDashboardScenario");
-  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName, policyCoverageScenarioName, evidenceGovernanceScenarioName, identityScenarioName);
+  const paymentScenarioName = searchParams.get("mpPaymentScenario");
+  const scenarioPermissions = resolveDevelopmentPermissions(profileScenarioName, rbacScenarioName, policyCoverageScenarioName, evidenceGovernanceScenarioName, identityScenarioName, paymentScenarioName);
 
   switch (scenarioName) {
     case "unauthenticated":
@@ -163,7 +164,7 @@ function normalizeScenarioName(value: string | null): ManagementPlatformManualSc
   }
 }
 
-function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacScenarioName: string | null, policyCoverageScenarioName: string | null, evidenceGovernanceScenarioName: string | null, identityScenarioName: string | null): string[] {
+function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacScenarioName: string | null, policyCoverageScenarioName: string | null, evidenceGovernanceScenarioName: string | null, identityScenarioName: string | null, paymentScenarioName: string | null): string[] {
   const rbacPermissions = isRbacInventoryScenario(rbacScenarioName)
     ? [managementPlatformIdentityRbacInventoryReadPermission]
     : [];
@@ -174,16 +175,17 @@ function resolveDevelopmentPermissions(profileScenarioName: string | null, rbacS
     ? [statutoryEvidenceGovernanceReadPermission]
     : [];
   const identityPermissions = identityScenarioName ? [...identityAdministrationPresentationPermissions] : [];
+  const paymentPermissions = paymentScenarioName ? [paymentReconciliationPermission] : [];
 
   if (isApproveOnlyProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, ...identityPermissions, futureSalesInvoiceProfilePermissions.approve];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, ...identityPermissions, ...paymentPermissions, futureSalesInvoiceProfilePermissions.approve];
   }
 
   if (isManageProfileScenario(profileScenarioName)) {
-    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, ...identityPermissions, futureSalesInvoiceProfilePermissions.manage];
+    return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, ...identityPermissions, ...paymentPermissions, futureSalesInvoiceProfilePermissions.manage];
   }
 
-  return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, ...identityPermissions];
+  return [...defaultDevelopmentPermissions, ...rbacPermissions, ...coveragePermissions, ...evidenceGovernancePermissions, ...identityPermissions, ...paymentPermissions];
 }
 
 function isEvidenceGovernanceScenario(value: string | null): boolean {

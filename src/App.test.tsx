@@ -1,8 +1,9 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { App, FeatureUnavailable, MutationUncertainMessage, PageError } from "./App";
-import { identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, paymentReconciliationPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { paymentReconciliationFixture, type PaymentReconciliationReportingClient } from "./paymentReconciliationReporting";
 import type { ManagementPlatformAuthState } from "./types";
 
 const siteA = {
@@ -156,6 +157,36 @@ describe("ManagementPlatformUi foundation shell", () => {
 
     rerender(<App authState={authState([managementDashboardPermission, "user.view"])} initialPath="/management-platform" />);
     expect(screen.getByRole("button", { name: /User Administration/ })).toBeInTheDocument();
+  });
+
+  it("shows Payment and Reconciliation navigation only with reconciliation.view", () => {
+    const { rerender } = render(<App authState={authState()} initialPath="/management-platform/overview" />);
+    expect(screen.queryByRole("button", { name: /Payment and Reconciliation/ })).not.toBeInTheDocument();
+    rerender(<App authState={authState([managementDashboardPermission, paymentReconciliationPermission])} initialPath="/management-platform/overview" />);
+    expect(screen.getByRole("button", { name: /Payment and Reconciliation Internal reporting/ })).toBeInTheDocument();
+  });
+
+  it("guards direct Payment and Reconciliation navigation with the dedicated permission", async () => {
+    const reportClient: PaymentReconciliationReportingClient = { getSummary: vi.fn(async (scope, period) => paymentReconciliationFixture(scope, period)) };
+    const { rerender } = render(<App authState={authState([managementDashboardPermission])} initialPath="/management-platform/reports/payment-reconciliation" paymentReconciliationReportingClient={reportClient} />);
+    expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
+    expect(reportClient.getSummary).not.toHaveBeenCalled();
+    rerender(<App authState={authState([paymentReconciliationPermission])} initialPath="/management-platform/reports/payment-reconciliation" paymentReconciliationReportingClient={reportClient} />);
+    expect(await screen.findByRole("heading", { name: "Payment and Reconciliation" })).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe("Payment and Reconciliation - ExitPass Management Platform"));
+  });
+
+  it("removes loaded Payment and Reconciliation data when the session is lost", async () => {
+    const reportClient: PaymentReconciliationReportingClient = { getSummary: vi.fn(async (scope, period) => paymentReconciliationFixture(scope, period)) };
+    const { rerender } = render(<App authState={authState([paymentReconciliationPermission])} initialPath="/management-platform/reports/payment-reconciliation" paymentReconciliationReportingClient={reportClient} />);
+
+    expect(await screen.findByRole("heading", { name: "Payment activity summary" })).toBeInTheDocument();
+
+    rerender(<App authState={{ status: "unauthenticated" }} initialPath="/management-platform/reports/payment-reconciliation" paymentReconciliationReportingClient={reportClient} />);
+
+    expect(screen.getByRole("status", { name: "Authentication required" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Payment activity summary" })).not.toBeInTheDocument();
+    expect(screen.queryByText("12,500.75 PHP")).not.toBeInTheDocument();
   });
 
   it("denies direct identity-administration navigation without presentation permission", () => {

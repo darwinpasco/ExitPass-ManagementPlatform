@@ -4,7 +4,7 @@ const dashboardRoute = "/management-platform/overview?mpScenario=authenticated&m
 
 test.describe("Management Dashboard reporting foundation", () => {
   test("opens from existing navigation with explicit Site scope and catalog", async ({ page }) => {
-    await page.goto(`${dashboardRoute}current`);
+    await page.goto(`${dashboardRoute}current&mpPaymentScenario=current`);
 
     await expect(page).toHaveTitle("Dashboard - ExitPass Management Platform");
     await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
@@ -14,8 +14,8 @@ test.describe("Management Dashboard reporting foundation", () => {
     await expect(page.getByText("Connector health")).toBeVisible();
     await expect(page.getByText("Vendor projection freshness")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Report catalog" })).toBeVisible();
-    await expect(page.getByText("Payment reconciliation summary")).toBeVisible();
-    await expect(page.getByText(/Unavailable in this phase/).first()).toBeVisible();
+    await expect(page.getByText("Payment and Reconciliation").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: "Open Payment and Reconciliation" })).toBeVisible();
     await assertNoOverflow(page);
   });
 

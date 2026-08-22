@@ -46,7 +46,7 @@ describe("Management Dashboard page", () => {
 
     rerender(<DashboardPage client={client} canReadCatalog authorizedSites={[siteA]} authorizedSiteGroupReferences={[]} currentSite={siteA} />);
     expect(await screen.findByText("Payment reconciliation summary")).toBeVisible();
-    expect(screen.getByText(/Unavailable in this phase/)).toBeVisible();
+    expect(screen.getByText(/This report is unavailable/)).toBeVisible();
   });
 
   it.each([

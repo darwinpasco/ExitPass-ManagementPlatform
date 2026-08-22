@@ -8,7 +8,9 @@ import { createEvidenceGovernanceClient, evidenceGovernanceRoute, resolveEvidenc
 import { resolveManagementPlatformManualScenario, type ManagementPlatformManualScenarioName } from "./manualScenarios";
 import { IdentityAdministrationPage } from "./IdentityAdministrationPage";
 import { createIdentityAdministrationClient, identityAdministrationRoute, resolveIdentityAdministrationScenario, type IdentityAdministrationClient } from "./identityAdministration";
-import { managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementReportCatalogPermission, futureSalesInvoiceProfilePermissions, hasAnyPermission, hasPermission, identityAdministrationPresentationPermissions, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { PaymentReconciliationPage } from "./PaymentReconciliationPage";
+import { createPaymentReconciliationReportingClient, paymentReconciliationRoute, resolvePaymentReconciliationScenario, type PaymentReconciliationReportingClient } from "./paymentReconciliationReporting";
+import { managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementReportCatalogPermission, paymentReconciliationPermission, futureSalesInvoiceProfilePermissions, hasAnyPermission, hasPermission, identityAdministrationPresentationPermissions, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import { PolicyCoveragePage } from "./PolicyCoveragePage";
 import { createPolicyCoverageClient, policyCoverageRoute, resolvePolicyCoverageScenario, type PolicyCoverageClient } from "./policyCoverage";
 import { RbacInventoryPage } from "./RbacInventoryPage";
@@ -25,7 +27,8 @@ const routes = {
   rbacInventory: rbacInventoryRoute,
   policyCoverage: policyCoverageRoute,
   evidenceGovernance: evidenceGovernanceRoute,
-  identityAdministration: identityAdministrationRoute
+  identityAdministration: identityAdministrationRoute,
+  paymentReconciliation: paymentReconciliationRoute
 };
 
 interface AppProps {
@@ -38,6 +41,7 @@ interface AppProps {
   evidenceGovernanceClient?: EvidenceGovernanceClient;
   identityAdministrationClient?: IdentityAdministrationClient;
   dashboardReportingClient?: DashboardReportingClient;
+  paymentReconciliationReportingClient?: PaymentReconciliationReportingClient;
   onAuthenticationRequired?: () => void;
   onAuthenticatedActivity?: () => void;
   authorizeUnsafeRequest?: (headers: Headers) => void;
@@ -50,6 +54,7 @@ interface AppProps {
   evidenceGovernanceScenariosEnabled?: boolean;
   identityAdministrationScenariosEnabled?: boolean;
   dashboardScenariosEnabled?: boolean;
+  paymentReconciliationScenariosEnabled?: boolean;
 }
 
 export function App({
@@ -62,6 +67,7 @@ export function App({
   evidenceGovernanceClient,
   identityAdministrationClient,
   dashboardReportingClient,
+  paymentReconciliationReportingClient,
   onAuthenticationRequired,
   onAuthenticatedActivity,
   authorizeUnsafeRequest,
@@ -73,7 +79,8 @@ export function App({
   policyCoverageScenariosEnabled = import.meta.env.DEV,
   evidenceGovernanceScenariosEnabled = import.meta.env.DEV,
   identityAdministrationScenariosEnabled = import.meta.env.DEV,
-  dashboardScenariosEnabled = import.meta.env.DEV
+  dashboardScenariosEnabled = import.meta.env.DEV,
+  paymentReconciliationScenariosEnabled = import.meta.env.DEV
 }: AppProps) {
   const resolvedConfig = useMemo(() => config ?? getManagementPlatformConfig(), [config]);
   const manualScenario = useMemo(
@@ -134,12 +141,21 @@ export function App({
     () => dashboardReportingClient ?? dashboardScenario?.client ?? createDashboardReportingClient(centralPmsClient),
     [centralPmsClient, dashboardReportingClient, dashboardScenario?.client]
   );
+  const paymentScenario = useMemo(
+    () => paymentReconciliationReportingClient ? undefined : resolvePaymentReconciliationScenario(paymentReconciliationScenariosEnabled, window.location.search),
+    [paymentReconciliationReportingClient, paymentReconciliationScenariosEnabled]
+  );
+  const paymentClient = useMemo(
+    () => paymentReconciliationReportingClient ?? paymentScenario?.client ?? createPaymentReconciliationReportingClient(centralPmsClient),
+    [centralPmsClient, paymentReconciliationReportingClient, paymentScenario?.client]
+  );
   const state = authState ?? manualScenario?.authState ?? { status: "unauthenticated" as const };
   const scenarioInitialPath = authState ? undefined : manualScenario?.initialPath;
   const [path, setPath] = useState(initialPath ?? scenarioInitialPath ?? normalizePath(window.location.pathname));
   const [salesInvoiceFormState, setSalesInvoiceFormState] = useState({ hasUnsavedChanges: false, mutationPending: false });
-  const scenarioIndicator = manualScenario?.showIndicator || dashboardScenario
-    ? <DevelopmentScenarioIndicator scenarioName={dashboardScenario ? `dashboard/${dashboardScenario.name}` : manualScenario!.name} />
+  const siteSelection = useManagementPlatformSiteSelection(state.principal?.authorizedSites ?? []);
+  const scenarioIndicator = manualScenario?.showIndicator || dashboardScenario || paymentScenario
+    ? <DevelopmentScenarioIndicator scenarioName={paymentScenario ? `payment-reconciliation/${paymentScenario.name}` : dashboardScenario ? `dashboard/${dashboardScenario.name}` : manualScenario!.name} />
     : null;
 
   useEffect(() => {
@@ -176,9 +192,9 @@ export function App({
   }
 
   const principal = state.principal;
-  const siteSelection = useManagementPlatformSiteSelection(principal.authorizedSites);
   const canViewDashboard = hasPermission(principal.permissions, managementDashboardPermission);
   const canReadReportCatalog = hasPermission(principal.permissions, managementReportCatalogPermission);
+  const canViewPaymentReconciliation = hasPermission(principal.permissions, paymentReconciliationPermission);
   const canReadSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.read);
   const canManageSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.manage);
   const canApproveSalesInvoiceProfiles = hasPermission(principal.permissions, futureSalesInvoiceProfilePermissions.approve);
@@ -186,7 +202,7 @@ export function App({
   const canReadPolicyCoverage = hasPermission(principal.permissions, statutoryDiscountPolicyCoverageReadPermission);
   const canReadEvidenceGovernance = hasPermission(principal.permissions, statutoryEvidenceGovernanceReadPermission);
   const canUseIdentityAdministration = hasAnyPermission(principal.permissions, identityAdministrationPresentationPermissions);
-  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance || path === routes.identityAdministration;
+  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.paymentReconciliation || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance || path === routes.identityAdministration;
   const shellProps = {
     principalName: principal.displayName,
     username: principal.username,
@@ -197,6 +213,7 @@ export function App({
     path,
     navigate,
     canViewDashboard,
+    canViewPaymentReconciliation,
     canReadSalesInvoiceProfiles,
     canReadRbacInventory,
     canReadPolicyCoverage,
@@ -216,6 +233,7 @@ export function App({
   if (path === routes.root && !canViewDashboard) {
     const authorizedLandingRoute = resolveAuthorizedLandingRoute({
       canUseIdentityAdministration,
+      canViewPaymentReconciliation,
       canReadRbacInventory,
       canReadSalesInvoiceProfiles,
       canReadPolicyCoverage,
@@ -227,6 +245,10 @@ export function App({
   }
 
   if (path === routes.overview && !canViewDashboard) {
+    return <Shell {...shellProps}><PermissionDenied /></Shell>;
+  }
+
+  if (path === routes.paymentReconciliation && !canViewPaymentReconciliation) {
     return <Shell {...shellProps}><PermissionDenied /></Shell>;
   }
 
@@ -312,6 +334,10 @@ export function App({
     return <Shell {...shellProps}><IdentityAdministrationPage client={identityClient} permissions={principal.permissions} authorizedSites={principal.authorizedSites} authorizedSiteGroupReferences={principal.authorizedSiteGroupReferences ?? []} /></Shell>;
   }
 
+  if (path === routes.paymentReconciliation) {
+    return <Shell {...shellProps}><PaymentReconciliationPage key={principal.subjectRef ?? principal.username ?? "authenticated-session"} client={paymentClient} authorizedSites={principal.authorizedSites} authorizedSiteGroupReferences={principal.authorizedSiteGroupReferences ?? []} currentSite={siteSelection.currentSite} /></Shell>;
+  }
+
   return (
     <Shell {...shellProps}>
       <DashboardPage
@@ -320,12 +346,14 @@ export function App({
         authorizedSites={principal.authorizedSites}
         authorizedSiteGroupReferences={principal.authorizedSiteGroupReferences ?? []}
         currentSite={siteSelection.currentSite}
+        canViewPaymentReport={canViewPaymentReconciliation}
+        onOpenPaymentReport={() => navigate(routes.paymentReconciliation)}
       />
     </Shell>
   );
 }
 
-function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewDashboard, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, salesInvoiceFormState, environmentName, onLogout, logoutPending, scenarioIndicator, children }: {
+function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewDashboard, canViewPaymentReconciliation, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, salesInvoiceFormState, environmentName, onLogout, logoutPending, scenarioIndicator, children }: {
   principalName?: string;
   username?: string;
   sessionExpiresAt?: string;
@@ -335,6 +363,7 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
   path: string;
   navigate: (path: string) => void;
   canViewDashboard: boolean;
+  canViewPaymentReconciliation: boolean;
   canReadSalesInvoiceProfiles: boolean;
   canReadRbacInventory: boolean;
   canReadPolicyCoverage: boolean;
@@ -378,6 +407,11 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
             {canViewDashboard && (
               <button className={`navLink ${path === routes.root || path === routes.overview ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.overview)}>
                 Dashboard
+              </button>
+            )}
+            {canViewPaymentReconciliation && (
+              <button className={`navLink reportNavLink ${path === routes.paymentReconciliation ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.paymentReconciliation)}>
+                Payment and Reconciliation <span className="navMeta">Internal reporting</span>
               </button>
             )}
             {canReadSalesInvoiceProfiles && (
@@ -540,6 +574,10 @@ function routeTitle(path: string): string {
     return "Sales Invoice Configuration - ExitPass Management Platform";
   }
 
+  if (path === routes.paymentReconciliation) {
+    return "Payment and Reconciliation - ExitPass Management Platform";
+  }
+
   if (path === routes.root || path === routes.overview) {
     return "Dashboard - ExitPass Management Platform";
   }
@@ -557,7 +595,9 @@ function resolveAuthorizedLandingRoute(access: {
   canReadSalesInvoiceProfiles: boolean;
   canReadPolicyCoverage: boolean;
   canReadEvidenceGovernance: boolean;
+  canViewPaymentReconciliation: boolean;
 }): string | undefined {
+  if (access.canViewPaymentReconciliation) return routes.paymentReconciliation;
   if (access.canUseIdentityAdministration) return routes.identityAdministration;
   if (access.canReadRbacInventory) return routes.rbacInventory;
   if (access.canReadSalesInvoiceProfiles) return routes.salesInvoiceProfiles;

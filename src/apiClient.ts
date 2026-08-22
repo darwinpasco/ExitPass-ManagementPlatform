@@ -77,6 +77,13 @@ export function createCentralPmsApiClient(options: {
         return undefined as TResponse;
       }
 
+      if (requestOptions.requireJsonContentType) {
+        const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+        if (!contentType.startsWith("application/json") && !contentType.includes("+json")) {
+          throw createUiError("malformed-response", "MANAGEMENT_PLATFORM_UNEXPECTED_CONTENT_TYPE", "The server response could not be read safely.", responseCorrelationId);
+        }
+      }
+
       const text = await response.text();
       const parsed = parseResponseBody(text, responseCorrelationId);
 
