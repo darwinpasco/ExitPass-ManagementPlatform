@@ -314,7 +314,7 @@ function fixtureCatalog(): DashboardCatalog {
   const reports = [
     ["operational-overview", "Operational overview", "PARTIAL"],
     ["payment-reconciliation-summary", "Payment and Reconciliation", "PARTIAL"],
-    ["fiscal-exception-summary", "Fiscal exception summary", "UNAVAILABLE"],
+    ["fiscal-exception-summary", "Sales Invoice Exceptions", "PARTIAL"],
     ["management-activity-summary", "Management activity summary", "UNAVAILABLE"]
   ] as const;
   return {
@@ -325,16 +325,16 @@ function fixtureCatalog(): DashboardCatalog {
       contractVersion: dashboardContractVersion,
       displayTitle,
       functionalDomain: "Management operations",
-      description: reportId === "operational-overview" ? "Current Site and connector operating posture." : reportId === "payment-reconciliation-summary" ? "Internal Central PMS payment activity and consistency reporting." : "This reporting source is not available in phase 1.",
+      description: reportId === "operational-overview" ? "Current Site and connector operating posture." : reportId === "payment-reconciliation-summary" ? "Internal Central PMS payment activity and consistency reporting." : reportId === "fiscal-exception-summary" ? "Persisted Sales Invoice issuance lifecycle and supported exception summaries." : "This reporting source is not available in phase 1.",
       supportedScopeTypes: ["SITE", "SITE_GROUP"],
-      requiredPermission: reportId === "operational-overview" ? "dashboard.view" : reportId === "payment-reconciliation-summary" ? "reconciliation.view" : "reports.view",
+      requiredPermission: reportId === "operational-overview" ? "dashboard.view" : reportId === "payment-reconciliation-summary" ? "reconciliation.view" : reportId === "fiscal-exception-summary" ? "sales-invoice-report.view" : "reports.view",
       availability: state,
-      sourceAuthority: reportId === "operational-overview" ? "CENTRAL_PMS" : reportId === "payment-reconciliation-summary" ? "CENTRAL_PMS_CANONICAL_PAYMENT_RECORDS" : "PHASE_1_SOURCE_NOT_APPROVED",
+      sourceAuthority: reportId === "operational-overview" ? "CENTRAL_PMS" : reportId === "payment-reconciliation-summary" ? "CENTRAL_PMS_CANONICAL_PAYMENT_RECORDS" : reportId === "fiscal-exception-summary" ? "CENTRAL_PMS_FISCAL_ISSUANCE_REFERENCES" : "PHASE_1_SOURCE_NOT_APPROVED",
       privacyClassification: "INTERNAL_OPERATIONAL_AGGREGATE",
       supportedFilters: ["scopeType", "scopeReference"],
       freshnessSemantics: "Source-owned timestamps and classifications.",
-      warnings: state === "UNAVAILABLE" ? ["No phase-1 result is available."] : [],
-      limitations: state === "UNAVAILABLE" ? ["No placeholder result is presented."] : reportId === "payment-reconciliation-summary" ? ["Provider settlement and financial finality are unavailable."] : []
+      warnings: state === "UNAVAILABLE" ? ["No phase-1 result is available."] : reportId === "fiscal-exception-summary" ? ["Only outcomes persisted in Central PMS are represented."] : [],
+      limitations: state === "UNAVAILABLE" ? ["No placeholder result is presented."] : reportId === "payment-reconciliation-summary" ? ["Provider settlement and financial finality are unavailable."] : reportId === "fiscal-exception-summary" ? ["The report does not query Site POS Servers live or certify BIR compliance."] : []
     }))
   };
 }

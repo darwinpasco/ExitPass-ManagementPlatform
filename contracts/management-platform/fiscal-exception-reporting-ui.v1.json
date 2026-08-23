@@ -1,0 +1,39 @@
+{
+  "contractId": "management-platform-fiscal-exception-reporting-ui:v1",
+  "route": "/management-platform/reports/fiscal-exceptions",
+  "backendContract": "management-platform-fiscal-exception-reporting:v1",
+  "backendRoute": "/v1/management-platform/dashboard/fiscal-exception-summary",
+  "permission": "sales-invoice-report.view",
+  "featureControls": [
+    "ManagementPlatform:DashboardReporting:Enabled",
+    "ManagementPlatform:DashboardReporting:FiscalExceptions:Enabled"
+  ],
+  "scopeTypes": ["SITE", "SITE_GROUP"],
+  "period": {
+    "standard": "UTC",
+    "semantics": "[periodStart, periodEnd)",
+    "maximumDays": 31,
+    "implicitDefaultRequest": false,
+    "timeBasis": "FISCAL_ISSUANCE_REFERENCE_FIRST_RECORDED_AT"
+  },
+  "presentation": {
+    "cohort": "active non-superseded Sales Invoice issuance references first recorded in the selected period",
+    "latestPersistedState": true,
+    "currencySeparation": true,
+    "mixedCurrencyTotal": false,
+    "lifecycleStates": ["NOT_REQUIRED", "PENDING", "REQUESTED", "ISSUED", "FAILED", "CONFLICT", "OUTCOME_UNAVAILABLE", "MANUAL_REVIEW", "EXCEPTION_RELEASED", "OTHER"],
+    "exceptionCategories": ["SALES_INVOICE_ISSUANCE_FAILED", "SALES_INVOICE_REFERENCE_CONFLICT", "SALES_INVOICE_OUTCOME_UNAVAILABLE"],
+    "availability": ["PARTIAL", "NO_ACTIVITY"],
+    "freshness": ["CURRENT", "NOT_APPLICABLE"]
+  },
+  "security": {
+    "sameOriginOnly": true,
+    "getOnly": true,
+    "browserAuthorityHeaders": false,
+    "persistentReportStorage": false,
+    "globalScope": false,
+    "directPosServerCalls": false,
+    "forbiddenData": ["Sales Invoice number", "payment reference", "provider reference", "ticket number", "vehicle plate", "payer identity", "statutory ID", "raw POS Server response", "fiscal document", "Electronic Journal", "credentials", "tokens"]
+  },
+  "deferred": ["exports", "schedules", "drill-down", "live POS Server queries", "printing", "reprinting", "adjustments", "voids", "Electronic Journal", "X Reading", "Z Reading", "BIR Sales Summary", "Annex reports", "exception resolution", "overdue detection", "retry exhaustion", "document amount or currency comparison", "duplicate Sales Invoice analysis"]
+}

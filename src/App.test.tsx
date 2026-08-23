@@ -2,8 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App, FeatureUnavailable, MutationUncertainMessage, PageError } from "./App";
-import { identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, paymentReconciliationPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { fiscalExceptionReportingPermission, identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, paymentReconciliationPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import { paymentReconciliationFixture, type PaymentReconciliationReportingClient } from "./paymentReconciliationReporting";
+import { fiscalExceptionFixture, type FiscalExceptionReportingClient } from "./fiscalExceptionReporting";
 import type { ManagementPlatformAuthState } from "./types";
 
 const siteA = {
@@ -186,6 +187,33 @@ describe("ManagementPlatformUi foundation shell", () => {
 
     expect(screen.getByRole("status", { name: "Authentication required" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Payment activity summary" })).not.toBeInTheDocument();
+    expect(screen.queryByText("12,500.75 PHP")).not.toBeInTheDocument();
+  });
+
+  it("shows Sales Invoice Exceptions navigation only with sales-invoice-report.view", () => {
+    const { rerender } = render(<App authState={authState()} initialPath="/management-platform/overview" />);
+    expect(screen.queryByRole("button", { name: /Sales Invoice Exceptions/ })).not.toBeInTheDocument();
+    rerender(<App authState={authState([managementDashboardPermission, fiscalExceptionReportingPermission])} initialPath="/management-platform/overview" />);
+    expect(screen.getByRole("button", { name: /Sales Invoice Exceptions Fiscal exception reporting/ })).toBeInTheDocument();
+  });
+
+  it("guards direct Sales Invoice Exceptions navigation with the dedicated permission", async () => {
+    const reportClient: FiscalExceptionReportingClient = { getSummary: vi.fn(async (scope, period) => fiscalExceptionFixture(scope, period)) };
+    const { rerender } = render(<App authState={authState([managementDashboardPermission])} initialPath="/management-platform/reports/fiscal-exceptions" fiscalExceptionReportingClient={reportClient} />);
+    expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
+    expect(reportClient.getSummary).not.toHaveBeenCalled();
+    rerender(<App authState={authState([fiscalExceptionReportingPermission])} initialPath="/management-platform/reports/fiscal-exceptions" fiscalExceptionReportingClient={reportClient} />);
+    expect(await screen.findByRole("heading", { name: "Sales Invoice Exceptions" })).toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe("Sales Invoice Exceptions - ExitPass Management Platform"));
+  });
+
+  it("removes loaded fiscal report data when the session is lost", async () => {
+    const reportClient: FiscalExceptionReportingClient = { getSummary: vi.fn(async (scope, period) => fiscalExceptionFixture(scope, period)) };
+    const { rerender } = render(<App authState={authState([fiscalExceptionReportingPermission])} initialPath="/management-platform/reports/fiscal-exceptions" fiscalExceptionReportingClient={reportClient} />);
+    expect(await screen.findByRole("heading", { name: "Expected issuance amounts" })).toBeInTheDocument();
+    rerender(<App authState={{ status: "unauthenticated" }} initialPath="/management-platform/reports/fiscal-exceptions" fiscalExceptionReportingClient={reportClient} />);
+    expect(screen.getByRole("status", { name: "Authentication required" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Expected issuance amounts" })).not.toBeInTheDocument();
     expect(screen.queryByText("12,500.75 PHP")).not.toBeInTheDocument();
   });
 

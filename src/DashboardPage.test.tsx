@@ -49,6 +49,18 @@ describe("Management Dashboard page", () => {
     expect(screen.getByText(/This report is unavailable/)).toBeVisible();
   });
 
+  it("offers the fiscal report catalog action only when catalog and report permission presentation agree", async () => {
+    const client = clientFor();
+    vi.mocked(client.getCatalog).mockResolvedValue({ ...catalog(), reports: [...catalog().reports, { reportId: "fiscal-exception-summary", contractVersion: dashboardContractVersion, displayTitle: "Sales Invoice Exceptions", functionalDomain: "Fiscal reporting", description: "Persisted issuance outcomes.", supportedScopeTypes: ["SITE", "SITE_GROUP"], requiredPermission: "sales-invoice-report.view", availability: "PARTIAL", sourceAuthority: "CENTRAL_PMS_FISCAL_ISSUANCE_REFERENCES", privacyClassification: "INTERNAL_OPERATIONAL_AGGREGATE", supportedFilters: ["scopeType", "scopeReference", "periodStart", "periodEnd"], freshnessSemantics: "Persisted source timestamps.", warnings: [], limitations: [] }] });
+    const open = vi.fn();
+    const { rerender } = render(<DashboardPage client={client} canReadCatalog authorizedSites={[siteA]} authorizedSiteGroupReferences={[]} currentSite={siteA} canViewFiscalReport={false} onOpenFiscalReport={open} />);
+    expect(await screen.findByText("This report is available only to authorized fiscal reporting users.")).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Open Sales Invoice Exceptions" })).not.toBeInTheDocument();
+    rerender(<DashboardPage client={client} canReadCatalog authorizedSites={[siteA]} authorizedSiteGroupReferences={[]} currentSite={siteA} canViewFiscalReport onOpenFiscalReport={open} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Open Sales Invoice Exceptions" }));
+    expect(open).toHaveBeenCalledOnce();
+  });
+
   it.each([
     ["PARTIAL", "PARTIAL", "Availability: Partial data", "Freshness: Mixed freshness"],
     ["AVAILABLE", "STALE", "Availability: Available", "Freshness: Stale"]
