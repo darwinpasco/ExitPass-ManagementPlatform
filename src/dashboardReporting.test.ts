@@ -9,6 +9,8 @@ import {
   parseDashboardCatalog,
   parseDashboardOperationalOverview
 } from "./dashboardReporting";
+import { fiscalExceptionContractVersion } from "./fiscalExceptionReporting";
+import { paymentReconciliationContractVersion } from "./paymentReconciliationReporting";
 
 const siteReference = "71000000-0000-0000-0000-000000000101";
 const siteGroupReference = "71000000-0000-0000-0000-000000000900";
@@ -17,8 +19,19 @@ describe("Management Dashboard reporting contract", () => {
   it("parses the stable catalog contract and classifications", () => {
     const catalog = parseDashboardCatalog(catalogPayload());
     expect(catalog.contractVersion).toBe(dashboardContractVersion);
-    expect(catalog.reports.map((report) => report.reportId)).toEqual(["operational-overview", "payment-reconciliation-summary"]);
-    expect(catalog.reports[1].availability).toBe("UNAVAILABLE");
+    expect(catalog.reports.map((report) => report.reportId)).toEqual([
+      "operational-overview",
+      "payment-reconciliation-summary",
+      "fiscal-exception-summary",
+      "management-activity-summary"
+    ]);
+    expect(catalog.reports.map((report) => report.contractVersion)).toEqual([
+      dashboardContractVersion,
+      paymentReconciliationContractVersion,
+      fiscalExceptionContractVersion,
+      dashboardContractVersion
+    ]);
+    expect(catalog.reports[3].availability).toBe("UNAVAILABLE");
   });
 
   it("parses authoritative overview metrics, source, scope, and freshness", () => {
@@ -30,6 +43,9 @@ describe("Management Dashboard reporting contract", () => {
 
   it("rejects unsupported versions, malformed classifications, and fabricated unavailable metrics", () => {
     expect(() => parseDashboardCatalog({ ...catalogPayload(), contractVersion: "management-platform-dashboard-reporting:v2" })).toThrow();
+    const catalog = catalogPayload();
+    catalog.reports[1] = { ...catalog.reports[1], contractVersion: dashboardContractVersion };
+    expect(() => parseDashboardCatalog(catalog)).toThrowError(expect.objectContaining({ code: "DASHBOARD_CATALOG_ENTRY_CONTRACT_VERSION_UNSUPPORTED" }));
     expect(() => parseDashboardOperationalOverview({ ...overviewPayload("SITE", siteReference), freshness: "FRESH" })).toThrow();
     const payload = overviewPayload("SITE", siteReference);
     payload.sections[0] = { ...payload.sections[0], availability: "UNAVAILABLE", freshness: "UNAVAILABLE" };
@@ -87,16 +103,18 @@ function catalogPayload() {
     contractVersion: dashboardContractVersion,
     generatedAt: "2026-08-21T02:00:00Z",
     reports: [
-      catalogEntry("operational-overview", "Operational overview", "PARTIAL", "dashboard.view"),
-      catalogEntry("payment-reconciliation-summary", "Payment reconciliation summary", "UNAVAILABLE", "reports.view")
+      catalogEntry("operational-overview", dashboardContractVersion, "Operational overview", "PARTIAL", "dashboard.view"),
+      catalogEntry("payment-reconciliation-summary", paymentReconciliationContractVersion, "Payment reconciliation summary", "PARTIAL", "reconciliation.view"),
+      catalogEntry("fiscal-exception-summary", fiscalExceptionContractVersion, "Fiscal exception summary", "PARTIAL", "sales-invoice-report.view"),
+      catalogEntry("management-activity-summary", dashboardContractVersion, "Management activity summary", "UNAVAILABLE", "reports.view")
     ]
   };
 }
 
-function catalogEntry(reportId: string, displayTitle: string, availability: string, requiredPermission: string) {
+function catalogEntry(reportId: string, contractVersion: string, displayTitle: string, availability: string, requiredPermission: string) {
   return {
     reportId,
-    contractVersion: dashboardContractVersion,
+    contractVersion,
     displayTitle,
     functionalDomain: "Management operations",
     description: "Controlled report capability.",

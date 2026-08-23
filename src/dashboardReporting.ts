@@ -1,4 +1,6 @@
 import { createUiError } from "./apiClient";
+import { fiscalExceptionContractVersion } from "./fiscalExceptionReporting";
+import { paymentReconciliationContractVersion } from "./paymentReconciliationReporting";
 import type { CentralPmsApiClient, ManagementPlatformUiError } from "./types";
 
 export const dashboardContractVersion = "management-platform-dashboard-reporting:v1";
@@ -51,7 +53,7 @@ export interface DashboardOperationalOverview {
 
 export interface DashboardCatalogEntry {
   reportId: string;
-  contractVersion: typeof dashboardContractVersion;
+  contractVersion: typeof dashboardContractVersion | typeof paymentReconciliationContractVersion | typeof fiscalExceptionContractVersion;
   displayTitle: string;
   functionalDomain: string;
   description: string;
@@ -139,10 +141,11 @@ export function parseDashboardOperationalOverview(value: unknown): DashboardOper
 
 function parseCatalogEntry(value: unknown, index: number): DashboardCatalogEntry {
   const record = object(value, `reports[${index}]`);
-  contractVersion(record.contractVersion);
+  const reportId = text(record.reportId, "reportId");
+  const entryContractVersion = catalogEntryContractVersion(record.contractVersion, reportId);
   return {
-    reportId: text(record.reportId, "reportId"),
-    contractVersion: dashboardContractVersion,
+    reportId,
+    contractVersion: entryContractVersion,
     displayTitle: text(record.displayTitle, "displayTitle"),
     functionalDomain: text(record.functionalDomain, "functionalDomain"),
     description: text(record.description, "description"),
@@ -156,6 +159,16 @@ function parseCatalogEntry(value: unknown, index: number): DashboardCatalogEntry
     warnings: stringArray(record.warnings, "warnings"),
     limitations: stringArray(record.limitations, "limitations")
   };
+}
+
+function catalogEntryContractVersion(value: unknown, reportId: string): DashboardCatalogEntry["contractVersion"] {
+  const expected = reportId === "payment-reconciliation-summary"
+    ? paymentReconciliationContractVersion
+    : reportId === "fiscal-exception-summary"
+      ? fiscalExceptionContractVersion
+      : dashboardContractVersion;
+  if (value === expected) return expected;
+  throw malformed("DASHBOARD_CATALOG_ENTRY_CONTRACT_VERSION_UNSUPPORTED", "A report catalog entry uses an unsupported contract version.");
 }
 
 function parseScope(value: unknown, field: string): DashboardScope {
