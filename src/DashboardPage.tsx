@@ -18,6 +18,8 @@ interface DashboardPageProps {
   currentSite?: ManagementPlatformSite;
   canViewPaymentReport?: boolean;
   onOpenPaymentReport?: () => void;
+  canViewFiscalReport?: boolean;
+  onOpenFiscalReport?: () => void;
 }
 
 interface ScopeOption extends Pick<DashboardScope, "scopeType" | "scopeReference"> {
@@ -36,7 +38,9 @@ export function DashboardPage({
   authorizedSiteGroupReferences,
   currentSite,
   canViewPaymentReport = false,
-  onOpenPaymentReport
+  onOpenPaymentReport,
+  canViewFiscalReport = false,
+  onOpenFiscalReport
 }: DashboardPageProps) {
   const scopes = useMemo(
     () => dashboardScopeOptions(authorizedSites, authorizedSiteGroupReferences),
@@ -208,7 +212,7 @@ export function DashboardPage({
         </>
       )}
 
-      <CatalogPanel canRead={canReadCatalog} state={catalogState} onRetry={() => void loadCatalog()} canViewPaymentReport={canViewPaymentReport} onOpenPaymentReport={onOpenPaymentReport} />
+      <CatalogPanel canRead={canReadCatalog} state={catalogState} onRetry={() => void loadCatalog()} canViewPaymentReport={canViewPaymentReport} onOpenPaymentReport={onOpenPaymentReport} canViewFiscalReport={canViewFiscalReport} onOpenFiscalReport={onOpenFiscalReport} />
     </div>
   );
 }
@@ -239,7 +243,7 @@ function preferredDashboardScope(scopes: readonly ScopeOption[], currentSite?: M
     ?? scopes.find((scope) => scope.scopeType === "SITE_GROUP");
 }
 
-function CatalogPanel({ canRead, state, onRetry, canViewPaymentReport, onOpenPaymentReport }: { canRead: boolean; state: LoadState<DashboardCatalog>; onRetry: () => void; canViewPaymentReport: boolean; onOpenPaymentReport?: () => void }) {
+function CatalogPanel({ canRead, state, onRetry, canViewPaymentReport, onOpenPaymentReport, canViewFiscalReport, onOpenFiscalReport }: { canRead: boolean; state: LoadState<DashboardCatalog>; onRetry: () => void; canViewPaymentReport: boolean; onOpenPaymentReport?: () => void; canViewFiscalReport: boolean; onOpenFiscalReport?: () => void }) {
   if (!canRead) return <DashboardState title="Report catalog not available" message="Your current session does not include report catalog presentation access." />;
   return (
     <section className="panel reportCatalog" aria-labelledby="report-catalog-title">
@@ -262,7 +266,10 @@ function CatalogPanel({ canRead, state, onRetry, canViewPaymentReport, onOpenPay
               {report.reportId === "payment-reconciliation-summary" && (report.availability === "AVAILABLE" || report.availability === "PARTIAL") && canViewPaymentReport && onOpenPaymentReport && <button type="button" className="secondaryButton" onClick={onOpenPaymentReport}>Open Payment and Reconciliation</button>}
               {report.reportId === "payment-reconciliation-summary" && (report.availability === "AVAILABLE" || report.availability === "PARTIAL") && !canViewPaymentReport && <p className="futureReport">This report is available only to authorized reporting users.</p>}
               {report.reportId === "payment-reconciliation-summary" && report.availability !== "AVAILABLE" && report.availability !== "PARTIAL" && <p className="futureReport">This report is unavailable. No report result or action is provided.</p>}
-              {report.reportId !== "operational-overview" && report.reportId !== "payment-reconciliation-summary" && <p className="futureReport">Unavailable in this phase. No report result or action is provided.</p>}
+              {report.reportId === "fiscal-exception-summary" && (report.availability === "AVAILABLE" || report.availability === "PARTIAL") && canViewFiscalReport && onOpenFiscalReport && <button type="button" className="secondaryButton" onClick={onOpenFiscalReport}>Open Sales Invoice Exceptions</button>}
+              {report.reportId === "fiscal-exception-summary" && (report.availability === "AVAILABLE" || report.availability === "PARTIAL") && !canViewFiscalReport && <p className="futureReport">This report is available only to authorized fiscal reporting users.</p>}
+              {report.reportId === "fiscal-exception-summary" && report.availability !== "AVAILABLE" && report.availability !== "PARTIAL" && <p className="futureReport">This report is unavailable. No report result or action is provided.</p>}
+              {report.reportId !== "operational-overview" && report.reportId !== "payment-reconciliation-summary" && report.reportId !== "fiscal-exception-summary" && <p className="futureReport">Unavailable in this phase. No report result or action is provided.</p>}
             </article>
           ))}
         </div></>
