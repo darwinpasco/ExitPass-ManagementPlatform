@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App, FeatureUnavailable, MutationUncertainMessage, PageError } from "./App";
-import { fiscalExceptionReportingPermission, identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, paymentReconciliationPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
+import { fiscalExceptionReportingPermission, identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, paymentReconciliationPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryBenefitReviewPermissions, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import { paymentReconciliationFixture, type PaymentReconciliationReportingClient } from "./paymentReconciliationReporting";
 import { fiscalExceptionFixture, type FiscalExceptionReportingClient } from "./fiscalExceptionReporting";
 import type { ManagementPlatformAuthState } from "./types";
@@ -195,6 +195,14 @@ describe("ManagementPlatformUi foundation shell", () => {
     expect(screen.queryByRole("button", { name: /Sales Invoice Exceptions/ })).not.toBeInTheDocument();
     rerender(<App authState={authState([managementDashboardPermission, fiscalExceptionReportingPermission])} initialPath="/management-platform/overview" />);
     expect(screen.getByRole("button", { name: /Sales Invoice Exceptions Fiscal exception reporting/ })).toBeInTheDocument();
+  });
+
+  it("shows and guards Statutory Benefit Requests only with the explicit queue permission", () => {
+    const { unmount } = render(<App authState={authState([managementDashboardPermission])} initialPath="/management-platform/overview" />);
+    expect(screen.queryByRole("button", { name: /Statutory Benefit Requests/ })).not.toBeInTheDocument();
+    unmount();
+    render(<App authState={authState([statutoryBenefitReviewPermissions.list])} initialPath="/management-platform/statutory-benefit-requests" />);
+    expect(screen.getByRole("heading", { name: "Statutory Benefit Requests" })).toBeInTheDocument();
   });
 
   it("guards direct Sales Invoice Exceptions navigation with the dedicated permission", async () => {
