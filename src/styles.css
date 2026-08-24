@@ -7,6 +7,52 @@
   text-rendering: optimizeLegibility;
 }
 
+.statutoryReviewPage { display: grid; gap: 1rem; min-width: 0; }
+.reportNotice { border-left: 4px solid #b87900; background: #fff8e8; padding: .85rem 1rem; }
+.reportNotice p { margin: .35rem 0 0; }
+.reviewFilters { display: grid; grid-template-columns: repeat(4, minmax(10rem, 1fr)); gap: .75rem; align-items: end; }
+.reviewFilters label, .decisionPanel label { display: grid; gap: .35rem; font-weight: 650; min-width: 0; }
+.reviewFilters select, .reviewFilters input, .decisionPanel textarea { width: 100%; min-height: 2.75rem; padding: .55rem .65rem; border: 1px solid #a9b0b8; border-radius: 4px; background: #fff; color: #17202a; font: inherit; }
+.reviewSearch { grid-column: span 2; }
+.reviewMasterDetail { display: grid; grid-template-columns: minmax(20rem, 1fr); gap: 1rem; min-width: 0; }
+.reviewMasterDetail.hasDetail { grid-template-columns: minmax(24rem, 1.15fr) minmax(20rem, .85fr); }
+.reviewDirectory, .reviewDetail { border: 1px solid #d3d8de; background: #fff; padding: 1rem; min-width: 0; }
+.reviewList { display: grid; gap: .5rem; }
+.reviewListItem { min-height: 4.25rem; width: 100%; display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .75rem; border: 1px solid #ccd2d8; border-radius: 4px; background: #fff; color: inherit; text-align: left; cursor: pointer; }
+.reviewListItem:hover, .reviewListItem:focus-visible { border-color: #226a61; outline: 3px solid rgba(34, 106, 97, .2); }
+.reviewListItem span { display: grid; gap: .2rem; min-width: 0; }
+.reviewListItem span:last-child { justify-items: end; text-align: right; }
+.reviewListItem small { overflow-wrap: anywhere; }
+.statusBadge { display: inline-flex; width: fit-content; padding: .2rem .45rem; border: 1px solid currentColor; border-radius: 3px; font-size: .8rem; }
+.statusBadge.pending_review { color: #765500; background: #fff8dc; }
+.statusBadge.approved { color: #17603c; background: #edf8f1; }
+.statusBadge.rejected { color: #8d2626; background: #fff0f0; }
+.paginationControls, .decisionActions { display: flex; align-items: center; justify-content: space-between; gap: .75rem; margin-top: 1rem; }
+.detailGrid { display: grid; grid-template-columns: minmax(9rem, .45fr) minmax(0, 1fr); gap: .5rem 1rem; }
+.detailGrid dt { font-weight: 700; }
+.detailGrid dd { margin: 0; overflow-wrap: anywhere; }
+.evidenceList { display: grid; gap: .5rem; list-style: none; padding: 0; }
+.evidenceList li { display: grid; gap: .2rem; padding: .65rem; border: 1px solid #d5dae0; }
+.decisionPanel, .decisionSummary { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #d5dae0; }
+.decisionPanel textarea { min-height: 6rem; resize: vertical; }
+.dangerButton { min-height: 2.75rem; padding: .55rem .9rem; border: 1px solid #9a2f2f; border-radius: 4px; background: #fff; color: #8d2626; font-weight: 700; }
+
+@media (max-width: 1024px) {
+  .reviewFilters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reviewMasterDetail.hasDetail { display: flex; flex-direction: column; }
+  .reviewMasterDetail.hasDetail .reviewDetail { order: -1; }
+}
+
+@media (max-width: 600px) {
+  .reviewFilters { grid-template-columns: minmax(0, 1fr); }
+  .reviewSearch { grid-column: auto; }
+  .reviewListItem { align-items: flex-start; flex-direction: column; }
+  .reviewListItem span:last-child { justify-items: start; text-align: left; }
+  .detailGrid { grid-template-columns: minmax(0, 1fr); }
+  .detailGrid dd { margin-bottom: .5rem; }
+  .paginationControls { flex-wrap: wrap; }
+}
+
 * {
   box-sizing: border-box;
 }
