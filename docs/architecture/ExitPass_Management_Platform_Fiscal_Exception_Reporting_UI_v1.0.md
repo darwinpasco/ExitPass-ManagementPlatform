@@ -27,15 +27,15 @@ The page displays:
 - requested and effective scope, requested UTC period, generated time, data-as-of time, time basis, source, availability, freshness, and support reference;
 - visible source-coverage cards and the limitation that Central PMS does not query Site POS Servers live;
 - every supported lifecycle state, including `OTHER`, with conservative meanings;
-- expected issuance counts and amounts separated by ISO currency;
-- the three implemented exception categories, definitions, affected expected amounts by currency, and resolution boundaries;
+- expected issuance counts and amounts in PHP;
+- the three implemented exception categories, definitions, affected expected PHP amounts, and resolution boundaries;
 - a qualified zero-findings statement under partial source coverage;
 - a pending-state notice that pending is not automatically an exception;
 - backend warnings, limitations, and unavailable facts in visible page sections.
 
 `ISSUED` means Central PMS persisted an authoritative issuance outcome. It does not prove printing, delivery, or customer receipt. `REQUESTED` does not prove issuance. `OUTCOME_UNAVAILABLE` does not assert failure. Expected amounts come from linked payment confirmations and are not issued revenue, settled amounts, deposited funds, net sales, or BIR-declared sales.
 
-The browser does not aggregate money, convert currencies, or produce a mixed-currency total. Backend JSON decimal values are display-only.
+The browser does not aggregate money or convert currency. Backend PHP JSON decimal values are display-only and are formatted with the peso sign.
 
 ## Availability and errors
 
@@ -43,7 +43,7 @@ Successful activity is `PARTIAL`; an empty cohort is `NO_ACTIVITY`. `CURRENT` de
 
 Authentication-required, permission-denied, concealed scope, invalid request, disabled feature, unavailable source, malformed response, network, and unexpected failures have distinct controlled messages. Retry is user initiated and bounded to retryable reads. A failed refresh can retain the previous report only with original timestamps and a visible previously-loaded warning.
 
-The strict parser validates content type, contract and report IDs, scope and period binding, explicit UTC timestamps, time basis, report and source classifications, lifecycle and exception identifiers, UUID-shaped references, ISO currencies, counts, money values, arrays, and correlation reference. It rejects unsupported classifications, empty or malformed bodies, sensitive transaction-level properties, and `NO_ACTIVITY` responses containing aggregates.
+The strict parser validates content type, contract and report IDs, scope and period binding, explicit UTC timestamps, time basis, report and source classifications, lifecycle and exception identifiers, UUID-shaped references, PHP currency, counts, money values, arrays, and correlation reference. It rejects unsupported classifications, non-PHP currency, empty or malformed bodies, sensitive transaction-level properties, and `NO_ACTIVITY` responses containing aggregates.
 
 ## Security boundary
 

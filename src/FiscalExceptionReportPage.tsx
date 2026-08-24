@@ -192,16 +192,16 @@ function LifecycleSection({ report }: { report: FiscalExceptionReport }) {
 
 function CurrencySection({ report }: { report: FiscalExceptionReport }) {
   return <section className="panel paymentReportSection" aria-labelledby="fiscal-currency-title">
-    <div className="sectionHeader"><div><p className="eyebrow">Currency-separated expectations</p><h3 id="fiscal-currency-title">Expected issuance amounts</h3></div></div>
+    <div className="sectionHeader"><div><p className="eyebrow">PHP issuance expectations</p><h3 id="fiscal-currency-title">Expected issuance amounts</h3></div></div>
     <div className="paymentCurrencyGrid">{report.currencySummaries.map((row) => <article className="paymentCurrencyCard" key={row.currencyCode}>
       <h4>{row.currencyCode}</h4><dl>
         <div><dt>Expected issuance count</dt><dd>{row.issuanceExpectationCount.toLocaleString()}</dd></div>
-        <div><dt>Expected issuance amount</dt><dd>{formatMoney(row.expectedIssuanceAmount, row.currencyCode)}</dd></div>
+        <div><dt>Expected issuance amount</dt><dd>{formatMoney(row.expectedIssuanceAmount)}</dd></div>
         <div><dt>Persisted issued outcomes</dt><dd>{row.issuedCount.toLocaleString()}</dd></div>
         <div><dt>Persisted failed states</dt><dd>{row.failedCount.toLocaleString()}</dd></div>
       </dl>
     </article>)}</div>
-    <p className="reportBoundary">Expected amounts come from linked payment confirmations. Currencies are never combined or converted, and these values are not issued revenue or BIR-declared sales.</p>
+    <p className="reportBoundary">Expected amounts come from linked payment confirmations and are reported in PHP. These values are not issued revenue or BIR-declared sales.</p>
   </section>;
 }
 
@@ -221,7 +221,7 @@ function ExceptionCard({ row }: { row: FiscalExceptionSummary }) {
     <div><h4>{exceptionLabel(row.categoryId)}</h4><span className={`dashboardBadge availability-${row.availability.toLowerCase()}`}>Availability: {availabilityLabel(row.availability)}</span></div>
     <strong>{row.count.toLocaleString()} finding{row.count === 1 ? "" : "s"}</strong>
     <p>{row.definition}</p>
-    {row.affectedExpectedAmounts.map((amount) => <p key={amount.currencyCode}><b>Affected expected amount:</b> {formatMoney(amount.amount, amount.currencyCode)}</p>)}
+    {row.affectedExpectedAmounts.map((amount) => <p key={amount.currencyCode}><b>Affected expected amount:</b> {formatMoney(amount.amount)}</p>)}
     <p className="sourceLabel">{row.terminal ? "Terminal under the current contract." : row.canResolveLater ? "A later persisted outcome can resolve this condition." : "Resolution behavior is not available."}</p>
     {row.limitations.map((item) => <p className="sourceLabel" key={item}>{item}</p>)}
   </article>;
@@ -259,7 +259,7 @@ function key(scope: { scopeType: string; scopeReference: string }): string { ret
 function scopeLabel(value: string): string { return value === "SITE_GROUP" ? "Site Group" : "Site"; }
 function availabilityLabel(value: string): string { return ({ AVAILABLE: "Available", PARTIAL: "Partial", UNAVAILABLE: "Unavailable", NOT_APPLICABLE: "Not available" } as Record<string, string>)[value] ?? safeCodeLabel(value); }
 function formatUtc(value: string): string { return new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "medium", timeZone: "UTC" }).format(new Date(value)) + " UTC"; }
-function formatMoney(value: number, currencyCode: string): string { return `${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 20 })} ${currencyCode}`; }
+function formatMoney(value: number): string { return `₱${value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 20 })}`; }
 function safeCodeLabel(value: string): string { return value.toLowerCase().replace(/[_-]/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase()); }
 function lifecycleLabel(value: FiscalLifecycleState): string { return ({ NOT_REQUIRED: "Not required", PENDING: "Pending", REQUESTED: "Requested", ISSUED: "Issued", FAILED: "Failed", CONFLICT: "Reference conflict", OUTCOME_UNAVAILABLE: "Outcome unavailable", MANUAL_REVIEW: "Manual review", EXCEPTION_RELEASED: "Exception released", OTHER: "Other" } as const)[value]; }
 function lifecycleMeaning(value: FiscalLifecycleState): string { return ({ NOT_REQUIRED: "The persisted coordination state says issuance is not required.", PENDING: "Work is pending; this alone is not an exception.", REQUESTED: "A request is persisted; issuance is not implied.", ISSUED: "Central PMS holds a persisted authoritative issuance outcome; printing is not implied.", FAILED: "The latest persisted state is a supported issuance failure.", CONFLICT: "The latest persisted references conflict.", OUTCOME_UNAVAILABLE: "Central PMS lacks a usable conclusive persisted outcome.", MANUAL_REVIEW: "The persisted workflow state requires manual review.", EXCEPTION_RELEASED: "The persisted exception was released; success is not inferred.", OTHER: "A future or unsupported source state remains visible." } as const)[value]; }

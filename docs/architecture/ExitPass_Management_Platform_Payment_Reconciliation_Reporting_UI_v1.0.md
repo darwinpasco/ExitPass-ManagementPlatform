@@ -23,14 +23,14 @@ Changing scope aborts the previous request and increments a latest-request seque
 The page displays:
 
 - selected and effective scope, requested UTC period, generated time, data-as-of time, source, availability, freshness, and support reference;
-- separate ISO-currency summaries for attempts, attempted amounts, confirmed payments, and confirmed payment amounts;
+- PHP summaries for attempts, attempted amounts, confirmed payments, and confirmed payment amounts;
 - separate payment-attempt and confirmed-payment statuses, including `OTHER` or `UNKNOWN`;
 - canonical channel summaries that preserve digital and cash distinctions;
 - provider summaries only when returned by Central PMS;
-- five stable internal reconciliation categories with definitions, currency-separated amounts, monetary treatment, and limitations;
+- five stable internal reconciliation categories with definitions, PHP amounts, monetary treatment, and limitations;
 - backend warnings and limitations in visible panels.
 
-The browser does not recompute financial totals or combine currencies. JSON decimal values are used only for display. Confirmed values are not labeled settled, deposited, paid out, net proceeds, cash custody, or revenue.
+The browser does not recompute financial totals. PHP JSON decimal values are used only for display and are formatted with the peso sign. Confirmed values are not labeled settled, deposited, paid out, net proceeds, cash custody, or revenue.
 
 An available empty result says no payment activity was recorded. A zero-finding message is unconditional only when the report and every reconciliation category are available. Partial coverage produces a qualified message and never an all-clear statement.
 
@@ -38,7 +38,7 @@ An available empty result says no payment activity was recorded. A zero-finding 
 
 `AVAILABLE`, `PARTIAL`, `UNAVAILABLE`, and `NOT_APPLICABLE` remain distinct from freshness. Disabled, authentication-required, permission-denied, concealed scope, source-unavailable, invalid request, malformed response, network, and unexpected failures have controlled messages. A retry is user initiated and only offered for retryable reads. A failed refresh may retain the prior report with its original timestamps and an explicit previously-loaded label.
 
-The dedicated client validates JSON content type, contract and report IDs, UTC timestamps, UUID-shaped references, scope and period binding, classifications, arrays, counts, currencies, money values, and reconciliation category IDs. Empty, malformed, wrong-content-type, unsupported, or mismatched responses fail closed.
+The dedicated client validates JSON content type, contract and report IDs, UTC timestamps, UUID-shaped references, scope and period binding, classifications, arrays, counts, PHP currency, money values, and reconciliation category IDs. Empty, malformed, wrong-content-type, unsupported, non-PHP, or mismatched responses fail closed.
 
 ## Security boundary
 

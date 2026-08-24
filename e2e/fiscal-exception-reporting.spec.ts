@@ -3,7 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 const reportRoute = "/management-platform/reports/fiscal-exceptions?mpScenario=authenticated&mpFiscalScenario=";
 
 test.describe("Sales Invoice exception reporting", () => {
-  test("navigates to a partial SITE report with lifecycle, currencies, and findings", async ({ page }) => {
+  test("navigates to a partial PHP-only SITE report with lifecycle and findings", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 1000 });
     await page.goto(`${reportRoute}partial`);
     await expect(page).toHaveTitle("Sales Invoice Exceptions - ExitPass Management Platform");
@@ -12,7 +12,7 @@ test.describe("Sales Invoice exception reporting", () => {
     await expect(page.getByLabel("Report status").getByText("Availability: Partial")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sales Invoice issuance lifecycle" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "PHP" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "USD" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "USD" })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Sales Invoice issuance failed" })).toBeVisible();
     await expect(page.getByText(/does not query Site POS Servers live/i)).toBeVisible();
     await assertNoOverflow(page);

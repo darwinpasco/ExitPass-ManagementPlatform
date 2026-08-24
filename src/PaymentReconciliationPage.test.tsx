@@ -18,14 +18,14 @@ function clientFor(name: Parameters<typeof paymentReconciliationFixture>[2] = "c
 }
 
 describe("PaymentReconciliationPage", () => {
-  it("renders currency-separated attempts and confirmed payments without a mixed-currency total", async () => {
+  it("renders PHP attempts and confirmed payments with peso formatting", async () => {
     renderPage(clientFor());
     expect(await screen.findByRole("heading", { name: "PHP" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "USD" })).toBeInTheDocument();
-    expect(screen.getAllByText("Payment attempts")).toHaveLength(2);
-    expect(screen.getAllByText("Confirmed payment amount")).toHaveLength(2);
-    expect(screen.queryByText(/grand total/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Currencies are never combined/i)).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "USD" })).not.toBeInTheDocument();
+    expect(screen.getByText("Payment attempts")).toBeInTheDocument();
+    expect(screen.getByText("Confirmed payment amount")).toBeInTheDocument();
+    expect(screen.getByText(/All amounts are reported in PHP/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/^₱/).length).toBeGreaterThan(0);
   });
 
   it("renders attempt and confirmation statuses separately and preserves OTHER", async () => {
