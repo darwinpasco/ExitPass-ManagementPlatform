@@ -36,15 +36,23 @@ describe("payment reconciliation reporting contract", () => {
     expect(validatePaymentReportingPeriod({ periodStart: period.periodStart, periodEnd: "2026-09-02T00:00:00Z" })).toMatchObject({ valid: false, code: "PAYMENT_RECONCILIATION_PERIOD_TOO_LONG" });
   });
 
-  it("parses the stable contract with separate currencies, statuses, channels, providers, and findings", () => {
+  it("parses the stable PHP-only contract with statuses, channels, providers, and findings", () => {
     const result = parsePaymentReconciliationReport(paymentReconciliationFixture(site, period));
     expect(result.contractVersion).toBe(paymentReconciliationContractVersion);
-    expect(result.currencySummaries.map((row) => row.currencyCode)).toEqual(["PHP", "USD"]);
+    expect(result.currencySummaries.map((row) => row.currencyCode)).toEqual(["PHP"]);
     expect(result.paymentAttemptSummaries[0].status).toBe("PENDING");
     expect(result.confirmedPaymentSummaries[0].status).toBe("RECORDED");
     expect(result.paymentAttemptSummaries[1].status).toBe("OTHER");
     expect(result.channelSummaries.map((row) => row.channelType)).toEqual(["DIGITAL", "CASH"]);
     expect(result.internalReconciliationSummaries).toHaveLength(5);
+  });
+
+  it("fails closed when a response contains a non-PHP currency", () => {
+    const fixture = paymentReconciliationFixture(site, period);
+    expect(() => parsePaymentReconciliationReport({
+      ...fixture,
+      currencySummaries: [{ ...fixture.currencySummaries[0], currencyCode: "USD" }]
+    })).toThrow(/unsupported currency/i);
   });
 
   it.each([

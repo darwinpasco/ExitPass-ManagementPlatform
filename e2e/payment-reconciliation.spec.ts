@@ -3,16 +3,16 @@ import { expect, test, type Page } from "@playwright/test";
 const reportRoute = "/management-platform/reports/payment-reconciliation?mpScenario=authenticated&mpPaymentScenario=";
 
 test.describe("Payment and Reconciliation reporting", () => {
-  test("navigates to a currency-separated SITE report with internal findings", async ({ page }) => {
+  test("navigates to a PHP-only SITE report with internal findings", async ({ page }) => {
     await page.goto(`${reportRoute}current&mpIdentityScenario=populated`);
     await expect(page).toHaveTitle("Payment and Reconciliation - ExitPass Management Platform");
     await expect(page.getByRole("heading", { name: "Payment and Reconciliation" })).toBeVisible();
     await expect(page.getByLabel("Reporting scope")).toHaveValue(/^SITE:/);
     await expect(page.getByRole("heading", { name: "PHP" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "USD" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "USD" })).toHaveCount(0);
     await expect(page.getByText("Confirmed payment amount").first()).toBeVisible();
     await expect(page.getByRole("heading", { name: "Amount mismatch" })).toBeVisible();
-    await expect(page.getByText(/Currencies are never combined/)).toBeVisible();
+    await expect(page.getByText(/All amounts are reported in PHP/)).toBeVisible();
     await expect(page.getByText(/does not prove settlement/).first()).toBeVisible();
     await assertNoOverflow(page);
   });

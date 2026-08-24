@@ -304,7 +304,7 @@ function text(value: unknown, field: string): string {
 function stringArray(value: unknown, field: string): string[] { return array(value, field).map((entry) => text(entry, field)); }
 function count(value: unknown): number { if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw malformed("PAYMENT_REPORT_COUNT_INVALID", "The payment report contains an invalid count."); return value; }
 function money(value: unknown): number { if (typeof value !== "number" || !Number.isFinite(value)) throw malformed("PAYMENT_REPORT_AMOUNT_INVALID", "The payment report contains an invalid amount."); return value; }
-function currency(value: unknown): string { const result = text(value, "currencyCode").toUpperCase(); if (!/^[A-Z]{3}$/.test(result)) throw malformed("PAYMENT_REPORT_CURRENCY_INVALID", "The payment report contains an invalid currency."); return result; }
+function currency(value: unknown): string { const result = text(value, "currencyCode").toUpperCase(); if (result !== "PHP") throw malformed("PAYMENT_REPORT_CURRENCY_INVALID", "The payment report contains an unsupported currency."); return result; }
 function uuid(value: unknown, field: string): string { const result = text(value, field); if (!isUuid(result)) throw malformed("PAYMENT_REPORT_REFERENCE_INVALID", `The payment report ${field} is malformed.`); return result; }
 function isUuid(value: string): boolean { return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value); }
 function parseUtcInstant(value: string): number | undefined { if (!/(Z|\+00:00)$/i.test(value)) return undefined; const parsed = Date.parse(value); return Number.isFinite(parsed) ? parsed : undefined; }
@@ -342,8 +342,7 @@ export function paymentReconciliationFixture(scope: Pick<DashboardScope, "scopeT
   const unavailable = name === "unavailable";
   const displayName = scope.scopeType === "SITE" ? "Development Site Alpha" : "Development Site Group";
   const values = unavailable || noActivity ? [] : [
-    { currencyCode: "PHP", attemptCount: 18, attemptedAmount: 12500.75, confirmedCount: 14, confirmedAmount: 9700.25 },
-    { currencyCode: "USD", attemptCount: 3, attemptedAmount: 42.5, confirmedCount: 2, confirmedAmount: 30 }
+    { currencyCode: "PHP", attemptCount: 21, attemptedAmount: 12543.25, confirmedCount: 16, confirmedAmount: 9730.25 }
   ];
   return {
     contractVersion: paymentReconciliationContractVersion,
@@ -358,7 +357,7 @@ export function paymentReconciliationFixture(scope: Pick<DashboardScope, "scopeT
     freshness: unavailable ? "UNAVAILABLE" : noActivity ? "NOT_APPLICABLE" : partial ? "PARTIAL" : "CURRENT",
     correlationId: "94000000-0000-4000-8000-000000000400",
     currencySummaries: values,
-    paymentAttemptSummaries: values.length ? [{ status: "PENDING", currencyCode: "PHP", count: 4, amount: 2800.5 }, { status: "OTHER", currencyCode: "USD", count: 1, amount: 12.5 }] : [],
+    paymentAttemptSummaries: values.length ? [{ status: "PENDING", currencyCode: "PHP", count: 4, amount: 2800.5 }, { status: "OTHER", currencyCode: "PHP", count: 1, amount: 12.5 }] : [],
     confirmedPaymentSummaries: values.length ? [{ status: "RECORDED", currencyCode: "PHP", count: 14, amount: 9700.25 }] : [],
     canonicalStatusSummaries: values.length ? [{ recordType: "PAYMENT_ATTEMPT", status: "PENDING", currencyCode: "PHP", count: 4, amount: 2800.5 }] : [],
     channelSummaries: values.length ? [{ channelCode: "WEBPAY", channelType: "DIGITAL", currencyCode: "PHP", attemptCount: 12, attemptedAmount: 9000.25, confirmedCount: 10, confirmedAmount: 7600.25 }, { channelCode: "APT_CASH", channelType: "CASH", currencyCode: "PHP", attemptCount: 6, attemptedAmount: 3500.5, confirmedCount: 4, confirmedAmount: 2100 }] : [],
@@ -372,5 +371,5 @@ export function paymentReconciliationFixture(scope: Pick<DashboardScope, "scopeT
 
 function reconciliationFixture(empty: boolean): InternalReconciliationSummary[] {
   const categories = [...reconciliationCategories];
-  return categories.map((categoryId, index) => ({ categoryId, availability: "AVAILABLE", count: empty ? 0 : index, amounts: index === 0 && !empty ? [{ currencyCode: "PHP", amount: 15.25 }] : [], definition: `Authoritative definition for ${categoryId}.`, monetaryTreatment: "Amounts remain separated by currency.", limitations: [] }));
+  return categories.map((categoryId, index) => ({ categoryId, availability: "AVAILABLE", count: empty ? 0 : index, amounts: index === 0 && !empty ? [{ currencyCode: "PHP", amount: 15.25 }] : [], definition: `Authoritative definition for ${categoryId}.`, monetaryTreatment: "Amounts are reported in PHP.", limitations: [] }));
 }

@@ -43,13 +43,13 @@ describe("fiscal exception reporting contract", () => {
     expect(defaultFiscalReportingPeriod(new Date("2026-08-23T03:00:42.321Z"))).toEqual({ periodStart: "2026-08-22T03:00:00Z", periodEnd: "2026-08-23T03:00:00Z" });
   });
 
-  it("parses the stable contract, time basis, lifecycle states, exceptions, and separated currencies", () => {
+  it("parses the stable PHP-only contract, time basis, lifecycle states, and exceptions", () => {
     const report = parseFiscalExceptionReport(fiscalExceptionFixture(site, period));
     expect(report.contractVersion).toBe(fiscalExceptionContractVersion);
     expect(report.timeBasis).toBe(fiscalExceptionTimeBasis);
     expect(report.lifecycleSummaries.map((row) => row.lifecycleState)).toEqual(["NOT_REQUIRED", "PENDING", "REQUESTED", "ISSUED", "FAILED", "CONFLICT", "OUTCOME_UNAVAILABLE", "MANUAL_REVIEW", "EXCEPTION_RELEASED", "OTHER"]);
     expect(report.exceptionSummaries.map((row) => row.categoryId)).toEqual(["SALES_INVOICE_ISSUANCE_FAILED", "SALES_INVOICE_REFERENCE_CONFLICT", "SALES_INVOICE_OUTCOME_UNAVAILABLE"]);
-    expect(report.currencySummaries.map((row) => row.currencyCode)).toEqual(["PHP", "USD"]);
+    expect(report.currencySummaries.map((row) => row.currencyCode)).toEqual(["PHP"]);
   });
 
   it.each([
@@ -64,7 +64,7 @@ describe("fiscal exception reporting contract", () => {
     expect(() => parseFiscalExceptionReport({ ...fixture, freshness: "STALE" })).toThrow(/freshness/i);
     expect(() => parseFiscalExceptionReport({ ...fixture, lifecycleSummaries: [{ lifecycleState: "FUTURE", count: 1 }] })).toThrow(/lifecycle/i);
     expect(() => parseFiscalExceptionReport({ ...fixture, exceptionSummaries: [{ ...fixture.exceptionSummaries[0], categoryId: "UNKNOWN_CATEGORY" }] })).toThrow(/category/i);
-    expect(() => parseFiscalExceptionReport({ ...fixture, currencySummaries: [{ ...fixture.currencySummaries[0], currencyCode: "PESO" }] })).toThrow(/currency/i);
+    expect(() => parseFiscalExceptionReport({ ...fixture, currencySummaries: [{ ...fixture.currencySummaries[0], currencyCode: "USD" }] })).toThrow(/unsupported currency/i);
     expect(() => parseFiscalExceptionReport({ ...fixture, currencySummaries: [{ ...fixture.currencySummaries[0], expectedIssuanceAmount: "12.00" }] })).toThrow(/amount/i);
   });
 

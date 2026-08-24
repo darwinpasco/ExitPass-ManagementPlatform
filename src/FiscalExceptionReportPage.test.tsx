@@ -37,13 +37,13 @@ describe("FiscalExceptionReportPage", () => {
     expect(screen.getByText(/Pending issuance references aren’t classified as exceptions/i)).toBeVisible();
   });
 
-  it("renders currency-separated expected amounts without a mixed-currency total", async () => {
+  it("renders PHP expected amounts with peso formatting", async () => {
     renderPage(clientFor());
     expect(await screen.findByRole("heading", { name: "PHP" })).toBeVisible();
-    expect(screen.getByRole("heading", { name: "USD" })).toBeVisible();
-    expect(screen.getAllByText("Expected issuance amount")).toHaveLength(2);
-    expect(screen.queryByText(/grand total/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Currencies are never combined or converted/i)).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "USD" })).not.toBeInTheDocument();
+    expect(screen.getByText("Expected issuance amount")).toBeVisible();
+    expect(screen.getByText(/reported in PHP/i)).toBeVisible();
+    expect(screen.getAllByText(/^₱/).length).toBeGreaterThan(0);
   });
 
   it("renders every implemented exception category and affected expected amounts", async () => {

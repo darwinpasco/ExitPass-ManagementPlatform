@@ -315,7 +315,7 @@ function stringArray(value: unknown, field: string): string[] { return array(val
 function boolean(value: unknown, field: string): boolean { if (typeof value !== "boolean") throw malformed("FISCAL_REPORT_RESPONSE_MALFORMED", `The fiscal exception report ${field} is malformed.`); return value; }
 function count(value: unknown): number { if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw malformed("FISCAL_REPORT_COUNT_INVALID", "The fiscal exception report contains an invalid count."); return value; }
 function money(value: unknown): number { if (typeof value !== "number" || !Number.isFinite(value)) throw malformed("FISCAL_REPORT_AMOUNT_INVALID", "The fiscal exception report contains an invalid amount."); return value; }
-function currency(value: unknown): string { const result = text(value, "currencyCode").toUpperCase(); if (!/^[A-Z]{3}$/.test(result)) throw malformed("FISCAL_REPORT_CURRENCY_INVALID", "The fiscal exception report contains an invalid currency."); return result; }
+function currency(value: unknown): string { const result = text(value, "currencyCode").toUpperCase(); if (result !== "PHP") throw malformed("FISCAL_REPORT_CURRENCY_INVALID", "The fiscal exception report contains an unsupported currency."); return result; }
 function uuid(value: unknown, field: string): string { const result = text(value, field); if (!isUuid(result)) throw malformed("FISCAL_REPORT_REFERENCE_INVALID", `The fiscal exception report ${field} is malformed.`); return result; }
 function isUuid(value: string): boolean { return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(value); }
 function parseUtcInstant(value: string): number | undefined { if (!/(Z|\+00:00)$/i.test(value)) return undefined; const parsed = Date.parse(value); return Number.isFinite(parsed) ? parsed : undefined; }
@@ -379,8 +379,7 @@ export function fiscalExceptionFixture(
     lifecycleSummaries: noActivity ? [] : lifecycles.map((lifecycleState, index) => ({ lifecycleState, count: index + 1 })),
     exceptionSummaries: noActivity ? exceptionFixture(true) : exceptionFixture(false),
     currencySummaries: noActivity ? [] : [
-      { currencyCode: "PHP", issuanceExpectationCount: 18, expectedIssuanceAmount: 12500.75, issuedCount: 8, failedCount: 3 },
-      { currencyCode: "USD", issuanceExpectationCount: 3, expectedIssuanceAmount: 42.5, issuedCount: 1, failedCount: 1 }
+      { currencyCode: "PHP", issuanceExpectationCount: 21, expectedIssuanceAmount: 12543.25, issuedCount: 9, failedCount: 4 }
     ],
     warnings: noActivity ? ["NO_SALES_INVOICE_ISSUANCE_ACTIVITY_IN_PERIOD"] : [],
     limitations: ["Current lifecycle state is evaluated when the report is generated and can change after this response.", "The report does not query a Site POS Server and does not certify BIR compliance."],
@@ -395,5 +394,5 @@ function exceptionFixture(empty: boolean): FiscalExceptionSummary[] {
     ["SALES_INVOICE_REFERENCE_CONFLICT", "The latest Central PMS state records an issuance reference conflict."],
     ["SALES_INVOICE_OUTCOME_UNAVAILABLE", "Central PMS does not hold a conclusive latest issuance outcome."]
   ];
-  return definitions.map(([categoryId, definition], index) => ({ categoryId, availability: "AVAILABLE", count: empty ? 0 : index + 1, affectedExpectedAmounts: empty ? [] : [{ currencyCode: index === 2 ? "USD" : "PHP", amount: index + 15.25 }], definition, terminal: false, canResolveLater: true, limitations: ["A later persisted outcome can change this result."] }));
+  return definitions.map(([categoryId, definition], index) => ({ categoryId, availability: "AVAILABLE", count: empty ? 0 : index + 1, affectedExpectedAmounts: empty ? [] : [{ currencyCode: "PHP", amount: index + 15.25 }], definition, terminal: false, canResolveLater: true, limitations: ["A later persisted outcome can change this result."] }));
 }
