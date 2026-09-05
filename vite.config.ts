@@ -2,7 +2,7 @@ import { loadEnv, type UserConfig } from "vite";
 import { configDefaults, defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 
-export const defaultApiProxyTarget = "http://127.0.0.1:8080";
+export const defaultApiProxyTarget = "http://127.0.0.1:56065";
 const defaultDevPort = Number(process.env.MANAGEMENT_PLATFORM_DEV_PORT ?? 5178);
 
 export function resolveApiProxyTarget(value?: string): string {

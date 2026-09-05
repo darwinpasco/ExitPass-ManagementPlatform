@@ -9,12 +9,14 @@ import {
 } from "./vite.config";
 
 describe("Management Platform Vite proxy configuration", () => {
-  it("defaults relative API requests to Central PMS on port 8080", () => {
+  it("defaults relative API requests to the local .NET Central PMS", () => {
     const config = createManagementPlatformViteConfig();
 
-    expect(defaultApiProxyTarget).toBe("http://127.0.0.1:8080");
+    expect(defaultApiProxyTarget).toBe("http://127.0.0.1:56065");
+    expect(config.base).toBe("/management-platform/");
+    expect(config.server?.port).toBe(5178);
     expect(config.server?.proxy?.["/v1"]).toMatchObject({
-      target: "http://127.0.0.1:8080",
+      target: "http://127.0.0.1:56065",
       changeOrigin: true
     });
   });
