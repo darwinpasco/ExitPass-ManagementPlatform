@@ -25,7 +25,7 @@ Related products remain separate: Operator Console performs operational workflow
 ## Setup
 
 ```powershell
-cd D:\SourceCodes\ExitPass-H-StatutoryRbacReadOnly
+cd D:\SourceCodes\ExitPass-ManagementPlatform
 npm.cmd ci
 ```
 
@@ -33,7 +33,7 @@ npm.cmd ci
 
 Use `.env.example` as the placeholder template. Runtime browser calls use a relative Central PMS base path, defaulting to `/v1/management-platform`. Local Vite proxying is configured with `VITE_MANAGEMENT_PLATFORM_API_PROXY_TARGET` and defaults to a local Central PMS instance.
 
-The local proxy target defaults to `http://127.0.0.1:8080`. An explicit override must be an absolute HTTP(S) origin without credentials, a path, query parameters, or a fragment. Vite reports the selected target during local startup and rejects malformed values before serving the application.
+The local proxy target defaults to the local .NET Central PMS at `http://127.0.0.1:56065`. An explicit override must be an absolute HTTP(S) origin without credentials, a path, query parameters, or a fragment. Vite reports the selected target during local startup and rejects malformed values before serving the application. Docker Compose retains its separate 808x topology.
 
 Production must supply an authenticated Central PMS principal through the hosting integration. The local development principal is for local UI fixtures only and must not be treated as authoritative.
 
@@ -41,9 +41,7 @@ Production must supply an authenticated Central PMS principal through the hostin
 
 ```powershell
 cd D:\SourceCodes\ExitPass-ManagementPlatform
-$env:MANAGEMENT_PLATFORM_DEV_PORT = "5178"
-$env:VITE_MANAGEMENT_PLATFORM_API_PROXY_TARGET = "http://127.0.0.1:8080"
-npm.cmd run dev
+powershell -ExecutionPolicy Bypass -File .\scripts\Start-ManagementPlatformLocal.ps1
 ```
 
 Open `http://127.0.0.1:5178/management-platform/`.
