@@ -12,19 +12,21 @@ describe("Management Platform Vite proxy configuration", () => {
   it("defaults relative API requests to the local .NET Central PMS", () => {
     const config = createManagementPlatformViteConfig();
 
-    expect(defaultApiProxyTarget).toBe("http://127.0.0.1:56065");
+    expect(defaultApiProxyTarget).toBe("https://localhost:56064");
     expect(config.base).toBe("/management-platform/");
     expect(config.server?.port).toBe(5178);
     expect(config.server?.proxy?.["/v1"]).toMatchObject({
-      target: "http://127.0.0.1:56065",
-      changeOrigin: true
+      target: "https://localhost:56064",
+      changeOrigin: true,
+      secure: false
     });
   });
 
   it("uses an explicit safe proxy origin override", () => {
     expect(resolveApiProxyTarget(" https://central-pms.local:8443 ")).toBe("https://central-pms.local:8443");
     expect(createManagementPlatformViteConfig("https://central-pms.local:8443").server?.proxy?.["/v1"]).toMatchObject({
-      target: "https://central-pms.local:8443"
+      target: "https://central-pms.local:8443",
+      secure: true
     });
   });
 
