@@ -2,6 +2,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App, FeatureUnavailable, MutationUncertainMessage, PageError } from "./App";
+import { ManagementPlatformTestHarness } from "./test/ManagementPlatformTestHarness";
 import { fiscalExceptionReportingPermission, identityAdministrationPresentationPermissions, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementPlatformOverviewPermission, managementReportCatalogPermission, paymentReconciliationPermission, futureSalesInvoiceProfilePermissions, hasAllPermissions, hasAnyPermission, hasPermission, statutoryBenefitReviewPermissions, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import { paymentReconciliationFixture, type PaymentReconciliationReportingClient } from "./paymentReconciliationReporting";
 import { fiscalExceptionFixture, type FiscalExceptionReportingClient } from "./fiscalExceptionReporting";
@@ -292,7 +293,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
   it("authenticated scenario keeps Dashboard accessible with one authorized Site", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=authenticated");
 
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("authenticated");
     expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
@@ -303,7 +304,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
   it("unauthenticated scenario shows authentication-required posture without protected Dashboard", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=unauthenticated");
 
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("unauthenticated");
     expect(screen.getByRole("status", { name: "Authentication required" })).toBeInTheDocument();
@@ -313,7 +314,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
   it("permission-denied scenario remains authenticated and shows no authorized modules", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=permission-denied");
 
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("permission-denied");
     expect(screen.getByText("Development Permission Denied User")).toBeInTheDocument();
@@ -324,7 +325,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
   it("multi-site scenario exposes non-production Sites and updates current Site context", async () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=multi-site");
 
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
 
     const selector = screen.getByLabelText("Current Site");
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("multi-site");
@@ -340,7 +341,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
   it("no-sites scenario renders safe no-authorized-Site posture", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=no-sites");
 
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("no-sites");
     expect(screen.getByRole("status", { name: "No authorized Sites" })).toBeInTheDocument();
@@ -350,7 +351,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
   it("unavailable scenario renders safe error with test correlation and no sensitive material", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=unavailable");
 
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("unavailable");
     expect(screen.getByRole("alert", { name: "Management Platform error" })).toHaveTextContent("dev-scenario-correlation-0001");
@@ -363,7 +364,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
   it("not-found scenario renders scoped Management Platform not-found posture", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=not-found");
 
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("not-found");
     expect(screen.getByRole("status", { name: "Management Platform route not found" })).toBeInTheDocument();
@@ -372,7 +373,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
   it("unknown scenario falls back safely to authenticated", () => {
     window.history.pushState({}, "", "/management-platform?mpScenario=unknown-value");
 
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
 
     expect(screen.getByRole("status", { name: "Development scenario" })).toHaveTextContent("authenticated");
     expect(screen.getByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
@@ -391,7 +392,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
   it("development RBAC scenario exposes Access Control without production authority", async () => {
     window.history.pushState({}, "", "/management-platform/access-control?mpScenario=authenticated&mpRbacScenario=populated");
 
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
 
     await waitFor(() => expect(screen.getByRole("heading", { name: "RBAC Inventory" })).toBeInTheDocument());
     expect(screen.getByRole("status", { name: "Development RBAC inventory scenario" })).toHaveTextContent("non-authoritative");
@@ -400,7 +401,7 @@ describe("ManagementPlatformUi development manual validation scenarios", () => {
 
   it("development identity scenario remains synthetic and non-production", async () => {
     window.history.pushState({}, "", "/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=populated");
-    render(<App />);
+    render(<ManagementPlatformTestHarness />);
     expect(await screen.findByRole("heading", { name: "User Administration" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Synthetic Administration User/ })).toBeInTheDocument();
     expect(identityAdministrationPresentationPermissions.length).toBeGreaterThan(0);

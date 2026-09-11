@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCentralPmsApiClient } from "./apiClient";
-import { createIdentityAdministrationClient, identityAdministrationApiRoute } from "./identityAdministration";
+import { createIdentityAdministrationClient, delegableScopesApiRoute, identityAdministrationApiRoute } from "./identityAdministration";
 
 describe("identity administration API client", () => {
   it("uses only the same-origin I-021 routes and shared unsafe-request composition", async () => {
@@ -30,6 +30,27 @@ describe("identity administration API client", () => {
     });
     const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl }));
     await expect(client.listUsers({ query: "alex", status: "ACTIVE", offset: 25, limit: 25 })).resolves.toEqual([]);
+  });
+
+  it("loads authoritative delegable scope metadata from the dedicated server route", async () => {
+    const payload = {
+      siteGroups: [{ siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }],
+      sites: [
+        { siteId: "2d1dcdf8-f563-537c-8542-0bde7cc9da97", siteCode: "PITX-LEVEL-3", siteName: "PITX Level 3", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null },
+        { siteId: "b336964f-3b84-5404-8690-97ead0929b1f", siteCode: "PITX-OPEN-LOT", siteName: "PITX Open Lot", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }
+      ]
+    };
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(delegableScopesApiRoute);
+      return json(payload);
+    });
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl }));
+    await expect(client.getDelegableScopes()).resolves.toEqual(payload);
+  });
+
+  it("rejects malformed delegable scope metadata instead of synthesizing labels", async () => {
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl: vi.fn(async () => json({ siteGroups: [{ siteGroupId: "unresolved" }], sites: [] })) }));
+    await expect(client.getDelegableScopes()).rejects.toMatchObject({ kind: "malformed-response", code: "IDENTITY_ADMIN_MALFORMED_RESPONSE" });
   });
 
   it.each([

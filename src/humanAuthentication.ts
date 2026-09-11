@@ -203,10 +203,9 @@ export function toManagementPlatformAuthState(session: HumanSessionDto): Managem
     throw new HumanAuthenticationError("permission-denied", "SESSION_AUDIENCE_MISMATCH", "This session is not available for the Management Platform.", 403);
   }
 
-  const authorizedSites: ManagementPlatformSite[] = session.siteReferences.map((siteReference, index) => ({
-    siteId: siteReference,
-    displayName: `Site scope ${index + 1}`
-  }));
+  // Session scope UUIDs are authorization facts, not presentation metadata. Site names
+  // must come from a dedicated authoritative Central PMS read model.
+  const authorizedSites: ManagementPlatformSite[] = [];
   const principal: ManagementPlatformPrincipal = {
     authenticated: true,
     subjectRef: session.userReference,

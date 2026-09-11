@@ -122,7 +122,8 @@ export function policyCoverageSiteGroups(sites: readonly ManagementPlatformSite[
   const groups = new Map<string, string>();
   for (const site of sites) {
     if (site.siteGroupId) {
-      groups.set(site.siteGroupId, site.siteGroupDisplayName?.trim() || "Authorized Site Group");
+      const displayName = site.siteGroupDisplayName?.trim();
+      if (displayName) groups.set(site.siteGroupId, displayName);
     }
   }
 

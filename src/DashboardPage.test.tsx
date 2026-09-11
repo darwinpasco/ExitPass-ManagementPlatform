@@ -23,11 +23,11 @@ describe("Management Dashboard page", () => {
     expect(client.getOperationalOverview).toHaveBeenCalledWith(expect.objectContaining({ scopeType: "SITE", scopeReference: siteB.siteId }), expect.any(AbortSignal));
   });
 
-  it("deduplicates authorized Site Groups and uses controlled labels", () => {
+  it("deduplicates authoritative Site Groups and fails closed without metadata", () => {
     expect(dashboardScopeOptions([siteA, siteB], [siteA.siteGroupId!, siteA.siteGroupId!]))
       .toContainEqual({ scopeType: "SITE_GROUP", scopeReference: siteA.siteGroupId, label: "Site Group: Metro North" });
     const unknown = dashboardScopeOptions([], ["71000000-0000-0000-0000-000000000901"]);
-    expect(unknown[0].label).toMatch(/^Site Group: Site Group \(reference ending /);
+    expect(unknown).toEqual([]);
   });
 
   it("does not request an overview when no explicit authorized scope exists", async () => {

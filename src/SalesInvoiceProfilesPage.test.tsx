@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { App } from "./App";
+import { ManagementPlatformTestHarness } from "./test/ManagementPlatformTestHarness";
 import { createUiError } from "./apiClient";
 import { futureSalesInvoiceProfilePermissions, managementPlatformOverviewPermission } from "./permissions";
 import { SalesInvoiceProfilesPage } from "./SalesInvoiceProfilesPage";
@@ -555,7 +556,7 @@ describe("Sales Invoice Profile Manage-only workflows", () => {
 
   it("development manage scenarios expose Manage permission only in development mode", async () => {
     window.history.pushState({}, "", `${salesInvoiceProfileReadRoute}?mpScenario=authenticated&mpProfileScenario=manage`);
-    const { unmount } = render(<App />);
+    const { unmount } = render(<ManagementPlatformTestHarness />);
     expect(screen.getByRole("status", { name: "Development profile scenario" })).toHaveTextContent("manage");
     expect(screen.getByRole("button", { name: "Create Registered Business" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "2026.01" })).toBeInTheDocument();

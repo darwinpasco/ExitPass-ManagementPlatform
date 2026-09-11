@@ -27,7 +27,7 @@ describe("Management Platform I-020 session shell", () => {
     expect(client.getCurrentSession).toHaveBeenCalledTimes(2);
     expect(screen.queryByLabelText("Verification code")).not.toBeInTheDocument();
     expect(screen.getByText("Ordinary Management User")).toBeInTheDocument();
-    expect(screen.getByText(/1 Site access grant; 1 Site Group access grant/)).toBeInTheDocument();
+    expect(screen.getByText(/0 Site access grants; 1 Site Group access grant/)).toBeInTheDocument();
   });
 
   it("shows TOTP only after the server requires it and accepts a privileged TOTP login", async () => {

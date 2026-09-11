@@ -231,7 +231,8 @@ export function dashboardScopeOptions(
     if (!reference || seen.has(reference)) return [];
     seen.add(reference);
     const metadata = sites.find((site) => site.siteGroupId === reference);
-    const label = metadata?.siteGroupDisplayName?.trim() || `Site Group (${safeReferenceLabel(reference)})`;
+    const label = metadata?.siteGroupDisplayName?.trim();
+    if (!label) return [];
     return [{ scopeType: "SITE_GROUP" as const, scopeReference: reference, label: `Site Group: ${label}` }];
   });
   return [...siteOptions, ...groupOptions];
@@ -354,11 +355,6 @@ function scopeKey(scope: Pick<DashboardScope, "scopeType" | "scopeReference">): 
 
 function scopeTypeLabel(value: DashboardScopeType): string {
   return value === "SITE" ? "Site" : "Site Group";
-}
-
-function safeReferenceLabel(reference: string): string {
-  const suffix = reference.replace(/[^a-zA-Z0-9]/g, "").slice(-8);
-  return suffix ? `reference ending ${suffix}` : "authorized reference";
 }
 
 function formatTimestamp(value: string): string {

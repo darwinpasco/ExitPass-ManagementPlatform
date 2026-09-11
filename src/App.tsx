@@ -84,15 +84,15 @@ export function App({
   authorizeUnsafeRequest,
   onLogout,
   logoutPending = false,
-  developmentScenariosEnabled = import.meta.env.DEV,
-  profileScenariosEnabled = import.meta.env.DEV,
-  rbacScenariosEnabled = import.meta.env.DEV,
-  policyCoverageScenariosEnabled = import.meta.env.DEV,
-  evidenceGovernanceScenariosEnabled = import.meta.env.DEV,
-  identityAdministrationScenariosEnabled = import.meta.env.DEV,
-  dashboardScenariosEnabled = import.meta.env.DEV,
-  paymentReconciliationScenariosEnabled = import.meta.env.DEV,
-  fiscalExceptionScenariosEnabled = import.meta.env.DEV
+  developmentScenariosEnabled = false,
+  profileScenariosEnabled = false,
+  rbacScenariosEnabled = false,
+  policyCoverageScenariosEnabled = false,
+  evidenceGovernanceScenariosEnabled = false,
+  identityAdministrationScenariosEnabled = false,
+  dashboardScenariosEnabled = false,
+  paymentReconciliationScenariosEnabled = false,
+  fiscalExceptionScenariosEnabled = false
 }: AppProps) {
   const resolvedConfig = useMemo(() => config ?? getManagementPlatformConfig(), [config]);
   const manualScenario = useMemo(
@@ -369,7 +369,7 @@ export function App({
 
 
   if (path === routes.identityAdministration) {
-    return <Shell {...shellProps}><IdentityAdministrationPage client={identityClient} permissions={principal.permissions} authorizedSites={principal.authorizedSites} authorizedSiteGroupReferences={principal.authorizedSiteGroupReferences ?? []} /></Shell>;
+    return <Shell {...shellProps}><IdentityAdministrationPage client={identityClient} permissions={principal.permissions} /></Shell>;
   }
 
   if (path === routes.paymentReconciliation) {

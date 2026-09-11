@@ -1,6 +1,7 @@
 param(
     [string]$E2ePort = $(if ($env:MANAGEMENT_PLATFORM_E2E_PORT) { $env:MANAGEMENT_PLATFORM_E2E_PORT } else { "5179" }),
     [string]$ProductionPort = $(if ($env:MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT) { $env:MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT } else { "5180" }),
+    [string]$NormalRuntimePort = $(if ($env:MANAGEMENT_PLATFORM_E2E_NORMAL_RUNTIME_PORT) { $env:MANAGEMENT_PLATFORM_E2E_NORMAL_RUNTIME_PORT } else { "5181" }),
     [string]$TestFile = "",
     [ValidateRange(1, 32)]
     [int]$Workers = 1,
@@ -14,6 +15,7 @@ $viteEntry = Join-Path $projectRoot "node_modules\vite\bin\vite.js"
 $permissionEnv = "management-platform.overview.read,dashboard.view,reports.view,reconciliation.view,sales-invoice-report.view,sales-invoice-profile.read,sales-invoice-profile.manage,sales-invoice-profile.approve,management-platform.identity-rbac.inventory.read"
 $startedProcesses = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
 $previousPermissions = $env:VITE_MANAGEMENT_PLATFORM_PERMISSIONS
+$previousTestHarness = $env:VITE_MANAGEMENT_PLATFORM_TEST_HARNESS
 
 function Assert-PortAvailable {
     param(
@@ -94,16 +96,21 @@ if (-not (Test-Path $viteEntry)) {
 try {
     Assert-PortAvailable ([int]$E2ePort) "Playwright E2E"
     Assert-PortAvailable ([int]$ProductionPort) "Production preview"
+    Assert-PortAvailable ([int]$NormalRuntimePort) "Normal development runtime"
 
     $env:MANAGEMENT_PLATFORM_E2E_PORT = $E2ePort
     $env:MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT = $ProductionPort
+    $env:MANAGEMENT_PLATFORM_E2E_NORMAL_RUNTIME_PORT = $NormalRuntimePort
     $env:VITE_MANAGEMENT_PLATFORM_PERMISSIONS = $permissionEnv
+    $env:VITE_MANAGEMENT_PLATFORM_TEST_HARNESS = "isolated-automated-test"
 
-    $devProcess = Start-ProjectViteProcess -Arguments @($viteEntry, "--host", "127.0.0.1", "--port", $E2ePort, "--strictPort")
+    $devProcess = Start-ProjectViteProcess -Arguments @($viteEntry, "--mode", "test-harness", "--host", "127.0.0.1", "--port", $E2ePort, "--strictPort")
     $previewProcess = Start-ProjectViteProcess -Arguments @($viteEntry, "preview", "--host", "127.0.0.1", "--port", $ProductionPort, "--strictPort")
+    $normalRuntimeProcess = Start-ProjectViteProcess -Arguments @($viteEntry, "--host", "127.0.0.1", "--port", $NormalRuntimePort, "--strictPort")
 
     Wait-ForServer "http://127.0.0.1:$E2ePort/management-platform/" $devProcess
     Wait-ForServer "http://127.0.0.1:$ProductionPort/management-platform/" $previewProcess
+    Wait-ForServer "http://127.0.0.1:$NormalRuntimePort/management-platform/" $normalRuntimeProcess
 
     $playwrightArguments = @("playwright", "test")
     if ($TestFile) {
@@ -133,4 +140,5 @@ try {
 } finally {
     Stop-StartedProcesses
     $env:VITE_MANAGEMENT_PLATFORM_PERMISSIONS = $previousPermissions
+    $env:VITE_MANAGEMENT_PLATFORM_TEST_HARNESS = $previousTestHarness
 }

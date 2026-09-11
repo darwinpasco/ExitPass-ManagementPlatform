@@ -25,7 +25,8 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
     await expect(page.getByLabel("Verification code")).toHaveCount(0);
     await expect(page.getByText("Ordinary Management User", { exact: true })).toBeVisible();
-    await expect(page.getByText(/1 Site access grant; 1 Site Group access grant/).first()).toBeVisible();
+    await expect(page.getByText(/0 Site access grants; 1 Site Group access grant/).first()).toBeVisible();
+    await expect(page.getByText(/Authorized Site Group \d+|Site scope \d+/i)).toHaveCount(0);
 
     await page.reload();
     await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
@@ -91,7 +92,8 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     await expect(page.getByRole("heading", { name: "Sign in" })).toHaveCount(0);
 
     fixture.protectedStatus = 401;
-    await page.reload();
+    fixture.dashboardCatalogStatus = 401;
+    await page.goto("/management-platform/overview");
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
     await expect(page.getByRole("alert")).toContainText("expired or was revoked");
     await expect(page.getByRole("button", { name: "Create" })).toHaveCount(0);
@@ -120,6 +122,20 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
       await expect(productionPage.getByText("Management Platform User", { exact: true })).toHaveCount(0);
     } finally {
       await productionPage.close();
+    }
+  });
+
+  test("normal development ignores arbitrary scenario query parameters", async ({ browser }) => {
+    const normalRuntimePort = Number(process.env.MANAGEMENT_PLATFORM_E2E_NORMAL_RUNTIME_PORT ?? 5181);
+    const normalPage = await browser.newPage();
+    try {
+      await installAuthenticationFixture(normalPage);
+      await normalPage.goto("http://127.0.0.1:" + normalRuntimePort + "/management-platform/?mpScenario=authenticated&mpIdentityScenario=populated&mpDashboardScenario=current");
+      await expect(normalPage.getByRole("heading", { name: "Sign in" })).toBeVisible();
+      await expect(normalPage.getByRole("status", { name: "Development scenario" })).toHaveCount(0);
+      await expect(normalPage.getByRole("heading", { name: "User Administration" })).toHaveCount(0);
+    } finally {
+      await normalPage.close();
     }
   });
 
@@ -159,14 +175,19 @@ interface AuthenticationFixture {
   sessionReads: number;
   logoutHeaders?: Record<string, string>;
   protectedStatus: 401 | 403;
+  dashboardCatalogStatus: 200 | 401 | 403;
   sessionMode: "normal" | "unavailable" | "malformed" | "expired" | "revoked";
 }
 
 async function installAuthenticationFixture(page: Page): Promise<AuthenticationFixture> {
-  const fixture: AuthenticationFixture = { sessionReads: 0, protectedStatus: 403, sessionMode: "normal" };
+  const fixture: AuthenticationFixture = { sessionReads: 0, protectedStatus: 403, dashboardCatalogStatus: 200, sessionMode: "normal" };
   let currentSession: Record<string, unknown> | undefined;
 
   await page.route("**/v1/management-platform/dashboard/catalog", async (route) => {
+    if (fixture.dashboardCatalogStatus !== 200) {
+      await safeJson(route, fixture.dashboardCatalogStatus, { errorCode: fixture.dashboardCatalogStatus === 401 ? "SESSION_REVOKED" : "SCOPE_DENIED" });
+      return;
+    }
     await safeJson(route, 200, dashboardCatalog());
   });
   await page.route("**/v1/management-platform/dashboard/operational-overview?**", async (route) => {

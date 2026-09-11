@@ -38,9 +38,19 @@ test.describe("governed User Administration", () => {
     await expect(page.getByLabel(/password|totp|seed|provisioning/i)).toHaveCount(0);
     await expect(page.getByText(/Account setup and invitation delivery are handled separately/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Add User" }).last()).toBeDisabled();
+    await expect(page.getByLabel("Assigned Site").getByRole("option", { name: "PITX Level 3", exact: true })).toBeAttached();
+    await expect(page.getByLabel("Assigned Site").getByRole("option", { name: "PITX Open Lot", exact: true })).toBeAttached();
+    await expect(page.getByLabel("Assigned Site").getByRole("option", { name: /Test Site|SAMPLE-METRO|Mactan Newtown/i })).toHaveCount(0);
+    await expect(page.getByText(/Authorized Site Group \d+|Site scope \d+/i)).toHaveCount(0);
+
+    await page.getByLabel("Site access level").selectOption("SITE_GROUP");
+    await expect(page.getByLabel("Assigned Site Group").getByRole("option", { name: "PITX", exact: true })).toBeAttached();
+    await expect(page.getByLabel("Assigned Site Group").getByRole("option", { name: /SAMPLE-METRO|Mactan Newtown/i })).toHaveCount(0);
+
+    await page.getByLabel("Site access level").selectOption("SITE");
     await page.getByLabel("User type").selectOption("SITE_OPERATOR");
     await page.getByLabel("Initial role").selectOption({ label: "Site Operator" });
-    await page.getByLabel("Assigned Site").selectOption({ index: 1 });
+    await page.getByLabel("Assigned Site").selectOption("2d1dcdf8-f563-537c-8542-0bde7cc9da97");
     await expect(page.getByRole("button", { name: "Add User" }).last()).toBeEnabled();
   });
 
