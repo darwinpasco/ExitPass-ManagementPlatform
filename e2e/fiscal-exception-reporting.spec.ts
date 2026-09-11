@@ -19,15 +19,12 @@ test.describe("Sales Invoice exception reporting", () => {
     await captureReviewScreenshot(page, "fiscal-partial-desktop-1440.png");
   });
 
-  test("uses explicit Site Group scope and half-open UTC controls", async ({ page }) => {
+  test("fails closed when Site Group metadata is unavailable", async ({ page }) => {
     await page.goto("/management-platform/reports/fiscal-exceptions?mpScenario=no-sites&mpDashboardScenario=site-group&mpFiscalScenario=site-group");
-    await expect(page.getByLabel("Reporting scope")).toHaveValue(/^SITE_GROUP:/);
+    await expect(page.getByRole("combobox", { name: /Reporting scope/ })).toHaveValue("");
     await expect(page.locator('option[value^="GLOBAL"]')).toHaveCount(0);
-    await page.getByLabel("Period start (UTC)").fill("2026-08-20T00:00");
-    await page.getByLabel("Period end (UTC)").fill("2026-08-21T00:00");
-    await page.getByRole("button", { name: "Refresh report" }).click();
-    await expect(page.getByText(/Aug 20, 2026/)).toBeVisible();
-    await expect(page.getByText(/end excluded/)).toBeVisible();
+    await expect(page.getByRole("status", { name: "No authorized reporting scope" })).toBeVisible();
+    await expect(page.getByText(/Development Site Group|Authorized Site Group \d+/)).toHaveCount(0);
   });
 
   test("distinguishes no activity, unavailable source, and disabled feature", async ({ page }) => {

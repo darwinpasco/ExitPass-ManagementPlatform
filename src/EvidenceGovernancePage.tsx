@@ -450,7 +450,8 @@ function authorizedSiteGroups(sites: readonly ManagementPlatformSite[]): Array<{
   const groups = new Map<string, string>();
   for (const site of sites) {
     if (site.siteGroupId) {
-      groups.set(site.siteGroupId, site.siteGroupDisplayName?.trim() || "Authorized Site Group");
+      const displayName = site.siteGroupDisplayName?.trim();
+      if (displayName) groups.set(site.siteGroupId, displayName);
     }
   }
   return Array.from(groups, ([siteGroupId, displayName]) => ({ siteGroupId, displayName })).sort((a, b) => a.displayName.localeCompare(b.displayName));

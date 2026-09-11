@@ -256,6 +256,9 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
         policyCoverageScenariosEnabled={false}
         evidenceGovernanceScenariosEnabled={false}
         identityAdministrationScenariosEnabled={false}
+        dashboardScenariosEnabled={false}
+        paymentReconciliationScenariosEnabled={false}
+        fiscalExceptionScenariosEnabled={false}
         onAuthenticationRequired={authenticationLost}
         onAuthenticatedActivity={authenticatedActivity}
         authorizeUnsafeRequest={client.authorizeUnsafeRequest}

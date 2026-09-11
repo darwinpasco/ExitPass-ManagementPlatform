@@ -49,6 +49,38 @@ describe("IdentityAdministrationPage", () => {
     expect(JSON.stringify(client.createUser.mock.calls[0][0])).not.toMatch(/password|totp|seed/i);
   });
 
+  it("renders PITX and its two authoritative child Sites without generated or synthetic options", async () => {
+    const client = mockClient();
+    client.getDelegableScopes.mockResolvedValue({
+      siteGroups: [{ siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }],
+      sites: [
+        { siteId: "2d1dcdf8-f563-537c-8542-0bde7cc9da97", siteCode: "PITX-LEVEL-3", siteName: "PITX Level 3", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null },
+        { siteId: "b336964f-3b84-5404-8690-97ead0929b1f", siteCode: "PITX-OPEN-LOT", siteName: "PITX Open Lot", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }
+      ]
+    });
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    const siteSelect = within(form).getByLabelText("Assigned Site");
+    expect(await within(siteSelect).findByRole("option", { name: "PITX Level 3" })).toHaveValue("2d1dcdf8-f563-537c-8542-0bde7cc9da97");
+    expect(within(siteSelect).getByRole("option", { name: "PITX Open Lot" })).toHaveValue("b336964f-3b84-5404-8690-97ead0929b1f");
+    await userEvent.selectOptions(within(form).getByLabelText("Site access level"), "SITE_GROUP");
+    expect(within(form).getByRole("option", { name: "PITX" })).toHaveValue("a6dbadf6-68b5-5bed-a7e0-a75faee70841");
+    expect(form.textContent).not.toMatch(/Authorized Site Group|Site scope|Test Site|SAMPLE-METRO|Mactan Newtown/i);
+  });
+
+  it("fails closed when authoritative delegable scope metadata is unavailable", async () => {
+    const client = mockClient();
+    client.getDelegableScopes.mockRejectedValue(uiError("integration-unavailable", "Authoritative Site access is temporarily unavailable.", true));
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    expect(await within(form).findByText("Authoritative Site access: Unavailable")).toBeInTheDocument();
+    expect(within(form).getByLabelText("Assigned Site")).toBeDisabled();
+    expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
+    expect(form.textContent).not.toMatch(/Authorized Site Group|Site scope|Test Site|SAMPLE-METRO/i);
+  });
+
   it("refreshes page one and opens the atomically created user", async () => {
     const client = mockClient();
     const created = { ...userDetail().user, userReference: "created-user", username: "new.operator", displayName: "New Operator", status: "INVITED" };
@@ -410,7 +442,7 @@ describe("IdentityAdministrationPage", () => {
 });
 
 function renderPage(client = mockClient()) {
-  return render(<IdentityAdministrationPage client={client} permissions={Object.values(identityAdministrationPermissions)} authorizedSites={[{ siteId: "site-1", siteGroupId: "group-1", siteGroupDisplayName: "Metro Group", displayName: "Central Site" }]} authorizedSiteGroupReferences={["group-1"]} />);
+  return render(<IdentityAdministrationPage client={client} permissions={Object.values(identityAdministrationPermissions)} />);
 }
 
 async function selectInitialAccess(form: HTMLElement) {
@@ -443,6 +475,10 @@ function mockClient() {
       { roleReference: "22222222-2222-4222-8222-222222222222", code: "SITE_OPERATOR", name: "Site Operator", description: "Site operations", type: "CUSTOM", status: "ACTIVE", isPrivileged: true, requiresElevatedApproval: true, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1 }
     ]),
     listPermissions: vi.fn(async () => [{ permissionReference: "permission-1", code: "user.view", name: "View users", domain: "Identity", action: "VIEW", status: "ACTIVE", isSensitive: false, requiresAudit: true, rowVersion: 1 }]),
+    getDelegableScopes: vi.fn(async () => ({
+      siteGroups: [{ siteGroupId: "group-1", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null }],
+      sites: [{ siteId: "site-1", siteCode: "PITX-L3", siteName: "PITX Level 3", siteGroupId: "group-1", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null }]
+    })),
     assignRole: vi.fn(async () => user.roleAssignments[0]), revokeRole: vi.fn(async () => user.roleAssignments[0]), grantScope: vi.fn(async () => user.scopeGrants[0]), revokeScope: vi.fn(async (_userReference: string, _assignmentReference: string, _grantReference: string, _body: Record<string, unknown>) => user.scopeGrants[0]),
     createPrivilegedAccessRequest: vi.fn(async () => privilegedRequest("REQUESTED")), getPrivilegedAccessRequest: vi.fn(async () => privilegedRequest("REQUESTED")), decidePrivilegedAccess: vi.fn(async () => privilegedRequest("APPROVED")), reviewAccess: vi.fn(async () => true),
     listSessions: vi.fn(async () => [{ sessionReference: "session-1", audience: "MANAGEMENT_PLATFORM", status: "ACTIVE", assurance: "PASSWORD_TOTP", mfaRequirementSatisfied: true, deviceServiceIdentityReference: null, authenticatedAt: "2030-01-01T00:00:00Z", lastSeenAt: "2030-01-01T00:10:00Z", idleExpiresAt: "2030-01-01T00:30:00Z", absoluteExpiresAt: "2030-01-01T08:00:00Z", revokedAt: null, rowVersion: 1 }]),

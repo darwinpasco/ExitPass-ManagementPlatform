@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   identityAdministrationPermissions,
   toAssignableRoleOption,
   toBusinessRoleOption,
   type IdentityAdministrationClient,
   type IdentityAuditEntry,
+  type DelegableScopeCatalog,
   type IdentityMfaStatus,
   type IdentityPermissionDefinition,
   type IdentityPrivilegedAccessRequest,
@@ -35,16 +36,15 @@ const detailViewLabels: Record<DetailView, string> = {
 interface Props {
   client: IdentityAdministrationClient;
   permissions: readonly string[];
-  authorizedSites: ManagementPlatformSite[];
-  authorizedSiteGroupReferences: readonly string[];
 }
 
-export function IdentityAdministrationPage({ client, permissions, authorizedSites, authorizedSiteGroupReferences }: Props) {
+export function IdentityAdministrationPage({ client, permissions }: Props) {
   const [users, setUsers] = useState<IdentityUserSummary[]>([]);
   const [selectedReference, setSelectedReference] = useState<string>();
   const [detail, setDetail] = useState<IdentityUserDetail>();
   const [roleCatalogState, setRoleCatalogState] = useState<SectionLoadState<IdentityRoleDefinition[]>>({ status: "idle" });
   const [permissionCatalogState, setPermissionCatalogState] = useState<SectionLoadState<IdentityPermissionDefinition[]>>({ status: "idle" });
+  const [scopeCatalogState, setScopeCatalogState] = useState<SectionLoadState<DelegableScopeCatalog>>({ status: "idle" });
   const [sessionState, setSessionState] = useState<SectionLoadState<IdentitySessionSummary[]>>({ status: "idle" });
   const [mfaState, setMfaState] = useState<SectionLoadState<IdentityMfaStatus>>({ status: "idle" });
   const [auditState, setAuditState] = useState<SectionLoadState<IdentityAuditEntry[]>>({ status: "idle" });
@@ -94,6 +94,15 @@ export function IdentityAdministrationPage({ client, permissions, authorizedSite
       setPermissionCatalogState({ status: "loaded", value: await client.listPermissions() });
     } catch (caught) {
       setPermissionCatalogState({ status: "error", error: asUiError(caught) });
+    }
+  }, [client]);
+
+  const loadScopeCatalog = useCallback(async () => {
+    setScopeCatalogState({ status: "loading" });
+    try {
+      setScopeCatalogState({ status: "loaded", value: await client.getDelegableScopes() });
+    } catch (caught) {
+      setScopeCatalogState({ status: "error", error: asUiError(caught) });
     }
   }, [client]);
 
@@ -171,7 +180,8 @@ export function IdentityAdministrationPage({ client, permissions, authorizedSite
         loadPermissionCatalog(),
         loadSessions(userReference),
         loadMfa(userReference),
-        loadAudit(userReference)
+        loadAudit(userReference),
+        ...(canManageScopes ? [loadScopeCatalog()] : [])
       ]);
       return true;
     } catch (caught) {
@@ -181,7 +191,7 @@ export function IdentityAdministrationPage({ client, permissions, authorizedSite
     } finally {
       setDetailLoading(false);
     }
-  }, [client, loadAudit, loadMfa, loadPermissionCatalog, loadRoleCatalog, loadSessions]);
+  }, [canManageScopes, client, loadAudit, loadMfa, loadPermissionCatalog, loadRoleCatalog, loadScopeCatalog, loadSessions]);
 
   useEffect(() => { void loadUsers(0, "", ""); }, []); // Initial server-authoritative inventory only.
   useEffect(() => {
@@ -246,10 +256,12 @@ export function IdentityAdministrationPage({ client, permissions, authorizedSite
     }
   }
 
-  const siteGroups = useMemo(() => {
-    const fromSites = authorizedSites.filter((site) => site.siteGroupId).map((site) => ({ reference: site.siteGroupId!, name: site.siteGroupDisplayName ?? "Authorized Site Group" }));
-    return authorizedSiteGroupReferences.map((reference, index) => fromSites.find((group) => group.reference === reference) ?? ({ reference, name: `Authorized Site Group ${index + 1}` }));
-  }, [authorizedSiteGroupReferences, authorizedSites]);
+  const sites = scopeCatalogState.status === "loaded"
+    ? scopeCatalogState.value.sites.map((site) => ({ siteId: site.siteId, siteGroupId: site.siteGroupId, siteGroupDisplayName: site.siteGroupName, displayName: site.siteName }))
+    : [];
+  const siteGroups = scopeCatalogState.status === "loaded"
+    ? scopeCatalogState.value.siteGroups.map((group) => ({ reference: group.siteGroupId, name: group.siteGroupName }))
+    : [];
   const mutationsDisabled = busy || authoritativeStateStale;
 
   return (
@@ -262,7 +274,7 @@ export function IdentityAdministrationPage({ client, permissions, authorizedSite
         </div>
         <div className="pageActions">
           <button className="secondaryButton" type="button" disabled={loading || busy} onClick={() => void refreshAuthoritativeState()}>Refresh</button>
-          {canCreateUsers && <button type="button" disabled={mutationsDisabled} onClick={() => { setShowCreate(true); if (roleCatalogState.status !== "loaded") void loadRoleCatalog(); }}>Add User</button>}
+          {canCreateUsers && <button type="button" disabled={mutationsDisabled} onClick={() => { setShowCreate(true); if (roleCatalogState.status !== "loaded") void loadRoleCatalog(); if (scopeCatalogState.status !== "loaded") void loadScopeCatalog(); }}>Add User</button>}
         </div>
       </header>
 
@@ -273,7 +285,7 @@ export function IdentityAdministrationPage({ client, permissions, authorizedSite
       {error && <IdentityError error={error} onRetry={error.retryable ? () => void refreshAuthoritativeState() : undefined} />}
       {authoritativeStateStale && <div className="identityStaleState" role="alert"><strong>Information may be out of date.</strong><p>Previously loaded information is retained for reference. Changes are disabled until a successful authoritative refresh completes.</p><button className="secondaryButton" type="button" disabled={loading || busy} onClick={() => void refreshAuthoritativeState()}>Refresh authoritative state</button></div>}
 
-      {showCreate && <CreateUserPanel busy={mutationsDisabled} roleCatalogState={roleCatalogState} sites={authorizedSites} siteGroups={siteGroups} onRetryRoles={loadRoleCatalog} onCancel={() => setShowCreate(false)} onCreate={async (body) => {
+      {showCreate && <CreateUserPanel busy={mutationsDisabled} roleCatalogState={roleCatalogState} scopeCatalogState={scopeCatalogState} onRetryRoles={loadRoleCatalog} onRetryScopes={loadScopeCatalog} onCancel={() => setShowCreate(false)} onCreate={async (body) => {
         const created = await runMutation(
           () => client.createUser(body),
           "User added with an initial role and access assignment.",
@@ -332,7 +344,7 @@ export function IdentityAdministrationPage({ client, permissions, authorizedSite
                 {(["profile", "access", "security", "audit"] as DetailView[]).map((tab) => <button key={tab} role="tab" type="button" aria-selected={view === tab} className={view === tab ? "activeTab" : ""} onClick={() => setView(tab)}>{detailViewLabels[tab]}</button>)}
               </div>
               {view === "profile" && <ProfileView detail={detail} canManage={canManageUsers} busy={mutationsDisabled} onUpdate={(body) => void runMutation(() => client.updateUser(detail.user.userReference, body), "Profile updated.")} onLifecycle={(action, body) => void runMutation(() => client.changeLifecycle(detail.user.userReference, action, body), `Account status changed to ${humanize(action)}.`)} />}
-              {view === "access" && <AccessView detail={detail} roleCatalogState={roleCatalogState} permissionCatalogState={permissionCatalogState} sites={authorizedSites} siteGroups={siteGroups} canManageRoles={canManageRoles} canManageScopes={canManageScopes} canDecidePrivileged={canDecidePrivileged} canReviewAccess={canReviewAccess} busy={mutationsDisabled} privilegedRequestState={privilegedRequestState} privilegedRequestReference={privilegedRequestReference} onPrivilegedRequestReference={setPrivilegedRequestReference} onLoadPrivilegedRequest={loadPrivilegedRequest} onPrivilegedRequest={(request) => { setPrivilegedRequestReference(request.requestReference); setPrivilegedRequestState({ status: "loaded", value: request }); }} onRetryRoles={loadRoleCatalog} onRetryPermissions={loadPermissionCatalog} runMutation={runMutation} client={client} />}
+              {view === "access" && <AccessView detail={detail} roleCatalogState={roleCatalogState} permissionCatalogState={permissionCatalogState} sites={sites} siteGroups={siteGroups} canManageRoles={canManageRoles} canManageScopes={canManageScopes} canDecidePrivileged={canDecidePrivileged} canReviewAccess={canReviewAccess} busy={mutationsDisabled} privilegedRequestState={privilegedRequestState} privilegedRequestReference={privilegedRequestReference} onPrivilegedRequestReference={setPrivilegedRequestReference} onLoadPrivilegedRequest={loadPrivilegedRequest} onPrivilegedRequest={(request) => { setPrivilegedRequestReference(request.requestReference); setPrivilegedRequestState({ status: "loaded", value: request }); }} onRetryRoles={loadRoleCatalog} onRetryPermissions={loadPermissionCatalog} runMutation={runMutation} client={client} />}
               {view === "security" && <SecurityView detail={detail} mfaState={mfaState} sessionState={sessionState} canResetMfa={canResetMfa} canRemoveMfa={canRemoveMfa} canRevokeSessions={canRevokeSessions} busy={mutationsDisabled} onRetryMfa={() => void loadMfa(detail.user.userReference)} onRetrySessions={() => void loadSessions(detail.user.userReference)} runMutation={runMutation} client={client} />}
               {view === "audit" && <AuditView state={auditState} onRetry={() => void loadAudit(detail.user.userReference)} />}
             </>
@@ -343,7 +355,7 @@ export function IdentityAdministrationPage({ client, permissions, authorizedSite
   );
 }
 
-function CreateUserPanel({ busy, roleCatalogState, sites, siteGroups, onRetryRoles, onCancel, onCreate }: { busy: boolean; roleCatalogState: SectionLoadState<IdentityRoleDefinition[]>; sites: ManagementPlatformSite[]; siteGroups: Array<{ reference: string; name: string }>; onRetryRoles: () => Promise<void>; onCancel: () => void; onCreate: (body: Record<string, unknown>) => Promise<void> }) {
+function CreateUserPanel({ busy, roleCatalogState, scopeCatalogState, onRetryRoles, onRetryScopes, onCancel, onCreate }: { busy: boolean; roleCatalogState: SectionLoadState<IdentityRoleDefinition[]>; scopeCatalogState: SectionLoadState<DelegableScopeCatalog>; onRetryRoles: () => Promise<void>; onRetryScopes: () => Promise<void>; onCancel: () => void; onCreate: (body: Record<string, unknown>) => Promise<void> }) {
   const [scopeType, setScopeType] = useState<"SITE" | "SITE_GROUP">("SITE");
   const [userType, setUserType] = useState("");
   const [initialRoleReference, setInitialRoleReference] = useState("");
@@ -353,9 +365,11 @@ function CreateUserPanel({ busy, roleCatalogState, sites, siteGroups, onRetryRol
     : [];
   const userTypes = [...new Set(roles.map((role) => role.userType))];
   const compatibleRoles = roles.filter((role) => role.userType === userType);
-  const scopeOptions = scopeType === "SITE"
-    ? sites.map((site) => ({ reference: site.siteId, name: site.displayName }))
-    : siteGroups;
+  const scopeOptions = scopeCatalogState.status !== "loaded"
+    ? []
+    : scopeType === "SITE"
+      ? scopeCatalogState.value.sites.map((site) => ({ reference: site.siteId, name: site.siteName }))
+      : scopeCatalogState.value.siteGroups.map((group) => ({ reference: group.siteGroupId, name: group.siteGroupName }));
   const submissionUnavailable = busy || !userType || compatibleRoles.length === 0 || scopeOptions.length === 0 || !initialRoleReference || !initialScopeReference;
   return <form className="administrationForm" aria-labelledby="create-user-title" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const targetReference = String(data.get("initialScopeReference")); void onCreate({ username: data.get("username"), displayName: data.get("displayName"), email: data.get("email") || null, maskedMobileNumber: data.get("mobile") || null, userType: data.get("userType"), initialRoleReference: data.get("initialRoleReference"), initialScopeType: scopeType, initialSiteReference: scopeType === "SITE" ? targetReference : null, initialSiteGroupReference: scopeType === "SITE_GROUP" ? targetReference : null, effectiveFrom: new Date(String(data.get("effectiveFrom"))).toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() }); }}>
     <div><h3 id="create-user-title">Add User</h3><p>No password is collected here. Account setup and invitation delivery are handled separately.</p></div>
@@ -364,7 +378,10 @@ function CreateUserPanel({ busy, roleCatalogState, sites, siteGroups, onRetryRol
     {roleCatalogState.status === "error" && <SectionFailure label="Role catalog" error={roleCatalogState.error} onRetry={roleCatalogState.error.retryable ? () => void onRetryRoles() : undefined} />}
     <label>Initial role<select name="initialRoleReference" required value={initialRoleReference} onChange={(event) => setInitialRoleReference(event.target.value)} disabled={!userType}><option value="">Select a role</option>{compatibleRoles.map((role) => <option key={role.reference} value={role.reference}>{role.label}</option>)}</select></label>
     <label>Site access level<select value={scopeType} onChange={(event) => { setScopeType(event.target.value as "SITE" | "SITE_GROUP"); setInitialScopeReference(""); }}><option value="SITE">Site</option><option value="SITE_GROUP">Site Group</option></select></label>
-    <label>{scopeType === "SITE" ? "Assigned Site" : "Assigned Site Group"}<select key={scopeType} name="initialScopeReference" required value={initialScopeReference} onChange={(event) => setInitialScopeReference(event.target.value)}><option value="">Select {scopeType === "SITE" ? "a Site" : "a Site Group"}</option>{scopeOptions.map((scope) => <option key={scope.reference} value={scope.reference}>{scope.name}</option>)}</select></label>
+    {scopeCatalogState.status === "loading" && <div className="inlineState" role="status">Loading authorized Site access</div>}
+    {scopeCatalogState.status === "error" && <SectionFailure label="Authoritative Site access" error={scopeCatalogState.error} onRetry={scopeCatalogState.error.retryable ? () => void onRetryScopes() : undefined} />}
+    {scopeCatalogState.status === "loaded" && scopeOptions.length === 0 && <div className="inlineState">No authorized {scopeType === "SITE" ? "Sites" : "Site Groups"} are available</div>}
+    <label>{scopeType === "SITE" ? "Assigned Site" : "Assigned Site Group"}<select key={scopeType} name="initialScopeReference" required value={initialScopeReference} onChange={(event) => setInitialScopeReference(event.target.value)} disabled={scopeCatalogState.status !== "loaded" || scopeOptions.length === 0}><option value="">Select {scopeType === "SITE" ? "a Site" : "a Site Group"}</option>{scopeOptions.map((scope) => <option key={scope.reference} value={scope.reference}>{scope.name}</option>)}</select></label>
     <label>Access starts<input name="effectiveFrom" type="datetime-local" required defaultValue={toLocalInput(new Date())} /></label><label>Reason<input name="reasonCode" required /></label>
     <div className="formActions"><button type="submit" disabled={submissionUnavailable}>Add User</button><button className="secondaryButton" type="button" onClick={onCancel}>Cancel</button></div>
   </form>;
@@ -452,7 +469,8 @@ function AccessView({ detail, roleCatalogState, permissionCatalogState, sites, s
 
 function ScopeGrantForm({ detail, sites, siteGroups, busy, onGrant }: { detail: IdentityUserDetail; sites: ManagementPlatformSite[]; siteGroups: Array<{ reference: string; name: string }>; busy: boolean; onGrant: (assignment: string, body: Record<string, unknown>) => void }) {
   const [type, setType] = useState<"SITE" | "SITE_GROUP">("SITE");
-  return <form className="compactForm" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const target = String(data.get("targetReference")); onGrant(String(data.get("assignmentReference")), { scopeType: type, siteReference: type === "SITE" ? target : null, siteGroupReference: type === "SITE_GROUP" ? target : null, effectiveFrom: new Date().toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() }); }}><h4>Add Site Access</h4><label>Role<select name="assignmentReference" required>{detail.roleAssignments.map((assignment) => <option key={assignment.assignmentReference} value={assignment.assignmentReference}>{assignment.roleName}</option>)}</select></label><label>Access level<select value={type} onChange={(event) => setType(event.target.value as "SITE" | "SITE_GROUP")}><option value="SITE">Site</option><option value="SITE_GROUP">Site Group</option></select></label><label>{type === "SITE" ? "Site" : "Site Group"}<select name="targetReference" required>{(type === "SITE" ? sites.map((site) => ({ reference: site.siteId, name: site.displayName })) : siteGroups).map((target) => <option key={target.reference} value={target.reference}>{target.name}</option>)}</select></label><label>Reason<input name="reasonCode" required /></label><button disabled={busy}>Add Access</button></form>;
+  const targets = type === "SITE" ? sites.map((site) => ({ reference: site.siteId, name: site.displayName })) : siteGroups;
+  return <form className="compactForm" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const target = String(data.get("targetReference")); onGrant(String(data.get("assignmentReference")), { scopeType: type, siteReference: type === "SITE" ? target : null, siteGroupReference: type === "SITE_GROUP" ? target : null, effectiveFrom: new Date().toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() }); }}><h4>Add Site Access</h4><label>Role<select name="assignmentReference" required>{detail.roleAssignments.map((assignment) => <option key={assignment.assignmentReference} value={assignment.assignmentReference}>{assignment.roleName}</option>)}</select></label><label>Access level<select value={type} onChange={(event) => setType(event.target.value as "SITE" | "SITE_GROUP")}><option value="SITE">Site</option><option value="SITE_GROUP">Site Group</option></select></label>{targets.length === 0 && <div className="inlineState">No authorized {type === "SITE" ? "Sites" : "Site Groups"} are available</div>}<label>{type === "SITE" ? "Site" : "Site Group"}<select name="targetReference" required disabled={targets.length === 0}><option value="">Select {type === "SITE" ? "a Site" : "a Site Group"}</option>{targets.map((target) => <option key={target.reference} value={target.reference}>{target.name}</option>)}</select></label><label>Reason<input name="reasonCode" required /></label><button disabled={busy || targets.length === 0}>Add Access</button></form>;
 }
 
 function SecurityView({ detail, mfaState, sessionState, canResetMfa, canRemoveMfa, canRevokeSessions, busy, onRetryMfa, onRetrySessions, runMutation, client }: { detail: IdentityUserDetail; mfaState: SectionLoadState<IdentityMfaStatus>; sessionState: SectionLoadState<IdentitySessionSummary[]>; canResetMfa: boolean; canRemoveMfa: boolean; canRevokeSessions: boolean; busy: boolean; onRetryMfa: () => void; onRetrySessions: () => void; runMutation: (action: () => Promise<unknown>, success: string) => Promise<boolean>; client: IdentityAdministrationClient }) {
@@ -509,4 +527,4 @@ function formatDate(value: string | null) { if (!value) return "Not set"; const 
 function toLocalInput(date: Date) { return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16); }
 function asUiError(value: unknown): ManagementPlatformUiError { return typeof value === "object" && value !== null && "kind" in value ? value as ManagementPlatformUiError : { kind: "unknown", code: "IDENTITY_ADMIN_SAFE_FAILURE", message: "The User Administration request could not be completed.", retryable: false, mutationUncertain: false }; }
 function confirmSecurityAction(message: string, action: () => void) { if (window.confirm(message)) action(); }
-function safeScopeName(grant: IdentityUserDetail["scopeGrants"][number], sites: ManagementPlatformSite[], groups: Array<{ reference: string; name: string }>) { if (grant.scopeType === "SITE") return sites.find((site) => site.siteId === grant.siteReference)?.displayName ?? "Authorized Site"; if (grant.scopeType === "SITE_GROUP") return groups.find((group) => group.reference === grant.siteGroupReference)?.name ?? "Authorized Site Group"; return "Organization-wide access unavailable"; }
+function safeScopeName(grant: IdentityUserDetail["scopeGrants"][number], sites: ManagementPlatformSite[], groups: Array<{ reference: string; name: string }>) { if (grant.scopeType === "SITE") return sites.find((site) => site.siteId === grant.siteReference)?.displayName ?? "Authoritative Site metadata unavailable"; if (grant.scopeType === "SITE_GROUP") return groups.find((group) => group.reference === grant.siteGroupReference)?.name ?? "Authoritative Site Group metadata unavailable"; return "Organization-wide access unavailable"; }

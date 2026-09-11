@@ -3,6 +3,7 @@ import type { CentralPmsApiClient } from "./types";
 
 export const identityAdministrationRoute = "/management-platform/identity-administration";
 export const identityAdministrationApiRoute = "/v1/management-platform/identity";
+export const delegableScopesApiRoute = `${identityAdministrationApiRoute}/delegable-scopes`;
 export const globalScopePolicyNotApprovedClassification = "GLOBAL_SCOPE_POLICY_NOT_APPROVED";
 
 export const identityAdministrationPermissions = {
@@ -59,6 +60,32 @@ export interface IdentityScopeGrant {
   effectiveTo: string | null;
   lastReviewedAt: string | null;
   rowVersion: number;
+}
+
+export interface DelegableSiteGroup {
+  siteGroupId: string;
+  siteGroupCode: string;
+  siteGroupName: string;
+  lifecycleStatus: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface DelegableSite {
+  siteId: string;
+  siteCode: string;
+  siteName: string;
+  siteGroupId: string;
+  siteGroupCode: string;
+  siteGroupName: string;
+  lifecycleStatus: string;
+  effectiveFrom: string;
+  effectiveTo: string | null;
+}
+
+export interface DelegableScopeCatalog {
+  siteGroups: DelegableSiteGroup[];
+  sites: DelegableSite[];
 }
 
 export interface IdentityUserDetail {
@@ -192,6 +219,7 @@ export interface IdentityAdministrationClient {
   changeLifecycle(userReference: string, action: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
   listRoles(signal?: AbortSignal): Promise<IdentityRoleDefinition[]>;
   listPermissions(signal?: AbortSignal): Promise<IdentityPermissionDefinition[]>;
+  getDelegableScopes(signal?: AbortSignal): Promise<DelegableScopeCatalog>;
   assignRole(userReference: string, body: Record<string, unknown>): Promise<IdentityRoleAssignment>;
   revokeRole(userReference: string, assignmentReference: string, body: Record<string, unknown>): Promise<IdentityRoleAssignment>;
   grantScope(userReference: string, assignmentReference: string, body: Record<string, unknown>): Promise<IdentityScopeGrant>;
@@ -233,6 +261,7 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
     updateUser: name === "conflict" ? async () => { throw createUiError("conflict", "IDENTITY_ADMIN_VERSION_CONFLICT", "The authoritative user changed. Reload before retrying.", "support-identity-conflict", 409); } : async () => ({ ...user, rowVersion: user.rowVersion + 1 }),
     changeLifecycle: async (_reference, action) => ({ ...user, status: action.toUpperCase(), rowVersion: user.rowVersion + 1 }),
     listRoles: name === "partial-failure" ? sectionUnavailable : async () => [syntheticOrdinaryRole(), syntheticRole()], listPermissions: name === "partial-failure" ? sectionUnavailable : async () => [syntheticPermission()],
+    getDelegableScopes: name === "unavailable" ? fail : async () => pitxDelegableScopes(),
     assignRole: async () => syntheticAssignment(), revokeRole: async () => ({ ...syntheticAssignment(), status: "REVOKED" }),
     grantScope: async (_user, assignment, body) => ({ ...syntheticGrant(), assignmentReference: assignment, scopeType: String(body.scopeType), siteReference: body.siteReference ? String(body.siteReference) : null, siteGroupReference: body.siteGroupReference ? String(body.siteGroupReference) : null }),
     revokeScope: async () => ({ ...syntheticGrant(), status: "REVOKED" }),
@@ -265,6 +294,7 @@ export function createIdentityAdministrationClient(api: CentralPmsApiClient): Id
     changeLifecycle: (reference, action, body) => mutate<unknown>(`${userPath(reference)}/${assertLifecycleAction(action)}`, "POST", body).then(asObject<IdentityUserSummary>),
     listRoles: (signal) => get<unknown>(`${identityAdministrationApiRoute}/roles`, signal).then(asArray<IdentityRoleDefinition>),
     listPermissions: (signal) => get<unknown>(`${identityAdministrationApiRoute}/permissions`, signal).then(asArray<IdentityPermissionDefinition>),
+    getDelegableScopes: (signal) => get<unknown>(delegableScopesApiRoute, signal).then(asDelegableScopeCatalog),
     assignRole: (reference, body) => mutate<unknown>(`${userPath(reference)}/role-assignments`, "POST", body).then(asObject<IdentityRoleAssignment>),
     revokeRole: (reference, assignment, body) => mutate<unknown>(`${userPath(reference)}/role-assignments/${encodeURIComponent(assignment)}/revoke`, "POST", body).then(asObject<IdentityRoleAssignment>),
     grantScope: (reference, assignment, body) => mutate<unknown>(`${userPath(reference)}/role-assignments/${encodeURIComponent(assignment)}/scope-grants`, "POST", body).then(asObject<IdentityScopeGrant>),
@@ -289,6 +319,22 @@ function asArray<T>(value: unknown): T[] { return Array.isArray(value) ? value a
 function asObject<T>(value: unknown): T { return typeof value === "object" && value !== null && !Array.isArray(value) ? value as T : malformed(); }
 function asBoolean(value: unknown): boolean { return typeof value === "boolean" ? value : malformed(); }
 
+function asDelegableScopeCatalog(value: unknown): DelegableScopeCatalog {
+  if (!isRecord(value) || !Array.isArray(value.siteGroups) || !Array.isArray(value.sites)) malformed();
+  const siteGroups = value.siteGroups.map((item) => {
+    if (!isRecord(item) || !hasStrings(item, ["siteGroupId", "siteGroupCode", "siteGroupName", "lifecycleStatus", "effectiveFrom"]) || !(item.effectiveTo === null || typeof item.effectiveTo === "string")) malformed();
+    return item as unknown as DelegableSiteGroup;
+  });
+  const sites = value.sites.map((item) => {
+    if (!isRecord(item) || !hasStrings(item, ["siteId", "siteCode", "siteName", "siteGroupId", "siteGroupCode", "siteGroupName", "lifecycleStatus", "effectiveFrom"]) || !(item.effectiveTo === null || typeof item.effectiveTo === "string")) malformed();
+    return item as unknown as DelegableSite;
+  });
+  return { siteGroups, sites };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
+function hasStrings(value: Record<string, unknown>, fields: string[]): boolean { return fields.every((field) => typeof value[field] === "string"); }
+
 function assertLifecycleAction(action: string): string {
   const normalized = action.toLowerCase();
   if (!["activate", "suspend", "inactivate", "retire", "lock", "unlock"].includes(normalized)) {
@@ -308,3 +354,4 @@ function syntheticMfa(): IdentityMfaStatus { return { requiredForPrivilegedManag
 function syntheticSession(): IdentitySessionSummary { return { sessionReference: "81000000-0000-4000-8000-000000000006", audience: "MANAGEMENT_PLATFORM", status: "ACTIVE", assurance: "PASSWORD_TOTP", mfaRequirementSatisfied: true, deviceServiceIdentityReference: null, authenticatedAt: "2030-03-01T08:00:00Z", lastSeenAt: "2030-03-01T08:10:00Z", idleExpiresAt: "2030-03-01T08:30:00Z", absoluteExpiresAt: "2030-03-01T16:00:00Z", revokedAt: null, rowVersion: 1 }; }
 function syntheticAudit(): IdentityAuditEntry { return { auditReference: "81000000-0000-4000-8000-000000000007", eventType: "ROLE_ASSIGNED", result: "SUCCESS", reasonCode: "GOVERNED_ASSIGNMENT", actorUserReference: null, summary: "Role added through governed administration.", occurredAt: "2030-03-01T08:00:00Z", correlationReference: "support-identity-0001" }; }
 function syntheticPrivilegedRequest(status: string): IdentityPrivilegedAccessRequest { return { requestReference: "81000000-0000-4000-8000-000000000008", targetUserReference: syntheticUser().userReference, requestedRoleReference: syntheticRole().roleReference, requestedScopeType: null, requestedSiteReference: null, requestedSiteGroupReference: null, status, reasonCode: "TEMPORARY_ADMINISTRATION", requestedEffectiveFrom: "2030-03-01T08:00:00Z", requestedEffectiveTo: null, requestedAt: "2030-03-01T08:00:00Z", requestedByUserReference: "81000000-0000-4000-8000-000000000009", expiresAt: null, rowVersion: status === "REQUESTED" ? 1 : 2, decisions: [] }; }
+function pitxDelegableScopes(): DelegableScopeCatalog { return { siteGroups: [{ siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }], sites: [{ siteId: "2d1dcdf8-f563-537c-8542-0bde7cc9da97", siteCode: "PITX-LEVEL-3", siteName: "PITX Level 3", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }, { siteId: "b336964f-3b84-5404-8690-97ead0929b1f", siteCode: "PITX-OPEN-LOT", siteName: "PITX Open Lot", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }] }; }

@@ -17,15 +17,12 @@ test.describe("Payment and Reconciliation reporting", () => {
     await assertNoOverflow(page);
   });
 
-  test("uses explicit Site Group scope and valid half-open UTC controls", async ({ page }) => {
+  test("fails closed when Site Group metadata is unavailable", async ({ page }) => {
     await page.goto("/management-platform/reports/payment-reconciliation?mpScenario=no-sites&mpDashboardScenario=site-group&mpPaymentScenario=site-group");
-    await expect(page.getByLabel("Reporting scope")).toHaveValue(/^SITE_GROUP:/);
-    await expect(page.getByText(/end excluded/)).toBeVisible();
-    await page.getByLabel("Period start (UTC)").fill("2026-08-20T00:00");
-    await page.getByLabel("Period end (UTC)").fill("2026-08-21T00:00");
-    await page.getByRole("button", { name: "Refresh report" }).click();
-    await expect(page.getByText(/Aug 20, 2026/)).toBeVisible();
+    await expect(page.getByRole("combobox", { name: /Reporting scope/ })).toHaveValue("");
     await expect(page.locator('option[value^="GLOBAL"]')).toHaveCount(0);
+    await expect(page.getByRole("status", { name: "No authorized reporting scope" })).toBeVisible();
+    await expect(page.getByText(/Development Site Group|Authorized Site Group \d+/)).toHaveCount(0);
   });
 
   test("distinguishes partial, unavailable, disabled, and no-activity states", async ({ page }) => {

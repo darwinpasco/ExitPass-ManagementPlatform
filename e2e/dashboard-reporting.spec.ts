@@ -19,12 +19,12 @@ test.describe("Management Dashboard reporting foundation", () => {
     await assertNoOverflow(page);
   });
 
-  test("uses explicit Site Group scope when no direct Site is authorized", async ({ page }) => {
+  test("fails closed when a Site Group authorization fact has no authoritative metadata", async ({ page }) => {
     await page.goto("/management-platform/overview?mpScenario=no-sites&mpDashboardScenario=site-group");
 
-    await expect(page.getByLabel("Reporting scope")).toHaveValue(/^SITE_GROUP:/);
-    await expect(page.getByText(/Requesting explicit Site Group scope/)).toBeVisible();
-    await expect(page.getByText(/Development Site Group \(Site Group\)/)).toBeVisible();
+    await expect(page.getByRole("combobox", { name: /Reporting scope/ })).toHaveValue("");
+    await expect(page.getByRole("status", { name: "No authorized reporting scope" })).toBeVisible();
+    await expect(page.getByText(/Development Site Group|Authorized Site Group \d+/)).toHaveCount(0);
   });
 
   test("keeps partial and stale source classifications visibly distinct", async ({ page }) => {

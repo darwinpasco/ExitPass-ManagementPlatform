@@ -116,7 +116,7 @@ describe("I-020 human authentication client", () => {
     expect(state.principal?.permissions).toEqual(["management-platform.overview.read"]);
     expect(state.principal?.authorizedSiteReferences).toEqual(["71000000-0000-0000-0000-000000000101"]);
     expect(state.principal?.authorizedSiteGroupReferences).toEqual(["71000000-0000-0000-0000-000000000900"]);
-    expect(state.principal?.authorizedSites[0].displayName).toBe("Site scope 1");
+    expect(state.principal?.authorizedSites).toEqual([]);
     expect(state.principal?.hasGlobalScope).toBe(false);
   });
 });
