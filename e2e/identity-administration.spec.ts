@@ -33,7 +33,7 @@ test.describe("governed User Administration", () => {
     await page.getByRole("button", { name: "Add User" }).click();
     await expect(page.getByRole("heading", { name: "Add User" })).toBeVisible();
     await expect(page.getByLabel("User type")).toHaveValue("");
-    await expect(page.getByLabel("User type").locator("option")).toHaveCount(2);
+    await expect(page.getByLabel("User type").locator("option")).toHaveCount(6);
     await expect(page.getByText(/H-007 Denied User|H-007 Synthetic Target User|H-007 View Only/)).toHaveCount(0);
     await expect(page.getByLabel(/password|totp|seed|provisioning/i)).toHaveCount(0);
     await expect(page.getByText(/Account setup and invitation delivery are handled separately/)).toBeVisible();
@@ -52,6 +52,17 @@ test.describe("governed User Administration", () => {
     await page.getByLabel("Initial role").selectOption({ label: "Site Operator" });
     await page.getByLabel("Assigned Site").selectOption("2d1dcdf8-f563-537c-8542-0bde7cc9da97");
     await expect(page.getByRole("button", { name: "Add User" }).last()).toBeEnabled();
+
+    for (const [userType, roleName] of [
+      ["SUPPORT_USER", "Support Agent"],
+      ["FINANCE_USER", "Finance / Reconciliation Analyst"],
+      ["MERCHANT_USER", "Merchant Administrator"]
+    ]) {
+      await page.getByLabel("User type").selectOption(userType);
+      await expect(page.getByLabel("Initial role").getByRole("option", { name: roleName, exact: true })).toBeAttached();
+    }
+    const roleOptions = await page.getByLabel("Initial role").locator("option").allTextContents();
+    expect(roleOptions.join(" ")).not.toMatch(/Finance User|Merchant User|Support Staff|Site Administrator|SERVICE_PRINCIPAL/);
   });
 
   test("safe empty, denied, conflict, and unavailable scenarios remain distinct", async ({ page }) => {
@@ -144,15 +155,14 @@ test.describe("governed User Administration", () => {
     await expect(page.getByText("Page 1 · Showing 1-50")).toBeVisible();
   });
 
-  test("persisted Elevated Access requests can be reopened without browser authority", async ({ page }) => {
+  test("persisted applied Elevated Access requests can be reopened without browser authority", async ({ page }) => {
     await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=elevated-rediscovery");
     await page.getByRole("button", { name: /Synthetic Administration User/ }).click();
     await page.getByRole("tab", { name: "Roles & Permissions" }).click();
     await page.getByLabel("Request reference").fill("synthetic-request-reference");
     await page.getByRole("button", { name: "Load Request" }).click();
-    await expect(page.getByText("Approved", { exact: true })).toBeVisible();
-    await expect(page.getByText(/does not activate access/)).toBeVisible();
-    await expect(page.getByText("Active Authority")).toHaveCount(0);
+    await expect(page.getByText("Applied", { exact: true })).toBeVisible();
+    await expect(page.getByText(/target user must sign in again/)).toBeVisible();
     const storage = await page.evaluate(async () => ({
       local: Object.fromEntries(Object.entries(localStorage)),
       session: Object.fromEntries(Object.entries(sessionStorage)),

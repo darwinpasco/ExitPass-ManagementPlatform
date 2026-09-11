@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   identityAdministrationPermissions,
-  toAssignableRoleOption,
-  toBusinessRoleOption,
   type IdentityAdministrationClient,
   type IdentityAuditEntry,
   type DelegableScopeCatalog,
@@ -285,7 +283,7 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
       {error && <IdentityError error={error} onRetry={error.retryable ? () => void refreshAuthoritativeState() : undefined} />}
       {authoritativeStateStale && <div className="identityStaleState" role="alert"><strong>Information may be out of date.</strong><p>Previously loaded information is retained for reference. Changes are disabled until a successful authoritative refresh completes.</p><button className="secondaryButton" type="button" disabled={loading || busy} onClick={() => void refreshAuthoritativeState()}>Refresh authoritative state</button></div>}
 
-      {showCreate && <CreateUserPanel busy={mutationsDisabled} roleCatalogState={roleCatalogState} scopeCatalogState={scopeCatalogState} onRetryRoles={loadRoleCatalog} onRetryScopes={loadScopeCatalog} onCancel={() => setShowCreate(false)} onCreate={async (body) => {
+      {showCreate && <CreateUserPanel client={client} busy={mutationsDisabled} roleCatalogState={roleCatalogState} scopeCatalogState={scopeCatalogState} onRetryRoles={loadRoleCatalog} onRetryScopes={loadScopeCatalog} onCancel={() => setShowCreate(false)} onCreate={async (body) => {
         const created = await runMutation(
           () => client.createUser(body),
           "User added with an initial role and access assignment.",
@@ -355,28 +353,52 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
   );
 }
 
-function CreateUserPanel({ busy, roleCatalogState, scopeCatalogState, onRetryRoles, onRetryScopes, onCancel, onCreate }: { busy: boolean; roleCatalogState: SectionLoadState<IdentityRoleDefinition[]>; scopeCatalogState: SectionLoadState<DelegableScopeCatalog>; onRetryRoles: () => Promise<void>; onRetryScopes: () => Promise<void>; onCancel: () => void; onCreate: (body: Record<string, unknown>) => Promise<void> }) {
+function CreateUserPanel({ client, busy, roleCatalogState, scopeCatalogState, onRetryRoles, onRetryScopes, onCancel, onCreate }: { client: IdentityAdministrationClient; busy: boolean; roleCatalogState: SectionLoadState<IdentityRoleDefinition[]>; scopeCatalogState: SectionLoadState<DelegableScopeCatalog>; onRetryRoles: () => Promise<void>; onRetryScopes: () => Promise<void>; onCancel: () => void; onCreate: (body: Record<string, unknown>) => Promise<void> }) {
   const [scopeType, setScopeType] = useState<"SITE" | "SITE_GROUP">("SITE");
   const [userType, setUserType] = useState("");
   const [initialRoleReference, setInitialRoleReference] = useState("");
   const [initialScopeReference, setInitialScopeReference] = useState("");
-  const roles = roleCatalogState.status === "loaded"
-    ? roleCatalogState.value.map(toAssignableRoleOption).filter((role) => role !== undefined)
+  const [eligibleRoleState, setEligibleRoleState] = useState<SectionLoadState<IdentityRoleDefinition[]>>({ status: "idle" });
+  const userTypes = roleCatalogState.status === "loaded"
+    ? [...new Set(roleCatalogState.value
+      .filter((role) => role.directAddUserEligible && !role.isPrivileged && !role.requiresElevatedApproval)
+      .flatMap((role) => role.allowedUserTypes))]
     : [];
-  const userTypes = [...new Set(roles.map((role) => role.userType))];
-  const compatibleRoles = roles.filter((role) => role.userType === userType);
+  const compatibleRoles = eligibleRoleState.status === "loaded" ? eligibleRoleState.value : [];
+  useEffect(() => {
+    setInitialRoleReference("");
+    if (!userType) {
+      setEligibleRoleState({ status: "idle" });
+      return;
+    }
+    const controller = new AbortController();
+    setEligibleRoleState({ status: "loading" });
+    void client.listRoles({ userType, directAddUserOnly: true }, controller.signal).then((roles) => {
+      if (roles.some((role) => role.provenance !== "CANONICAL_ROLE" || !role.humanAssignable ||
+          !role.directAddUserEligible || role.isPrivileged || role.requiresElevatedApproval ||
+          !role.allowedUserTypes.includes(userType))) {
+        throw new Error("Unsafe role catalog response");
+      }
+      setEligibleRoleState({ status: "loaded", value: roles });
+    }).catch((caught) => {
+      if (!controller.signal.aborted) setEligibleRoleState({ status: "error", error: asUiError(caught) });
+    });
+    return () => controller.abort();
+  }, [client, userType]);
   const scopeOptions = scopeCatalogState.status !== "loaded"
     ? []
     : scopeType === "SITE"
       ? scopeCatalogState.value.sites.map((site) => ({ reference: site.siteId, name: site.siteName }))
       : scopeCatalogState.value.siteGroups.map((group) => ({ reference: group.siteGroupId, name: group.siteGroupName }));
-  const submissionUnavailable = busy || !userType || compatibleRoles.length === 0 || scopeOptions.length === 0 || !initialRoleReference || !initialScopeReference;
+  const submissionUnavailable = busy || !userType || eligibleRoleState.status !== "loaded" || compatibleRoles.length === 0 || scopeOptions.length === 0 || !initialRoleReference || !initialScopeReference;
   return <form className="administrationForm" aria-labelledby="create-user-title" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const targetReference = String(data.get("initialScopeReference")); void onCreate({ username: data.get("username"), displayName: data.get("displayName"), email: data.get("email") || null, maskedMobileNumber: data.get("mobile") || null, userType: data.get("userType"), initialRoleReference: data.get("initialRoleReference"), initialScopeType: scopeType, initialSiteReference: scopeType === "SITE" ? targetReference : null, initialSiteGroupReference: scopeType === "SITE_GROUP" ? targetReference : null, effectiveFrom: new Date(String(data.get("effectiveFrom"))).toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() }); }}>
     <div><h3 id="create-user-title">Add User</h3><p>No password is collected here. Account setup and invitation delivery are handled separately.</p></div>
-    <label>Username<input name="username" required autoComplete="off" /></label><label>Display name<input name="displayName" required /></label><label>Email (optional)<input name="email" type="email" /></label><label>Masked mobile (optional)<input name="mobile" /></label><label>User type<select name="userType" required value={userType} onChange={(event) => { setUserType(event.target.value); setInitialRoleReference(""); }}><option value="">Select a user type</option>{userTypes.map((value) => <option key={value} value={value}>{displayUserType(value)}</option>)}</select></label>
+    <label>Username<input name="username" required autoComplete="off" /></label><label>Display name<input name="displayName" required /></label><label>Email (optional)<input name="email" type="email" /></label><label>Masked mobile (optional)<input name="mobile" /></label><label>User type<select name="userType" required value={userType} onChange={(event) => setUserType(event.target.value)} disabled={roleCatalogState.status !== "loaded"}><option value="">Select a user type</option>{userTypes.map((value) => <option key={value} value={value}>{displayUserType(value)}</option>)}</select></label>
     {roleCatalogState.status === "loading" && <div className="inlineState" role="status">Loading available roles</div>}
     {roleCatalogState.status === "error" && <SectionFailure label="Role catalog" error={roleCatalogState.error} onRetry={roleCatalogState.error.retryable ? () => void onRetryRoles() : undefined} />}
-    <label>Initial role<select name="initialRoleReference" required value={initialRoleReference} onChange={(event) => setInitialRoleReference(event.target.value)} disabled={!userType}><option value="">Select a role</option>{compatibleRoles.map((role) => <option key={role.reference} value={role.reference}>{role.label}</option>)}</select></label>
+    {eligibleRoleState.status === "loading" && <div className="inlineState" role="status">Loading eligible roles</div>}
+    {eligibleRoleState.status === "error" && <div className="identitySectionError" role="alert"><strong>Eligible roles: Unavailable</strong><p>The authoritative eligible role catalog could not be loaded. Add User remains disabled.</p></div>}
+    <label>Initial role<select name="initialRoleReference" required value={initialRoleReference} onChange={(event) => setInitialRoleReference(event.target.value)} disabled={!userType || eligibleRoleState.status !== "loaded"}><option value="">Select a role</option>{compatibleRoles.map((role) => <option key={role.roleReference} value={role.roleReference}>{role.name}</option>)}</select></label>
     <label>Site access level<select value={scopeType} onChange={(event) => { setScopeType(event.target.value as "SITE" | "SITE_GROUP"); setInitialScopeReference(""); }}><option value="SITE">Site</option><option value="SITE_GROUP">Site Group</option></select></label>
     {scopeCatalogState.status === "loading" && <div className="inlineState" role="status">Loading authorized Site access</div>}
     {scopeCatalogState.status === "error" && <SectionFailure label="Authoritative Site access" error={scopeCatalogState.error} onRetry={scopeCatalogState.error.retryable ? () => void onRetryScopes() : undefined} />}
@@ -421,10 +443,7 @@ interface AccessViewProps {
 function AccessView({ detail, roleCatalogState, permissionCatalogState, sites, siteGroups, canManageRoles, canManageScopes, canDecidePrivileged, canReviewAccess, busy, privilegedRequestState, privilegedRequestReference, onPrivilegedRequestReference, onLoadPrivilegedRequest, onPrivilegedRequest, onRetryRoles, onRetryPermissions, runMutation, client }: AccessViewProps) {
   const user = detail.user;
   const roles = roleCatalogState.status === "loaded" ? roleCatalogState.value : [];
-  const businessRoles = roles.flatMap((role) => {
-    const option = toBusinessRoleOption(role);
-    return option ? [{ role, option }] : [];
-  });
+  const businessRoles = roles.filter((role) => role.allowedUserTypes.includes(user.userType));
   const privilegedRequest = privilegedRequestState.status === "loaded" ? privilegedRequestState.value : undefined;
 
   return <div className="identitySections">
@@ -436,7 +455,7 @@ function AccessView({ detail, roleCatalogState, permissionCatalogState, sites, s
     {roleCatalogState.status === "error" && <SectionFailure label="Role catalog" error={roleCatalogState.error} onRetry={roleCatalogState.error.retryable ? () => void onRetryRoles() : undefined} />}
     {roleCatalogState.status === "not-authorized" && <div className="inlineState">The role catalog is not available with your current access.</div>}
     {roleCatalogState.status === "loaded" && roleCatalogState.value.length === 0 && <div className="inlineState">No assignable roles were returned.</div>}
-    {canManageRoles && roleCatalogState.status === "loaded" && businessRoles.length > 0 && <form className="compactForm" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const role = roles.find((candidate) => candidate.roleReference === data.get("roleReference")); if (!role) return; if (role.isPrivileged) { void runMutation(async () => { const value = await client.createPrivilegedAccessRequest({ targetUserReference: user.userReference, roleReference: role.roleReference, scopeType: null, siteReference: null, siteGroupReference: null, effectiveFrom: new Date().toISOString(), effectiveTo: null, expiresAt: null, reasonCode: data.get("reasonCode") }); onPrivilegedRequest(value); return value; }, "Elevated access requested. Approval does not activate access."); } else { void runMutation(() => client.assignRole(user.userReference, { roleReference: role.roleReference, effectiveFrom: new Date().toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() }), "Role assigned."); } }}><h4>Add Role</h4><label>Role<select name="roleReference" required><option value="">Select a role</option>{businessRoles.map(({ role, option }) => <option key={role.roleReference} value={role.roleReference}>{option.label}{role.isPrivileged ? " (requires elevated access approval)" : ""}</option>)}</select></label><label>Reason<input name="reasonCode" required /></label><button disabled={busy}>Add Role or Request Access</button></form>}
+    {canManageRoles && roleCatalogState.status === "loaded" && businessRoles.length > 0 && <form className="compactForm" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const role = roles.find((candidate) => candidate.roleReference === data.get("roleReference")); if (!role) return; if (role.isPrivileged || role.requiresElevatedApproval) { void runMutation(async () => { const value = await client.createPrivilegedAccessRequest({ targetUserReference: user.userReference, roleReference: role.roleReference, scopeType: null, siteReference: null, siteGroupReference: null, effectiveFrom: new Date().toISOString(), effectiveTo: null, expiresAt: null, reasonCode: data.get("reasonCode") }); onPrivilegedRequest(value); return value; }, "Elevated access requested. Independent approval and controlled provisioning are required."); } else { void runMutation(() => client.assignRole(user.userReference, { roleReference: role.roleReference, effectiveFrom: new Date().toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() }), "Role assigned."); } }}><h4>Add Role</h4><label>Role<select name="roleReference" required><option value="">Select a role</option>{businessRoles.map((role) => <option key={role.roleReference} value={role.roleReference}>{role.name}{role.isPrivileged || role.requiresElevatedApproval ? " (requires elevated access approval)" : ""}</option>)}</select></label><label>Reason<input name="reasonCode" required /></label><button disabled={busy}>Add Role or Request Access</button></form>}
 
     <section><h4>Site Access</h4><p className="warningText"><strong>Organization-wide access is not available.</strong> Access must be limited to an approved Site or Site Group.</p>{detail.scopeGrants.length === 0 ? <p>No Site access is assigned.</p> : <div className="recordList">{detail.scopeGrants.map((grant) => {
       const administrable = grant.scopeType === "SITE" || grant.scopeType === "SITE_GROUP";
@@ -461,7 +480,7 @@ function AccessView({ detail, roleCatalogState, permissionCatalogState, sites, s
       {privilegedRequestState.status === "idle" && <p>Enter a request reference to reopen an existing elevated access request.</p>}
       {privilegedRequestState.status === "loading" && <div className="inlineState" role="status">Loading elevated access request</div>}
       {privilegedRequestState.status === "error" && <SectionFailure label="Elevated Access request" error={privilegedRequestState.error} onRetry={privilegedRequestState.error.retryable ? () => void onLoadPrivilegedRequest(privilegedRequestReference) : undefined} />}
-      {privilegedRequest && <><StatusLabel value={privilegedRequest.status} /><p>Approval records the decision but does not activate access. Access becomes active only when Central PMS reports an active role.</p>{canDecidePrivileged && privilegedRequest.status === "REQUESTED" && <div className="formActions"><button disabled={busy} onClick={() => void runMutation(async () => { const value = await client.decidePrivilegedAccess(privilegedRequest.requestReference, { decision: "APPROVE", reasonCode: "GOVERNED_ADMIN_APPROVAL", expectedRowVersion: privilegedRequest.rowVersion }); onPrivilegedRequest(value); return value; }, "Elevated access approved, but access is not shown as active.")}>Approve Elevated Access</button><button className="dangerButton" disabled={busy} onClick={() => void runMutation(async () => { const value = await client.decidePrivilegedAccess(privilegedRequest.requestReference, { decision: "REJECT", reasonCode: "GOVERNED_ADMIN_REJECTION", expectedRowVersion: privilegedRequest.rowVersion }); onPrivilegedRequest(value); return value; }, "Elevated access rejected.")}>Reject</button></div>}</>}
+      {privilegedRequest && <><StatusLabel value={privilegedRequest.status} /><p>An approval is applied only through Central PMS controlled role provisioning; the target user must sign in again after an authority change.</p>{canDecidePrivileged && privilegedRequest.status === "PENDING_DECISION" && <div className="formActions"><button disabled={busy} onClick={() => void runMutation(async () => { const value = await client.decidePrivilegedAccess(privilegedRequest.requestReference, { decision: "APPROVE", reasonCode: "GOVERNED_ADMIN_APPROVAL", expectedRowVersion: privilegedRequest.rowVersion }); onPrivilegedRequest(value); return value; }, "Elevated access approved and provisioned by Central PMS.")}>Approve Elevated Access</button><button className="dangerButton" disabled={busy} onClick={() => void runMutation(async () => { const value = await client.decidePrivilegedAccess(privilegedRequest.requestReference, { decision: "REJECT", reasonCode: "GOVERNED_ADMIN_REJECTION", expectedRowVersion: privilegedRequest.rowVersion }); onPrivilegedRequest(value); return value; }, "Elevated access rejected.")}>Reject</button></div>}</>}
     </section>
     {canReviewAccess && <form className="compactForm" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); void runMutation(() => client.reviewAccess(user.userReference, { assignmentReferences: detail.roleAssignments.map((item) => item.assignmentReference), scopeGrantReferences: detail.scopeGrants.map((item) => item.grantReference), outcome: data.get("outcome"), reasonCode: data.get("reasonCode") }), "Access Review recorded; access was not silently renewed."); }}><h4>Access Review</h4><label>Outcome<select name="outcome"><option>CONFIRMED</option><option>REMEDIATION_REQUIRED</option><option>REVOKE</option></select></label><label>Reason<input name="reasonCode" required /></label><button disabled={busy}>Record Review</button></form>}
   </div>;

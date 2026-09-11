@@ -48,6 +48,29 @@ describe("identity administration API client", () => {
     await expect(client.getDelegableScopes()).resolves.toEqual(payload);
   });
 
+  it("requests server-owned compatible direct Add User roles and accepts canonical metadata", async () => {
+    const payload = [{
+      roleReference: "role-finance", code: "FINANCE_RECONCILIATION_ANALYST", name: "Finance / Reconciliation Analyst",
+      description: "Read-only reconciliation", type: "SYSTEM", status: "ACTIVE", isPrivileged: false,
+      requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1,
+      provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: ["FINANCE_USER"]
+    }];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      expect(String(input)).toBe(`${identityAdministrationApiRoute}/roles?userType=FINANCE_USER&directAddUserOnly=true`);
+      return json(payload);
+    });
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl }));
+    await expect(client.listRoles({ userType: "FINANCE_USER", directAddUserOnly: true })).resolves.toEqual(payload);
+  });
+
+  it.each([
+    ["service role", { roleReference: "service", code: "SERVICE_PRINCIPAL", name: "Service Principal", type: "SYSTEM", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, provenance: "SERVICE_ROLE", directAddUserEligible: false, humanAssignable: false, allowedUserTypes: [] }],
+    ["invented role", { roleReference: "invented", code: "SITE_ADMINISTRATOR", name: "Site Administrator", type: "SYSTEM", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: ["SITE_OPERATOR"] }]
+  ])("fails closed if the server returns a %s in the human catalog", async (_name, role) => {
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl: vi.fn(async () => json([role])) }));
+    await expect(client.listRoles()).rejects.toMatchObject({ kind: "malformed-response", code: "IDENTITY_ADMIN_MALFORMED_RESPONSE" });
+  });
+
   it("rejects malformed delegable scope metadata instead of synthesizing labels", async () => {
     const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl: vi.fn(async () => json({ siteGroups: [{ siteGroupId: "unresolved" }], sites: [] })) }));
     await expect(client.getDelegableScopes()).rejects.toMatchObject({ kind: "malformed-response", code: "IDENTITY_ADMIN_MALFORMED_RESPONSE" });
