@@ -81,6 +81,19 @@ describe("IdentityAdministrationPage", () => {
     expect(form.textContent).not.toMatch(/Authorized Site Group|Site scope|Test Site|SAMPLE-METRO/i);
   });
 
+  it("fails closed with no local fallback when the authoritative role catalog is unavailable", async () => {
+    const client = mockClient();
+    client.listRoles.mockRejectedValue(uiError("integration-unavailable", "Role catalog is temporarily unavailable.", true));
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    expect(await within(form).findByText("Role catalog: Unavailable")).toBeInTheDocument();
+    expect(within(form).getByLabelText("User type")).toBeDisabled();
+    expect(within(form).getByLabelText("Initial role")).toBeDisabled();
+    expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
+    expect(client.createUser).not.toHaveBeenCalled();
+  });
+
   it("refreshes page one and opens the atomically created user", async () => {
     const client = mockClient();
     const created = { ...userDetail().user, userReference: "created-user", username: "new.operator", displayName: "New Operator", status: "INVITED" };
@@ -112,29 +125,36 @@ describe("IdentityAdministrationPage", () => {
     expect(screen.getByText("User added with an initial role and access assignment.")).toBeInTheDocument();
   });
 
-  it("offers only compatible business roles and clears an incompatible selection when user type changes", async () => {
+  it("reloads server-owned eligible roles and renders canonical names without aliases", async () => {
     const client = mockClient();
-    client.listRoles.mockResolvedValue([
-      role("H007_DENIED", "H-007 Denied User", "synthetic-denied"),
-      role("H007_SITE_ADMIN", "H-007 Site Administrator", "synthetic-site-admin"),
-      role("OPERATOR_SUPPORT_STAFF", "Operator / Support Staff", "site-admin"),
-      role("SITE_OPERATOR", "Site Operator", "site-operator"),
-      role("SUPPORT_AGENT", "Support Agent", "support")
-    ]);
+    const catalog = [
+      role("SITE_OPERATOR", "Site Operator", "site-operator", ["SITE_OPERATOR"]),
+      role("SUPPORT_AGENT", "Support Agent", "support", ["SUPPORT_USER"]),
+      role("FINANCE_RECONCILIATION_ANALYST", "Finance / Reconciliation Analyst", "finance", ["FINANCE_USER"]),
+      role("MERCHANT_ADMIN", "Merchant Administrator", "merchant", ["MERCHANT_USER"])
+    ];
+    client.listRoles.mockImplementation(async (filters = {}) => catalog.filter((candidate) =>
+      (!filters.userType || candidate.allowedUserTypes.includes(filters.userType)) &&
+      (!filters.directAddUserOnly || candidate.directAddUserEligible)));
     renderPage(client);
     await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
     const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
     const userType = within(form).getByLabelText("User type");
     const initialRole = within(form).getByLabelText("Initial role");
 
-    expect(within(form).queryByText(/H-007 Denied|H-007 Site Administrator/)).not.toBeInTheDocument();
-    expect(Array.from((userType as HTMLSelectElement).options).map((option) => option.value)).toEqual(["", "SITE_OPERATOR", "SUPPORT_USER"]);
+    expect(Array.from((userType as HTMLSelectElement).options).map((option) => option.value)).toEqual(["", "SITE_OPERATOR", "SUPPORT_USER", "FINANCE_USER", "MERCHANT_USER"]);
     await userEvent.selectOptions(userType, "SITE_OPERATOR");
-    expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Site Administrator", "Site Operator"]);
+    await waitFor(() => expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Site Operator"]));
     await userEvent.selectOptions(initialRole, "site-operator");
     await userEvent.selectOptions(userType, "SUPPORT_USER");
+    await waitFor(() => expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Support Agent"]));
     expect(initialRole).toHaveValue("");
-    expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Support Staff"]);
+    await userEvent.selectOptions(userType, "FINANCE_USER");
+    await waitFor(() => expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Finance / Reconciliation Analyst"]));
+    await userEvent.selectOptions(userType, "MERCHANT_USER");
+    await waitFor(() => expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Merchant Administrator"]));
+    expect(within(initialRole).queryByText(/Finance User|Merchant User|Support Staff|Site Administrator/)).not.toBeInTheDocument();
+    expect(client.listRoles).toHaveBeenCalledWith({ userType: "SUPPORT_USER", directAddUserOnly: true }, expect.any(AbortSignal));
     expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
   });
 
@@ -237,9 +257,12 @@ describe("IdentityAdministrationPage", () => {
     expect(client.updateUser.mock.calls[0][1]).toMatchObject({ expectedRowVersion: 4, effectiveFrom: "2030-01-01T00:00:00.000Z" });
   });
 
-  it("does not present privileged approval evidence as active authority", async () => {
+  it("keeps a privileged request pending until Central PMS applies the approved assignment", async () => {
     const client = mockClient();
-    client.createPrivilegedAccessRequest.mockResolvedValue(privilegedRequest("APPROVED"));
+    const detail = userDetail();
+    detail.user = { ...detail.user, userType: "INTERNAL_ADMIN" };
+    client.getUser.mockResolvedValue(detail);
+    client.createPrivilegedAccessRequest.mockResolvedValue(privilegedRequest("PENDING_DECISION"));
     renderPage(client);
     await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
     await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
@@ -247,10 +270,12 @@ describe("IdentityAdministrationPage", () => {
     await userEvent.selectOptions(within(roleForm).getByLabelText("Role"), "22222222-2222-4222-8222-222222222222");
     await userEvent.type(within(roleForm).getByLabelText("Reason"), "TEMPORARY_SUPPORT");
     await userEvent.click(within(roleForm).getByRole("button", { name: "Add Role or Request Access" }));
-    expect(await screen.findByText(/Approval records the decision but does not activate access/)).toBeInTheDocument();
+    expect(await screen.findByText("Pending Decision")).toBeInTheDocument();
     expect(screen.getByLabelText("Request reference")).toHaveValue("request-1");
     expect(screen.getByRole("heading", { name: "Elevated Access" })).toBeInTheDocument();
-    expect(screen.queryByText("Active Authority")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Approve Elevated Access" }));
+    expect(await screen.findByText("Applied")).toBeInTheDocument();
+    expect(screen.getByText("Elevated access approved and provisioned by Central PMS.")).toBeInTheDocument();
   });
 
   it("distinguishes successful empty catalogs from failed secondary requests and retries only the affected section", async () => {
@@ -369,17 +394,17 @@ describe("IdentityAdministrationPage", () => {
     expect(screen.getByRole("button", { name: "Retry User directory" })).toBeInTheDocument();
   });
 
-  it("reopens an authoritative Elevated Access request after remount without activating access", async () => {
+  it("reopens an authoritative applied Elevated Access request after remount", async () => {
     const client = mockClient();
-    client.getPrivilegedAccessRequest.mockResolvedValue(privilegedRequest("APPROVED"));
+    client.getPrivilegedAccessRequest.mockResolvedValue(privilegedRequest("APPLIED"));
     const first = renderPage(client);
     await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
     await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
     await userEvent.type(screen.getByLabelText("Request reference"), "request-persisted");
     await userEvent.click(screen.getByRole("button", { name: "Load Request" }));
-    expect(await screen.findByText("Approved")).toBeInTheDocument();
+    expect(await screen.findByText("Applied")).toBeInTheDocument();
     expect(client.getPrivilegedAccessRequest).toHaveBeenLastCalledWith("request-persisted");
-    expect(screen.queryByText("Active Authority")).not.toBeInTheDocument();
+    expect(screen.getByText(/target user must sign in again/)).toBeInTheDocument();
     first.unmount();
 
     renderPage(client);
@@ -387,7 +412,7 @@ describe("IdentityAdministrationPage", () => {
     await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
     await userEvent.type(screen.getByLabelText("Request reference"), "request-persisted");
     await userEvent.click(screen.getByRole("button", { name: "Load Request" }));
-    expect(await screen.findByText("Approved")).toBeInTheDocument();
+    expect(await screen.findByText("Applied")).toBeInTheDocument();
     expect(client.getPrivilegedAccessRequest).toHaveBeenCalledTimes(2);
   });
 
@@ -470,25 +495,26 @@ function mockClient() {
   return {
     listUsers: vi.fn(async (_filters: { query?: string; status?: string; offset?: number; limit?: number } = {}) => [user.user]), getUser: vi.fn(async (_reference: string) => user),
     createUser: vi.fn(async (_body: Record<string, unknown>) => user.user), updateUser: vi.fn(async (_reference: string, _body: Record<string, unknown>) => user.user), changeLifecycle: vi.fn(async () => user.user),
-    listRoles: vi.fn(async () => [
-      { roleReference: "33333333-3333-4333-8333-333333333333", code: "SITE_OPERATOR", name: "Site Operator", description: "Site access", type: "SYSTEM", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1 },
-      { roleReference: "22222222-2222-4222-8222-222222222222", code: "SITE_OPERATOR", name: "Site Operator", description: "Site operations", type: "CUSTOM", status: "ACTIVE", isPrivileged: true, requiresElevatedApproval: true, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1 }
-    ]),
+    listRoles: vi.fn(async (filters: { userType?: string; directAddUserOnly?: boolean } = {}) => [
+      role("SITE_OPERATOR", "Site Operator", "33333333-3333-4333-8333-333333333333", ["SITE_OPERATOR"]),
+      role("SYSTEM_RBAC_ADMINISTRATOR", "System / RBAC Administrator", "22222222-2222-4222-8222-222222222222", ["INTERNAL_ADMIN"], true)
+    ].filter((candidate) => (!filters.userType || candidate.allowedUserTypes.includes(filters.userType)) &&
+      (!filters.directAddUserOnly || candidate.directAddUserEligible))),
     listPermissions: vi.fn(async () => [{ permissionReference: "permission-1", code: "user.view", name: "View users", domain: "Identity", action: "VIEW", status: "ACTIVE", isSensitive: false, requiresAudit: true, rowVersion: 1 }]),
     getDelegableScopes: vi.fn(async () => ({
       siteGroups: [{ siteGroupId: "group-1", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null }],
       sites: [{ siteId: "site-1", siteCode: "PITX-L3", siteName: "PITX Level 3", siteGroupId: "group-1", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null }]
     })),
     assignRole: vi.fn(async () => user.roleAssignments[0]), revokeRole: vi.fn(async () => user.roleAssignments[0]), grantScope: vi.fn(async () => user.scopeGrants[0]), revokeScope: vi.fn(async (_userReference: string, _assignmentReference: string, _grantReference: string, _body: Record<string, unknown>) => user.scopeGrants[0]),
-    createPrivilegedAccessRequest: vi.fn(async () => privilegedRequest("REQUESTED")), getPrivilegedAccessRequest: vi.fn(async () => privilegedRequest("REQUESTED")), decidePrivilegedAccess: vi.fn(async () => privilegedRequest("APPROVED")), reviewAccess: vi.fn(async () => true),
+    createPrivilegedAccessRequest: vi.fn(async () => privilegedRequest("PENDING_DECISION")), getPrivilegedAccessRequest: vi.fn(async () => privilegedRequest("PENDING_DECISION")), decidePrivilegedAccess: vi.fn(async () => privilegedRequest("APPLIED")), reviewAccess: vi.fn(async () => true),
     listSessions: vi.fn(async () => [{ sessionReference: "session-1", audience: "MANAGEMENT_PLATFORM", status: "ACTIVE", assurance: "PASSWORD_TOTP", mfaRequirementSatisfied: true, deviceServiceIdentityReference: null, authenticatedAt: "2030-01-01T00:00:00Z", lastSeenAt: "2030-01-01T00:10:00Z", idleExpiresAt: "2030-01-01T00:30:00Z", absoluteExpiresAt: "2030-01-01T08:00:00Z", revokedAt: null, rowVersion: 1 }]),
     revokeSession: vi.fn(async () => undefined), getMfaStatus: vi.fn(async () => ({ requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-01-01T00:00:00Z", resetAt: null, revokedAt: null, rowVersion: 1 })), changeMfa: vi.fn(async () => ({ requiredForPrivilegedManagementPlatform: true, enrolled: false, status: "RESET_REQUIRED", enrollmentStartedAt: null, activatedAt: null, lastSuccessfullyUsedAt: null, resetAt: "2030-01-01T00:00:00Z", revokedAt: null, rowVersion: 2 })),
     listAuditEvents: vi.fn(async () => [{ auditReference: "audit-1", eventType: "ROLE_ASSIGNED", result: "SUCCESS", reasonCode: "AUTHORIZED", actorUserReference: null, summary: "Role assignment recorded.", occurredAt: "2030-01-01T00:00:00Z", correlationReference: "support-ref-1" }])
   } satisfies { [K in keyof IdentityAdministrationClient]: ReturnType<typeof vi.fn> };
 }
 
-function role(code: string, name: string, reference: string) {
-  return { roleReference: reference, code, name, description: "Governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1 };
+function role(code: string, name: string, reference: string, allowedUserTypes: string[] = ["SITE_OPERATOR"], privileged = false) {
+  return { roleReference: reference, code, name, description: "Governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: privileged, requiresElevatedApproval: privileged, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: !privileged, humanAssignable: true, allowedUserTypes };
 }
 
 function userDetail(): IdentityUserDetail { return { user: { userReference: "11111111-1111-4111-8111-111111111111", username: "alex.rivera", displayName: "Alex Rivera", maskedEmail: "a***@example.test", maskedMobileNumber: "***1234", userType: "SITE_OPERATOR", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-01-01T00:00:00Z", rowVersion: 4 }, roleAssignments: [{ assignmentReference: "assignment-1", userReference: "11111111-1111-4111-8111-111111111111", roleReference: "22222222-2222-4222-8222-222222222222", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }], scopeGrants: [{ grantReference: "grant-1", assignmentReference: "assignment-1", scopeType: "SITE", siteReference: "site-1", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }] }; }

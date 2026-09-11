@@ -106,41 +106,10 @@ export interface IdentityRoleDefinition {
   effectiveFrom: string;
   effectiveTo: string | null;
   rowVersion: number;
-}
-
-const assignableRolePurposes: Record<string, { label: string; userType: string }> = {
-  PLATFORM_ADMINISTRATOR: { label: "Management Platform Administrator", userType: "INTERNAL_ADMIN" },
-  SYSTEM_RBAC_ADMINISTRATOR: { label: "User Administrator", userType: "INTERNAL_ADMIN" },
-  OPERATIONS_MANAGER: { label: "Operations Manager", userType: "OPERATIONS_USER" },
-  OPERATIONS_SUPERVISOR: { label: "Site Group Administrator", userType: "OPERATIONS_USER" },
-  OPERATOR_SUPPORT_STAFF: { label: "Site Administrator", userType: "SITE_OPERATOR" },
-  SITE_OPERATOR: { label: "Site Operator", userType: "SITE_OPERATOR" },
-  SUPPORT_AGENT: { label: "Support Staff", userType: "SUPPORT_USER" },
-  FINANCE_RECONCILIATION_ANALYST: { label: "Finance User", userType: "FINANCE_USER" },
-  COMPLIANCE_REVIEWER: { label: "Compliance User", userType: "COMPLIANCE_USER" },
-  MERCHANT_ADMIN: { label: "Merchant User", userType: "MERCHANT_USER" },
-  SECURITY_REVIEWER: { label: "Security User", userType: "SECURITY_USER" }
-};
-
-export interface AssignableRoleOption {
-  reference: string;
-  code: string;
-  label: string;
-  userType: string;
-}
-
-export function toBusinessRoleOption(role: IdentityRoleDefinition): AssignableRoleOption | undefined {
-  const purpose = assignableRolePurposes[role.code.trim().toUpperCase()];
-  if (!purpose || role.status !== "ACTIVE") {
-    return undefined;
-  }
-
-  return { reference: role.roleReference, code: role.code, label: purpose.label, userType: purpose.userType };
-}
-
-export function toAssignableRoleOption(role: IdentityRoleDefinition): AssignableRoleOption | undefined {
-  if (role.isPrivileged || role.requiresElevatedApproval) return undefined;
-  return toBusinessRoleOption(role);
+  provenance: "CANONICAL_ROLE" | string;
+  directAddUserEligible: boolean;
+  humanAssignable: boolean;
+  allowedUserTypes: string[];
 }
 
 export interface IdentityPermissionDefinition {
@@ -217,7 +186,7 @@ export interface IdentityAdministrationClient {
   createUser(body: Record<string, unknown>): Promise<IdentityUserSummary>;
   updateUser(userReference: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
   changeLifecycle(userReference: string, action: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
-  listRoles(signal?: AbortSignal): Promise<IdentityRoleDefinition[]>;
+  listRoles(filters?: { userType?: string; directAddUserOnly?: boolean }, signal?: AbortSignal): Promise<IdentityRoleDefinition[]>;
   listPermissions(signal?: AbortSignal): Promise<IdentityPermissionDefinition[]>;
   getDelegableScopes(signal?: AbortSignal): Promise<DelegableScopeCatalog>;
   assignRole(userReference: string, body: Record<string, unknown>): Promise<IdentityRoleAssignment>;
@@ -260,12 +229,14 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
       : async () => ({ ...user, username: "invited.user", displayName: "Invited User", status: "INVITED", rowVersion: 1 }),
     updateUser: name === "conflict" ? async () => { throw createUiError("conflict", "IDENTITY_ADMIN_VERSION_CONFLICT", "The authoritative user changed. Reload before retrying.", "support-identity-conflict", 409); } : async () => ({ ...user, rowVersion: user.rowVersion + 1 }),
     changeLifecycle: async (_reference, action) => ({ ...user, status: action.toUpperCase(), rowVersion: user.rowVersion + 1 }),
-    listRoles: name === "partial-failure" ? sectionUnavailable : async () => [syntheticOrdinaryRole(), syntheticRole()], listPermissions: name === "partial-failure" ? sectionUnavailable : async () => [syntheticPermission()],
+    listRoles: name === "partial-failure" ? sectionUnavailable : async (filters = {}) => [...syntheticDirectRoles(), syntheticRole()].filter((role) =>
+      (!filters.userType || role.allowedUserTypes.includes(filters.userType)) &&
+      (!filters.directAddUserOnly || (role.directAddUserEligible && !role.isPrivileged && !role.requiresElevatedApproval))), listPermissions: name === "partial-failure" ? sectionUnavailable : async () => [syntheticPermission()],
     getDelegableScopes: name === "unavailable" ? fail : async () => pitxDelegableScopes(),
     assignRole: async () => syntheticAssignment(), revokeRole: async () => ({ ...syntheticAssignment(), status: "REVOKED" }),
     grantScope: async (_user, assignment, body) => ({ ...syntheticGrant(), assignmentReference: assignment, scopeType: String(body.scopeType), siteReference: body.siteReference ? String(body.siteReference) : null, siteGroupReference: body.siteGroupReference ? String(body.siteGroupReference) : null }),
     revokeScope: async () => ({ ...syntheticGrant(), status: "REVOKED" }),
-    createPrivilegedAccessRequest: async () => syntheticPrivilegedRequest("REQUESTED"), getPrivilegedAccessRequest: async () => syntheticPrivilegedRequest(name === "elevated-rediscovery" ? "APPROVED" : "REQUESTED"), decidePrivilegedAccess: async (_reference, body) => syntheticPrivilegedRequest(String(body.decision) === "APPROVE" ? "APPROVED" : "REJECTED"),
+    createPrivilegedAccessRequest: async () => syntheticPrivilegedRequest("PENDING_DECISION"), getPrivilegedAccessRequest: async () => syntheticPrivilegedRequest(name === "elevated-rediscovery" ? "APPLIED" : "PENDING_DECISION"), decidePrivilegedAccess: async (_reference, body) => syntheticPrivilegedRequest(String(body.decision) === "APPROVE" ? "APPLIED" : "REJECTED"),
     reviewAccess: async () => true,
     listSessions: name === "partial-failure" ? sectionUnavailable : async () => [syntheticSession()], revokeSession: async () => undefined,
     getMfaStatus: name === "partial-failure" ? sectionDenied : async () => syntheticMfa(), changeMfa: async (_reference, action) => ({ ...syntheticMfa(), enrolled: false, status: action === "reset" ? "RESET_REQUIRED" : "REMOVED", rowVersion: 8 }),
@@ -292,7 +263,13 @@ export function createIdentityAdministrationClient(api: CentralPmsApiClient): Id
     createUser: (body) => mutate<unknown>(`${identityAdministrationApiRoute}/users`, "POST", body).then(asObject<IdentityUserSummary>),
     updateUser: (reference, body) => mutate<unknown>(userPath(reference), "PATCH", body).then(asObject<IdentityUserSummary>),
     changeLifecycle: (reference, action, body) => mutate<unknown>(`${userPath(reference)}/${assertLifecycleAction(action)}`, "POST", body).then(asObject<IdentityUserSummary>),
-    listRoles: (signal) => get<unknown>(`${identityAdministrationApiRoute}/roles`, signal).then(asArray<IdentityRoleDefinition>),
+    listRoles(filters = {}, signal) {
+      const query = new URLSearchParams();
+      if (filters.userType) query.set("userType", filters.userType);
+      if (filters.directAddUserOnly) query.set("directAddUserOnly", "true");
+      const suffix = query.size ? `?${query}` : "";
+      return get<unknown>(`${identityAdministrationApiRoute}/roles${suffix}`, signal).then(asRoleCatalog);
+    },
     listPermissions: (signal) => get<unknown>(`${identityAdministrationApiRoute}/permissions`, signal).then(asArray<IdentityPermissionDefinition>),
     getDelegableScopes: (signal) => get<unknown>(delegableScopesApiRoute, signal).then(asDelegableScopeCatalog),
     assignRole: (reference, body) => mutate<unknown>(`${userPath(reference)}/role-assignments`, "POST", body).then(asObject<IdentityRoleAssignment>),
@@ -318,6 +295,18 @@ function malformed(): never { throw createUiError("malformed-response", "IDENTIT
 function asArray<T>(value: unknown): T[] { return Array.isArray(value) ? value as T[] : malformed(); }
 function asObject<T>(value: unknown): T { return typeof value === "object" && value !== null && !Array.isArray(value) ? value as T : malformed(); }
 function asBoolean(value: unknown): boolean { return typeof value === "boolean" ? value : malformed(); }
+
+function asRoleCatalog(value: unknown): IdentityRoleDefinition[] {
+  if (!Array.isArray(value)) malformed();
+  return value.map((item) => {
+    if (!isRecord(item) || !hasStrings(item, ["roleReference", "code", "name", "type", "status", "provenance"]) ||
+        typeof item.isPrivileged !== "boolean" || typeof item.requiresElevatedApproval !== "boolean" ||
+        typeof item.directAddUserEligible !== "boolean" || typeof item.humanAssignable !== "boolean" ||
+        !Array.isArray(item.allowedUserTypes) || !item.allowedUserTypes.every((entry) => typeof entry === "string")) malformed();
+    if (item.provenance !== "CANONICAL_ROLE" || item.humanAssignable !== true || item.code === "SERVICE_PRINCIPAL" || item.code === "SITE_ADMINISTRATOR") malformed();
+    return item as unknown as IdentityRoleDefinition;
+  });
+}
 
 function asDelegableScopeCatalog(value: unknown): DelegableScopeCatalog {
   if (!isRecord(value) || !Array.isArray(value.siteGroups) || !Array.isArray(value.sites)) malformed();
@@ -345,13 +334,23 @@ function assertLifecycleAction(action: string): string {
 
 function syntheticUser(): IdentityUserSummary { return { userReference: "81000000-0000-4000-8000-000000000001", username: "synthetic.admin", displayName: "Synthetic Administration User", maskedEmail: "s***@example.test", maskedMobileNumber: "***0101", userType: "INTERNAL_ADMIN", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-03-01T08:00:00Z", rowVersion: 7 }; }
 function syntheticUserPage(offset: number, count: number): IdentityUserSummary[] { return Array.from({ length: count }, (_, index) => ({ ...syntheticUser(), userReference: `synthetic-user-${offset + index + 1}`, username: `synthetic.user.${offset + index + 1}`, displayName: `Synthetic User ${offset + index + 1}` })); }
-function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: syntheticRole().roleReference, roleCode: "SITE_ACCESS_ADMINISTRATOR", roleName: "Site Access Administrator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
+function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: syntheticRole().roleReference, roleCode: "SYSTEM_RBAC_ADMINISTRATOR", roleName: "System / RBAC Administrator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
 function syntheticGrant(): IdentityScopeGrant { return { grantReference: "81000000-0000-4000-8000-000000000003", assignmentReference: syntheticAssignment().assignmentReference, scopeType: "SITE", siteReference: "71000000-0000-0000-0000-000000000101", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 2 }; }
-function syntheticRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000004", code: "SITE_ACCESS_ADMINISTRATOR", name: "Site Access Administrator", description: "Governed Site access administration", type: "CUSTOM", status: "ACTIVE", isPrivileged: true, requiresElevatedApproval: true, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 2 }; }
-function syntheticOrdinaryRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000014", code: "SITE_OPERATOR", name: "Site Operator", description: "Ordinary Site operations access", type: "CUSTOM", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1 }; }
+function syntheticRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_RBAC_ADMINISTRATOR", name: "System / RBAC Administrator", description: "Governed identity administration", type: "SYSTEM", status: "ACTIVE", isPrivileged: true, requiresElevatedApproval: true, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 2, provenance: "CANONICAL_ROLE", directAddUserEligible: false, humanAssignable: true, allowedUserTypes: ["INTERNAL_ADMIN"] }; }
+function syntheticOrdinaryRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000014", code: "SITE_OPERATOR", name: "Site Operator", description: "Ordinary Site operations access", type: "OPERATIONS", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: ["SITE_OPERATOR"] }; }
+function syntheticDirectRoles(): IdentityRoleDefinition[] {
+  const base = syntheticOrdinaryRole();
+  return [
+    base,
+    { ...base, roleReference: "81000000-0000-4000-8000-000000000015", code: "SUPPORT_AGENT", name: "Support Agent", type: "SUPPORT", allowedUserTypes: ["SUPPORT_USER"] },
+    { ...base, roleReference: "81000000-0000-4000-8000-000000000016", code: "FINANCE_RECONCILIATION_ANALYST", name: "Finance / Reconciliation Analyst", type: "FINANCE", allowedUserTypes: ["FINANCE_USER"] },
+    { ...base, roleReference: "81000000-0000-4000-8000-000000000017", code: "EXECUTIVE_MANAGEMENT", name: "Executive / Management", type: "OTHER", allowedUserTypes: ["OTHER"] },
+    { ...base, roleReference: "81000000-0000-4000-8000-000000000018", code: "MERCHANT_ADMIN", name: "Merchant Administrator", type: "MERCHANT", allowedUserTypes: ["MERCHANT_USER"] }
+  ];
+}
 function syntheticPermission(): IdentityPermissionDefinition { return { permissionReference: "81000000-0000-4000-8000-000000000005", code: "user.view", name: "View users", domain: "Identity", action: "VIEW", status: "ACTIVE", isSensitive: false, requiresAudit: true, rowVersion: 1 }; }
 function syntheticMfa(): IdentityMfaStatus { return { requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-03-01T08:00:00Z", resetAt: null, revokedAt: null, rowVersion: 7 }; }
 function syntheticSession(): IdentitySessionSummary { return { sessionReference: "81000000-0000-4000-8000-000000000006", audience: "MANAGEMENT_PLATFORM", status: "ACTIVE", assurance: "PASSWORD_TOTP", mfaRequirementSatisfied: true, deviceServiceIdentityReference: null, authenticatedAt: "2030-03-01T08:00:00Z", lastSeenAt: "2030-03-01T08:10:00Z", idleExpiresAt: "2030-03-01T08:30:00Z", absoluteExpiresAt: "2030-03-01T16:00:00Z", revokedAt: null, rowVersion: 1 }; }
 function syntheticAudit(): IdentityAuditEntry { return { auditReference: "81000000-0000-4000-8000-000000000007", eventType: "ROLE_ASSIGNED", result: "SUCCESS", reasonCode: "GOVERNED_ASSIGNMENT", actorUserReference: null, summary: "Role added through governed administration.", occurredAt: "2030-03-01T08:00:00Z", correlationReference: "support-identity-0001" }; }
-function syntheticPrivilegedRequest(status: string): IdentityPrivilegedAccessRequest { return { requestReference: "81000000-0000-4000-8000-000000000008", targetUserReference: syntheticUser().userReference, requestedRoleReference: syntheticRole().roleReference, requestedScopeType: null, requestedSiteReference: null, requestedSiteGroupReference: null, status, reasonCode: "TEMPORARY_ADMINISTRATION", requestedEffectiveFrom: "2030-03-01T08:00:00Z", requestedEffectiveTo: null, requestedAt: "2030-03-01T08:00:00Z", requestedByUserReference: "81000000-0000-4000-8000-000000000009", expiresAt: null, rowVersion: status === "REQUESTED" ? 1 : 2, decisions: [] }; }
+function syntheticPrivilegedRequest(status: string): IdentityPrivilegedAccessRequest { return { requestReference: "81000000-0000-4000-8000-000000000008", targetUserReference: syntheticUser().userReference, requestedRoleReference: syntheticRole().roleReference, requestedScopeType: null, requestedSiteReference: null, requestedSiteGroupReference: null, status, reasonCode: "TEMPORARY_ADMINISTRATION", requestedEffectiveFrom: "2030-03-01T08:00:00Z", requestedEffectiveTo: null, requestedAt: "2030-03-01T08:00:00Z", requestedByUserReference: "81000000-0000-4000-8000-000000000009", expiresAt: null, rowVersion: status === "PENDING_DECISION" ? 1 : 2, decisions: [] }; }
 function pitxDelegableScopes(): DelegableScopeCatalog { return { siteGroups: [{ siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }], sites: [{ siteId: "2d1dcdf8-f563-537c-8542-0bde7cc9da97", siteCode: "PITX-LEVEL-3", siteName: "PITX Level 3", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }, { siteId: "b336964f-3b84-5404-8690-97ead0929b1f", siteCode: "PITX-OPEN-LOT", siteName: "PITX Open Lot", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }] }; }
