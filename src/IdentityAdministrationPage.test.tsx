@@ -22,12 +22,12 @@ describe("IdentityAdministrationPage", () => {
     expect(await screen.findByText("No users match the current search.")).toBeInTheDocument();
   });
 
-  it("creates users without password or invented delivery controls", async () => {
+  it("creates email invitations without collecting a password or exposing activation secrets", async () => {
     const client = mockClient();
     renderPage(client);
     await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
     expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/send email|send sms/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/send sms/i)).not.toBeInTheDocument();
     const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
     expect(within(form).getByLabelText("User type")).toHaveValue("");
     expect(Array.from((within(form).getByLabelText("User type") as HTMLSelectElement).options).map((option) => option.value)).toEqual([
@@ -35,6 +35,7 @@ describe("IdentityAdministrationPage", () => {
     ]);
     await userEvent.type(within(form).getByLabelText("Username"), "new.user");
     await userEvent.type(within(form).getByLabelText("Display name"), "New User");
+    await userEvent.type(within(form).getByLabelText(/Email/), "new.user@example.test");
     await userEvent.type(within(form).getByLabelText("Reason"), "AUTHORIZED_INVITE");
     expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
     expect(client.createUser).not.toHaveBeenCalled();
@@ -45,8 +46,72 @@ describe("IdentityAdministrationPage", () => {
     expect(within(form).getByRole("button", { name: "Add User" })).toBeEnabled();
     await userEvent.click(within(form).getByRole("button", { name: "Add User" }));
     await waitFor(() => expect(client.createUser).toHaveBeenCalledOnce());
-    expect(client.createUser.mock.calls[0][0]).toMatchObject({ userType: "SITE_OPERATOR", initialRoleReference: "33333333-3333-4333-8333-333333333333", initialScopeType: "SITE", initialSiteReference: "site-1", initialSiteGroupReference: null });
+    expect(client.createUser.mock.calls[0][0]).toMatchObject({ email: "new.user@example.test", activationDeliveryMode: "EMAIL", adminIssuedHandoffAcknowledged: false, userType: "SITE_OPERATOR", initialRoleReference: "33333333-3333-4333-8333-333333333333", initialScopeType: "SITE", initialSiteReference: "site-1", initialSiteGroupReference: null });
     expect(JSON.stringify(client.createUser.mock.calls[0][0])).not.toMatch(/password|totp|seed/i);
+  });
+
+  it("creates an admin-issued invitation without email and displays its activation material once", async () => {
+    const client = mockClient();
+    const material = {
+      challengeReference: "challenge-reference",
+      challengeSecret: "task-owned-activation-code",
+      expiresAt: "2030-01-01T00:30:00Z",
+      activationUrl: "https://accounts.exitpass.test/account/activate?challengeReference=challenge-reference&challengeSecret=task-owned-activation-code",
+      qrPayload: "https://accounts.exitpass.test/account/activate?challengeReference=challenge-reference&challengeSecret=task-owned-activation-code"
+    };
+    client.createUser.mockResolvedValue({
+      user: { ...userDetail().user, status: "INVITED" },
+      invitation: { ...invitedStatus(), activationDeliveryMode: "ADMIN_ISSUED", deliveryClassification: "ADMIN_ISSUED" },
+      oneTimeActivation: material
+    } as never);
+    const stored = vi.spyOn(Storage.prototype, "setItem");
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    await userEvent.selectOptions(within(form).getByLabelText("Activation delivery"), "ADMIN_ISSUED");
+    await userEvent.type(within(form).getByLabelText("Username"), "site.operator");
+    await userEvent.type(within(form).getByLabelText("Display name"), "Site Operator");
+    await userEvent.type(within(form).getByLabelText("Reason"), "DIRECT_HANDOFF");
+    await userEvent.selectOptions(within(form).getByLabelText("User type"), "SITE_OPERATOR");
+    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "33333333-3333-4333-8333-333333333333");
+    await userEvent.selectOptions(within(form).getByLabelText("Assigned Site"), "site-1");
+    await userEvent.click(within(form).getByLabelText(/show the activation code or QR directly/i));
+    await userEvent.click(within(form).getByRole("button", { name: "Add User" }));
+
+    expect(await screen.findByText(/This code will not be shown again/)).toBeInTheDocument();
+    expect(screen.getByText(material.challengeSecret)).toBeInTheDocument();
+    expect(screen.getByLabelText("Activation QR code")).toBeInTheDocument();
+    expect(client.createUser).toHaveBeenCalledWith(expect.objectContaining({
+      email: null,
+      activationDeliveryMode: "ADMIN_ISSUED",
+      adminIssuedHandoffAcknowledged: true
+    }));
+    expect(stored).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "I have handed it to the employee" }));
+    expect(screen.queryByText(material.challengeSecret)).not.toBeInTheDocument();
+    stored.mockRestore();
+  });
+
+  it("shows governed invitation actions and removes generic activation for invited users", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const client = mockClient();
+    const invited = { ...userDetail().user, status: "INVITED" };
+    client.listUsers.mockResolvedValue([invited]);
+    client.getUser.mockResolvedValue({ ...userDetail(), user: invited, invitation: invitedStatus() });
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+
+    expect(await screen.findByRole("heading", { name: "Invitation" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Account Status" })).not.toBeInTheDocument();
+    const reissue = screen.getByRole("heading", { name: "Resend / Reissue invitation" }).closest("form")!;
+    await userEvent.type(within(reissue).getByLabelText("Reason"), "AUTHORIZED_REISSUE");
+    await userEvent.click(within(reissue).getByRole("button", { name: "Resend / Reissue" }));
+    await waitFor(() => expect(client.reissueInvitation).toHaveBeenCalledWith(invited.userReference,
+      expect.objectContaining({ activationDeliveryMode: "EMAIL", reasonCode: "AUTHORIZED_REISSUE" })));
+    await userEvent.click(within(reissue).getByRole("button", { name: "Cancel invitation" }));
+    await waitFor(() => expect(client.cancelInvitation).toHaveBeenCalledWith(invited.userReference,
+      expect.objectContaining({ expectedRowVersion: invited.rowVersion })));
+    confirm.mockRestore();
   });
 
   it("renders PITX and its two authoritative child Sites without generated or synthetic options", async () => {
@@ -97,7 +162,7 @@ describe("IdentityAdministrationPage", () => {
   it("refreshes page one and opens the atomically created user", async () => {
     const client = mockClient();
     const created = { ...userDetail().user, userReference: "created-user", username: "new.operator", displayName: "New Operator", status: "INVITED" };
-    client.createUser.mockResolvedValue(created);
+    client.createUser.mockResolvedValue({ user: created, invitation: invitedStatus(), oneTimeActivation: null });
     client.listUsers.mockResolvedValueOnce([userDetail().user]).mockResolvedValueOnce([created, userDetail().user]);
     client.getUser.mockImplementation(async (reference: string) => reference === created.userReference ? { ...userDetail(), user: created } : userDetail());
     renderPage(client);
@@ -109,6 +174,7 @@ describe("IdentityAdministrationPage", () => {
     const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
     await userEvent.type(within(form).getByLabelText("Username"), created.username);
     await userEvent.type(within(form).getByLabelText("Display name"), created.displayName);
+    await userEvent.type(within(form).getByLabelText(/Email/), "new.operator@example.test");
     await userEvent.type(within(form).getByLabelText("Reason"), "AUTHORIZED_INVITE");
     await userEvent.selectOptions(within(form).getByLabelText("Site access level"), "SITE_GROUP");
     await userEvent.selectOptions(within(form).getByLabelText("User type"), "SITE_OPERATOR");
@@ -122,7 +188,7 @@ describe("IdentityAdministrationPage", () => {
     expect(screen.getByText("2 returned")).toBeInTheDocument();
     expect(client.listUsers).toHaveBeenLastCalledWith({ query: undefined, status: undefined, offset: 0, limit: 50 });
     expect(client.createUser).toHaveBeenCalledWith(expect.objectContaining({ initialScopeType: "SITE_GROUP", initialSiteReference: null, initialSiteGroupReference: "group-1" }));
-    expect(screen.getByText("User added with an initial role and access assignment.")).toBeInTheDocument();
+    expect(screen.getByText("Invitation sent.")).toBeInTheDocument();
   });
 
   it("reloads server-owned eligible roles and renders canonical names without aliases", async () => {
@@ -471,6 +537,8 @@ function renderPage(client = mockClient()) {
 }
 
 async function selectInitialAccess(form: HTMLElement) {
+  const email = within(form).queryByLabelText(/Email/);
+  if (email) await userEvent.type(email, "operator@example.test");
   await userEvent.selectOptions(within(form).getByLabelText("User type"), "SITE_OPERATOR");
   await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "33333333-3333-4333-8333-333333333333");
   await userEvent.selectOptions(within(form).getByLabelText("Assigned Site"), "site-1");
@@ -494,7 +562,10 @@ function mockClient() {
   const user = userDetail();
   return {
     listUsers: vi.fn(async (_filters: { query?: string; status?: string; offset?: number; limit?: number } = {}) => [user.user]), getUser: vi.fn(async (_reference: string) => user),
-    createUser: vi.fn(async (_body: Record<string, unknown>) => user.user), updateUser: vi.fn(async (_reference: string, _body: Record<string, unknown>) => user.user), changeLifecycle: vi.fn(async () => user.user),
+    createUser: vi.fn(async (_body: Record<string, unknown>) => ({ user: { ...user.user, status: "INVITED" }, invitation: invitedStatus(), oneTimeActivation: null })),
+    reissueInvitation: vi.fn(async (_reference: string, _body: Record<string, unknown>) => ({ challengeReference: "challenge-2", expiresAt: "2030-01-01T00:30:00Z", deliveryMode: "EMAIL" as const, deliveryClassification: "EMAIL_SENT", oneTimeActivation: null })),
+    cancelInvitation: vi.fn(async () => ({ ...user.user, status: "INACTIVE", rowVersion: user.user.rowVersion + 1 })),
+    updateUser: vi.fn(async (_reference: string, _body: Record<string, unknown>) => user.user), changeLifecycle: vi.fn(async () => user.user),
     listRoles: vi.fn(async (filters: { userType?: string; directAddUserOnly?: boolean } = {}) => [
       role("SITE_OPERATOR", "Site Operator", "33333333-3333-4333-8333-333333333333", ["SITE_OPERATOR"]),
       role("SYSTEM_RBAC_ADMINISTRATOR", "System / RBAC Administrator", "22222222-2222-4222-8222-222222222222", ["INTERNAL_ADMIN"], true)
@@ -517,5 +588,6 @@ function role(code: string, name: string, reference: string, allowedUserTypes: s
   return { roleReference: reference, code, name, description: "Governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: privileged, requiresElevatedApproval: privileged, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: !privileged, humanAssignable: true, allowedUserTypes };
 }
 
-function userDetail(): IdentityUserDetail { return { user: { userReference: "11111111-1111-4111-8111-111111111111", username: "alex.rivera", displayName: "Alex Rivera", maskedEmail: "a***@example.test", maskedMobileNumber: "***1234", userType: "SITE_OPERATOR", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-01-01T00:00:00Z", rowVersion: 4 }, roleAssignments: [{ assignmentReference: "assignment-1", userReference: "11111111-1111-4111-8111-111111111111", roleReference: "22222222-2222-4222-8222-222222222222", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }], scopeGrants: [{ grantReference: "grant-1", assignmentReference: "assignment-1", scopeType: "SITE", siteReference: "site-1", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }] }; }
+function invitedStatus() { return { invitationState: "INVITATION_PENDING", activationDeliveryMode: "EMAIL" as const, latestChallengeState: "ISSUED", challengeReference: "challenge-1", issuedAt: "2030-01-01T00:00:00Z", expiresAt: "2030-01-01T00:30:00Z", deliveryClassification: "EMAIL_SENT" }; }
+function userDetail(): IdentityUserDetail { return { user: { userReference: "11111111-1111-4111-8111-111111111111", username: "alex.rivera", displayName: "Alex Rivera", maskedEmail: "a***@example.test", maskedMobileNumber: "***1234", userType: "SITE_OPERATOR", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-01-01T00:00:00Z", rowVersion: 4 }, invitation: null, roleAssignments: [{ assignmentReference: "assignment-1", userReference: "11111111-1111-4111-8111-111111111111", roleReference: "22222222-2222-4222-8222-222222222222", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }], scopeGrants: [{ grantReference: "grant-1", assignmentReference: "assignment-1", scopeType: "SITE", siteReference: "site-1", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }] }; }
 function privilegedRequest(status: string) { return { requestReference: "request-1", targetUserReference: "user-1", requestedRoleReference: "role-1", requestedScopeType: null, requestedSiteReference: null, requestedSiteGroupReference: null, status, reasonCode: "AUTHORIZED", requestedEffectiveFrom: "2030-01-01T00:00:00Z", requestedEffectiveTo: null, requestedAt: "2030-01-01T00:00:00Z", requestedByUserReference: "admin-1", expiresAt: null, rowVersion: 1, decisions: [] }; }

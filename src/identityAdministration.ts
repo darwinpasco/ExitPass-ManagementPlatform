@@ -88,10 +88,45 @@ export interface DelegableScopeCatalog {
   sites: DelegableSite[];
 }
 
+export type ActivationDeliveryMode = "EMAIL" | "ADMIN_ISSUED";
+
+export interface IdentityInvitationStatus {
+  invitationState: string;
+  activationDeliveryMode: ActivationDeliveryMode | null;
+  latestChallengeState: string | null;
+  challengeReference: string | null;
+  issuedAt: string | null;
+  expiresAt: string | null;
+  deliveryClassification: string;
+}
+
+export interface OneTimeActivationMaterial {
+  challengeReference: string;
+  challengeSecret: string;
+  expiresAt: string;
+  activationUrl: string;
+  qrPayload: string;
+}
+
+export interface CreateIdentityUserResult {
+  user: IdentityUserSummary;
+  invitation: IdentityInvitationStatus;
+  oneTimeActivation: OneTimeActivationMaterial | null;
+}
+
+export interface InvitationReissueResult {
+  challengeReference: string;
+  expiresAt: string;
+  deliveryMode: ActivationDeliveryMode;
+  deliveryClassification: string;
+  oneTimeActivation: OneTimeActivationMaterial | null;
+}
+
 export interface IdentityUserDetail {
   user: IdentityUserSummary;
   roleAssignments: IdentityRoleAssignment[];
   scopeGrants: IdentityScopeGrant[];
+  invitation: IdentityInvitationStatus | null;
 }
 
 export interface IdentityRoleDefinition {
@@ -183,7 +218,9 @@ export interface IdentityPrivilegedAccessRequest {
 export interface IdentityAdministrationClient {
   listUsers(filters?: { query?: string; status?: string; offset?: number; limit?: number }, signal?: AbortSignal): Promise<IdentityUserSummary[]>;
   getUser(userReference: string, signal?: AbortSignal): Promise<IdentityUserDetail>;
-  createUser(body: Record<string, unknown>): Promise<IdentityUserSummary>;
+  createUser(body: Record<string, unknown>): Promise<CreateIdentityUserResult>;
+  reissueInvitation(userReference: string, body: Record<string, unknown>): Promise<InvitationReissueResult>;
+  cancelInvitation(userReference: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
   updateUser(userReference: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
   changeLifecycle(userReference: string, action: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
   listRoles(filters?: { userType?: string; directAddUserOnly?: boolean }, signal?: AbortSignal): Promise<IdentityRoleDefinition[]>;
@@ -217,7 +254,8 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
       ? createUiError("integration-unavailable", "IDENTITY_ADMIN_UNAVAILABLE", "User Administration is temporarily unavailable.", "support-identity-unavailable", 503, true)
       : undefined;
   const user = syntheticUser();
-  const detail: IdentityUserDetail = { user, roleAssignments: [syntheticAssignment()], scopeGrants: name === "global-readonly" ? [syntheticGrant(), { ...syntheticGrant(), grantReference: "81000000-0000-4000-8000-000000000013", scopeType: "GLOBAL", siteReference: null, siteGroupReference: null }] : [syntheticGrant()] };
+  const invitation = syntheticInvitation();
+  const detail: IdentityUserDetail = { user, invitation, roleAssignments: [syntheticAssignment()], scopeGrants: name === "global-readonly" ? [syntheticGrant(), { ...syntheticGrant(), grantReference: "81000000-0000-4000-8000-000000000013", scopeType: "GLOBAL", siteReference: null, siteGroupReference: null }] : [syntheticGrant()] };
   const fail = async <T>(): Promise<T> => { throw error; };
   const sectionDenied = async <T>(): Promise<T> => { throw createUiError("permission-denied", "IDENTITY_ADMIN_SECTION_FORBIDDEN", "This section is not available with your current access.", "support-identity-section-denied"); };
   const sectionUnavailable = async <T>(): Promise<T> => { throw createUiError("integration-unavailable", "IDENTITY_ADMIN_SECTION_UNAVAILABLE", "This section is temporarily unavailable.", "support-identity-section-unavailable", 503, true); };
@@ -226,7 +264,9 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
     getUser: async () => detail,
     createUser: name === "mutation-uncertain"
       ? async () => { throw createUiError("unknown", "IDENTITY_ADMIN_MUTATION_UNCERTAIN", "The request failed safely.", "support-identity-mutation-uncertain", 500, false, true); }
-      : async () => ({ ...user, username: "invited.user", displayName: "Invited User", status: "INVITED", rowVersion: 1 }),
+      : async () => ({ user: { ...user, username: "invited.user", displayName: "Invited User", status: "INVITED", rowVersion: 1 }, invitation, oneTimeActivation: null }),
+    reissueInvitation: async () => ({ challengeReference: "invitation-reference", expiresAt: invitation.expiresAt!, deliveryMode: "EMAIL", deliveryClassification: "EMAIL_SENT", oneTimeActivation: null }),
+    cancelInvitation: async () => ({ ...user, status: "INACTIVE", rowVersion: user.rowVersion + 1 }),
     updateUser: name === "conflict" ? async () => { throw createUiError("conflict", "IDENTITY_ADMIN_VERSION_CONFLICT", "The authoritative user changed. Reload before retrying.", "support-identity-conflict", 409); } : async () => ({ ...user, rowVersion: user.rowVersion + 1 }),
     changeLifecycle: async (_reference, action) => ({ ...user, status: action.toUpperCase(), rowVersion: user.rowVersion + 1 }),
     listRoles: name === "partial-failure" ? sectionUnavailable : async (filters = {}) => [...syntheticDirectRoles(), syntheticRole()].filter((role) =>
@@ -260,7 +300,9 @@ export function createIdentityAdministrationClient(api: CentralPmsApiClient): Id
       return get<unknown>(`${identityAdministrationApiRoute}/users?${query}`, signal).then(asArray<IdentityUserSummary>);
     },
     getUser: (reference, signal) => get<unknown>(userPath(reference), signal).then(asObject<IdentityUserDetail>),
-    createUser: (body) => mutate<unknown>(`${identityAdministrationApiRoute}/users`, "POST", body).then(asObject<IdentityUserSummary>),
+    createUser: (body) => mutate<unknown>(`${identityAdministrationApiRoute}/users`, "POST", body).then(asObject<CreateIdentityUserResult>),
+    reissueInvitation: (reference, body) => mutate<unknown>(`${userPath(reference)}/invitation/reissue`, "POST", body).then(asObject<InvitationReissueResult>),
+    cancelInvitation: (reference, body) => mutate<unknown>(`${userPath(reference)}/invitation/cancel`, "POST", body).then(asObject<IdentityUserSummary>),
     updateUser: (reference, body) => mutate<unknown>(userPath(reference), "PATCH", body).then(asObject<IdentityUserSummary>),
     changeLifecycle: (reference, action, body) => mutate<unknown>(`${userPath(reference)}/${assertLifecycleAction(action)}`, "POST", body).then(asObject<IdentityUserSummary>),
     listRoles(filters = {}, signal) {
@@ -333,6 +375,7 @@ function assertLifecycleAction(action: string): string {
 }
 
 function syntheticUser(): IdentityUserSummary { return { userReference: "81000000-0000-4000-8000-000000000001", username: "synthetic.admin", displayName: "Synthetic Administration User", maskedEmail: "s***@example.test", maskedMobileNumber: "***0101", userType: "INTERNAL_ADMIN", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-03-01T08:00:00Z", rowVersion: 7 }; }
+function syntheticInvitation(): IdentityInvitationStatus { return { invitationState: "INVITATION_PENDING", activationDeliveryMode: "EMAIL", latestChallengeState: "ISSUED", challengeReference: "81000000-0000-4000-8000-000000000019", issuedAt: "2030-03-01T08:00:00Z", expiresAt: "2030-03-01T08:30:00Z", deliveryClassification: "EMAIL_SENT" }; }
 function syntheticUserPage(offset: number, count: number): IdentityUserSummary[] { return Array.from({ length: count }, (_, index) => ({ ...syntheticUser(), userReference: `synthetic-user-${offset + index + 1}`, username: `synthetic.user.${offset + index + 1}`, displayName: `Synthetic User ${offset + index + 1}` })); }
 function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: syntheticRole().roleReference, roleCode: "SYSTEM_RBAC_ADMINISTRATOR", roleName: "System / RBAC Administrator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
 function syntheticGrant(): IdentityScopeGrant { return { grantReference: "81000000-0000-4000-8000-000000000003", assignmentReference: syntheticAssignment().assignmentReference, scopeType: "SITE", siteReference: "71000000-0000-0000-0000-000000000101", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 2 }; }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import QRCode from "react-qr-code";
 import {
   identityAdministrationPermissions,
   type IdentityAdministrationClient,
@@ -10,7 +11,11 @@ import {
   type IdentityRoleDefinition,
   type IdentitySessionSummary,
   type IdentityUserDetail,
-  type IdentityUserSummary
+  type IdentityUserSummary,
+  type CreateIdentityUserResult,
+  type InvitationReissueResult,
+  type OneTimeActivationMaterial,
+  type ActivationDeliveryMode
 } from "./identityAdministration";
 import { hasAnyPermission, hasPermission } from "./permissions";
 import type { ManagementPlatformSite, ManagementPlatformUiError } from "./types";
@@ -61,6 +66,7 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
   const [directoryError, setDirectoryError] = useState<ManagementPlatformUiError>();
   const [notice, setNotice] = useState<string>();
   const [showCreate, setShowCreate] = useState(false);
+  const [oneTimeActivation, setOneTimeActivation] = useState<OneTimeActivationMaterial>();
   const searchRef = useRef<HTMLInputElement>(null);
   const detailRef = useRef<HTMLElement>(null);
   const usersRequestSequence = useRef(0);
@@ -280,15 +286,18 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
         <strong>Governed administration.</strong> Available actions reflect your current access. Central PMS verifies every change.
       </div>
       {notice && <div className="operationNotice" role="status">{notice}</div>}
+      {oneTimeActivation && <OneTimeActivationPanel material={oneTimeActivation} onDismiss={() => setOneTimeActivation(undefined)} />}
       {error && <IdentityError error={error} onRetry={error.retryable ? () => void refreshAuthoritativeState() : undefined} />}
       {authoritativeStateStale && <div className="identityStaleState" role="alert"><strong>Information may be out of date.</strong><p>Previously loaded information is retained for reference. Changes are disabled until a successful authoritative refresh completes.</p><button className="secondaryButton" type="button" disabled={loading || busy} onClick={() => void refreshAuthoritativeState()}>Refresh authoritative state</button></div>}
 
       {showCreate && <CreateUserPanel client={client} busy={mutationsDisabled} roleCatalogState={roleCatalogState} scopeCatalogState={scopeCatalogState} onRetryRoles={loadRoleCatalog} onRetryScopes={loadScopeCatalog} onCancel={() => setShowCreate(false)} onCreate={async (body) => {
         const created = await runMutation(
           () => client.createUser(body),
-          "User added with an initial role and access assignment.",
+          body.activationDeliveryMode === "EMAIL" ? "Invitation sent." : "Activation material issued for direct handoff.",
           async (result) => {
-            const user = result as IdentityUserSummary;
+            const created = result as CreateIdentityUserResult;
+            const user = created.user;
+            setOneTimeActivation(created.oneTimeActivation ?? undefined);
             setQuery("");
             setStatusFilter("");
             const loaded = await loadUsers(0, "", "");
@@ -341,7 +350,7 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
               <div className="identityTabs" role="tablist" aria-label="User administration areas">
                 {(["profile", "access", "security", "audit"] as DetailView[]).map((tab) => <button key={tab} role="tab" type="button" aria-selected={view === tab} className={view === tab ? "activeTab" : ""} onClick={() => setView(tab)}>{detailViewLabels[tab]}</button>)}
               </div>
-              {view === "profile" && <ProfileView detail={detail} canManage={canManageUsers} busy={mutationsDisabled} onUpdate={(body) => void runMutation(() => client.updateUser(detail.user.userReference, body), "Profile updated.")} onLifecycle={(action, body) => void runMutation(() => client.changeLifecycle(detail.user.userReference, action, body), `Account status changed to ${humanize(action)}.`)} />}
+              {view === "profile" && <ProfileView detail={detail} canManage={canManageUsers} busy={mutationsDisabled} onUpdate={(body) => void runMutation(() => client.updateUser(detail.user.userReference, body), "Profile updated.")} onLifecycle={(action, body) => void runMutation(() => client.changeLifecycle(detail.user.userReference, action, body), `Account status changed to ${humanize(action)}.`)} onReissue={(body) => void runMutation(() => client.reissueInvitation(detail.user.userReference, body), body.activationDeliveryMode === "EMAIL" ? "Invitation email sent." : "New activation material issued.", async (result) => { const issued = result as InvitationReissueResult; setOneTimeActivation(issued.oneTimeActivation ?? undefined); return loadDetail(detail.user.userReference); })} onCancelInvitation={(body) => void runMutation(() => client.cancelInvitation(detail.user.userReference, body), "Invitation cancelled.")} />}
               {view === "access" && <AccessView detail={detail} roleCatalogState={roleCatalogState} permissionCatalogState={permissionCatalogState} sites={sites} siteGroups={siteGroups} canManageRoles={canManageRoles} canManageScopes={canManageScopes} canDecidePrivileged={canDecidePrivileged} canReviewAccess={canReviewAccess} busy={mutationsDisabled} privilegedRequestState={privilegedRequestState} privilegedRequestReference={privilegedRequestReference} onPrivilegedRequestReference={setPrivilegedRequestReference} onLoadPrivilegedRequest={loadPrivilegedRequest} onPrivilegedRequest={(request) => { setPrivilegedRequestReference(request.requestReference); setPrivilegedRequestState({ status: "loaded", value: request }); }} onRetryRoles={loadRoleCatalog} onRetryPermissions={loadPermissionCatalog} runMutation={runMutation} client={client} />}
               {view === "security" && <SecurityView detail={detail} mfaState={mfaState} sessionState={sessionState} canResetMfa={canResetMfa} canRemoveMfa={canRemoveMfa} canRevokeSessions={canRevokeSessions} busy={mutationsDisabled} onRetryMfa={() => void loadMfa(detail.user.userReference)} onRetrySessions={() => void loadSessions(detail.user.userReference)} runMutation={runMutation} client={client} />}
               {view === "audit" && <AuditView state={auditState} onRetry={() => void loadAudit(detail.user.userReference)} />}
@@ -355,6 +364,7 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
 
 function CreateUserPanel({ client, busy, roleCatalogState, scopeCatalogState, onRetryRoles, onRetryScopes, onCancel, onCreate }: { client: IdentityAdministrationClient; busy: boolean; roleCatalogState: SectionLoadState<IdentityRoleDefinition[]>; scopeCatalogState: SectionLoadState<DelegableScopeCatalog>; onRetryRoles: () => Promise<void>; onRetryScopes: () => Promise<void>; onCancel: () => void; onCreate: (body: Record<string, unknown>) => Promise<void> }) {
   const [scopeType, setScopeType] = useState<"SITE" | "SITE_GROUP">("SITE");
+  const [activationDeliveryMode, setActivationDeliveryMode] = useState<ActivationDeliveryMode>("EMAIL");
   const [userType, setUserType] = useState("");
   const [initialRoleReference, setInitialRoleReference] = useState("");
   const [initialScopeReference, setInitialScopeReference] = useState("");
@@ -391,9 +401,9 @@ function CreateUserPanel({ client, busy, roleCatalogState, scopeCatalogState, on
       ? scopeCatalogState.value.sites.map((site) => ({ reference: site.siteId, name: site.siteName }))
       : scopeCatalogState.value.siteGroups.map((group) => ({ reference: group.siteGroupId, name: group.siteGroupName }));
   const submissionUnavailable = busy || !userType || eligibleRoleState.status !== "loaded" || compatibleRoles.length === 0 || scopeOptions.length === 0 || !initialRoleReference || !initialScopeReference;
-  return <form className="administrationForm" aria-labelledby="create-user-title" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const targetReference = String(data.get("initialScopeReference")); void onCreate({ username: data.get("username"), displayName: data.get("displayName"), email: data.get("email") || null, maskedMobileNumber: data.get("mobile") || null, userType: data.get("userType"), initialRoleReference: data.get("initialRoleReference"), initialScopeType: scopeType, initialSiteReference: scopeType === "SITE" ? targetReference : null, initialSiteGroupReference: scopeType === "SITE_GROUP" ? targetReference : null, effectiveFrom: new Date(String(data.get("effectiveFrom"))).toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() }); }}>
-    <div><h3 id="create-user-title">Add User</h3><p>No password is collected here. Account setup and invitation delivery are handled separately.</p></div>
-    <label>Username<input name="username" required autoComplete="off" /></label><label>Display name<input name="displayName" required /></label><label>Email (optional)<input name="email" type="email" /></label><label>Masked mobile (optional)<input name="mobile" /></label><label>User type<select name="userType" required value={userType} onChange={(event) => setUserType(event.target.value)} disabled={roleCatalogState.status !== "loaded"}><option value="">Select a user type</option>{userTypes.map((value) => <option key={value} value={value}>{displayUserType(value)}</option>)}</select></label>
+  return <form className="administrationForm" aria-labelledby="create-user-title" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const targetReference = String(data.get("initialScopeReference")); void onCreate({ username: data.get("username"), displayName: data.get("displayName"), email: data.get("email") || null, maskedMobileNumber: data.get("mobile") || null, userType: data.get("userType"), initialRoleReference: data.get("initialRoleReference"), initialScopeType: scopeType, initialSiteReference: scopeType === "SITE" ? targetReference : null, initialSiteGroupReference: scopeType === "SITE_GROUP" ? targetReference : null, effectiveFrom: new Date(String(data.get("effectiveFrom"))).toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID(), activationDeliveryMode, adminIssuedHandoffAcknowledged: activationDeliveryMode === "ADMIN_ISSUED" && data.get("handoffAcknowledged") === "on" }); }}>
+    <div><h3 id="create-user-title">Add User</h3><p>No password is collected here. The employee establishes it through the activation challenge.</p></div>
+    <label>Username<input name="username" required autoComplete="off" /></label><label>Display name<input name="displayName" required /></label><label>Email {activationDeliveryMode === "EMAIL" ? "(required for email delivery)" : "(optional)"}<input name="email" type="email" required={activationDeliveryMode === "EMAIL"} /></label><label>Masked mobile (optional)<input name="mobile" /></label><label>Activation delivery<select name="activationDeliveryMode" value={activationDeliveryMode} onChange={(event) => setActivationDeliveryMode(event.target.value as ActivationDeliveryMode)} required><option value="EMAIL">Email</option><option value="ADMIN_ISSUED">On-site / Admin-issued</option></select></label>{activationDeliveryMode === "ADMIN_ISSUED" && <label className="checkboxLabel"><input name="handoffAcknowledged" type="checkbox" required />I will show the activation code or QR directly to the intended employee.</label>}<label>User type<select name="userType" required value={userType} onChange={(event) => setUserType(event.target.value)} disabled={roleCatalogState.status !== "loaded"}><option value="">Select a user type</option>{userTypes.map((value) => <option key={value} value={value}>{displayUserType(value)}</option>)}</select></label>
     {roleCatalogState.status === "loading" && <div className="inlineState" role="status">Loading available roles</div>}
     {roleCatalogState.status === "error" && <SectionFailure label="Role catalog" error={roleCatalogState.error} onRetry={roleCatalogState.error.retryable ? () => void onRetryRoles() : undefined} />}
     {eligibleRoleState.status === "loading" && <div className="inlineState" role="status">Loading eligible roles</div>}
@@ -409,13 +419,27 @@ function CreateUserPanel({ client, busy, roleCatalogState, scopeCatalogState, on
   </form>;
 }
 
-function ProfileView({ detail, canManage, busy, onUpdate, onLifecycle }: { detail: IdentityUserDetail; canManage: boolean; busy: boolean; onUpdate: (body: Record<string, unknown>) => void; onLifecycle: (action: string, body: Record<string, unknown>) => void }) {
+function ProfileView({ detail, canManage, busy, onUpdate, onLifecycle, onReissue, onCancelInvitation }: { detail: IdentityUserDetail; canManage: boolean; busy: boolean; onUpdate: (body: Record<string, unknown>) => void; onLifecycle: (action: string, body: Record<string, unknown>) => void; onReissue: (body: Record<string, unknown>) => void; onCancelInvitation: (body: Record<string, unknown>) => void }) {
   const user = detail.user;
+  const [reissueMode, setReissueMode] = useState<ActivationDeliveryMode>(detail.invitation?.activationDeliveryMode ?? "EMAIL");
   return <div className="identitySections">
     <section><h4>Profile and Access Dates</h4><dl className="factGrid"><Fact label="Username" value={user.username} /><Fact label="Masked email" value={user.maskedEmail ?? "Not provided"} /><Fact label="Masked mobile" value={user.maskedMobileNumber ?? "Not provided"} /><Fact label="Access starts" value={formatDate(user.effectiveFrom)} /><Fact label="Access ends" value={formatDate(user.effectiveTo)} /><Fact label="Last login" value={formatDate(user.lastLoginAt)} /></dl></section>
+    {(user.status === "INVITED" || detail.invitation) && <section className="invitationStatus"><h4>Invitation</h4>{detail.invitation ? <dl className="factGrid"><Fact label="Status" value={humanize(detail.invitation.invitationState)} /><Fact label="Delivery" value={humanize(detail.invitation.activationDeliveryMode ?? "Unavailable")} /><Fact label="Delivery result" value={humanize(detail.invitation.deliveryClassification)} /><Fact label="Issued" value={formatDate(detail.invitation.issuedAt)} /><Fact label="Expires" value={formatDate(detail.invitation.expiresAt)} /></dl> : <p>No activation challenge has been issued.</p>}{canManage && user.status === "INVITED" && <form className="compactForm" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); onReissue({ activationDeliveryMode: reissueMode, adminIssuedHandoffAcknowledged: reissueMode === "ADMIN_ISSUED" && data.get("handoffAcknowledged") === "on", reasonCode: data.get("reasonCode") }); }}><h5>Resend / Reissue invitation</h5><label>Activation delivery<select value={reissueMode} onChange={(event) => setReissueMode(event.target.value as ActivationDeliveryMode)}><option value="EMAIL" disabled={!user.maskedEmail}>Email</option><option value="ADMIN_ISSUED">On-site / Admin-issued</option></select></label>{reissueMode === "ADMIN_ISSUED" && <label className="checkboxLabel"><input name="handoffAcknowledged" type="checkbox" required />I will show the new activation code or QR directly to the intended employee.</label>}<label>Reason<input name="reasonCode" required /></label><div className="formActions"><button disabled={busy || (reissueMode === "EMAIL" && !user.maskedEmail)}>Resend / Reissue</button><button className="dangerButton" type="button" disabled={busy} onClick={() => { if (window.confirm(`Cancel the invitation for ${user.displayName}? The existing activation challenge will stop working.`)) onCancelInvitation({ expectedRowVersion: user.rowVersion, reasonCode: "INVITATION_CANCELLED_BY_ADMINISTRATOR" }); }}>Cancel invitation</button></div></form>}</section>}
     {canManage && <form className="compactForm" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const effectiveTo = String(data.get("effectiveTo") ?? ""); onUpdate({ displayName: data.get("displayName"), email: data.get("email") || null, maskedMobileNumber: data.get("mobile") || null, effectiveFrom: new Date(String(data.get("effectiveFrom"))).toISOString(), effectiveTo: effectiveTo ? new Date(effectiveTo).toISOString() : null, expectedRowVersion: user.rowVersion, reasonCode: data.get("reasonCode") }); }}><h4>Edit Profile and Access Dates</h4><label>Display name<input name="displayName" required defaultValue={user.displayName} /></label><label>Email<input name="email" type="email" /></label><label>Masked mobile<input name="mobile" defaultValue={user.maskedMobileNumber ?? ""} /></label><label>Access starts<input name="effectiveFrom" type="datetime-local" required defaultValue={toLocalInput(new Date(user.effectiveFrom))} /></label><label>Access ends<input name="effectiveTo" type="datetime-local" defaultValue={user.effectiveTo ? toLocalInput(new Date(user.effectiveTo)) : ""} /></label><label>Reason<input name="reasonCode" required /></label><button disabled={busy}>Save Profile</button></form>}
-    {canManage && <form className="compactForm" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const action = String(data.get("action")); if (window.confirm(`${humanize(action)} ${user.displayName}? This account status change will be checked before it is applied.`)) onLifecycle(action, { expectedRowVersion: user.rowVersion, reasonCode: data.get("reasonCode"), lockoutExpiresAt: null }); }}><h4>Account Status</h4><label>New status<select name="action"><option value="activate">Activate</option><option value="suspend">Suspend</option><option value="inactivate">Inactivate</option><option value="retire">Retire</option><option value="lock">Lock</option><option value="unlock">Unlock</option></select></label><label>Reason<input name="reasonCode" required /></label><button className="dangerButton" disabled={busy}>Update Account Status</button></form>}
+    {canManage && user.status !== "INVITED" && <form className="compactForm" onSubmit={(event) => { event.preventDefault(); const data = new FormData(event.currentTarget); const action = String(data.get("action")); if (window.confirm(`${humanize(action)} ${user.displayName}? This account status change will be checked before it is applied.`)) onLifecycle(action, { expectedRowVersion: user.rowVersion, reasonCode: data.get("reasonCode"), lockoutExpiresAt: null }); }}><h4>Account Status</h4><label>New status<select name="action"><option value="activate">Activate</option><option value="suspend">Suspend</option><option value="inactivate">Inactivate</option><option value="retire">Retire</option><option value="lock">Lock</option><option value="unlock">Unlock</option></select></label><label>Reason<input name="reasonCode" required /></label><button className="dangerButton" disabled={busy}>Update Account Status</button></form>}
   </div>;
+}
+
+function OneTimeActivationPanel({ material, onDismiss }: { material: OneTimeActivationMaterial; onDismiss: () => void }) {
+  return <section className="oneTimeActivation" role="alert" aria-labelledby="one-time-activation-title">
+    <h3 id="one-time-activation-title">One-time activation material</h3>
+    <p><strong>Show this activation code/QR directly to the intended employee. This code will not be shown again.</strong></p>
+    <dl className="factGrid"><Fact label="Activation reference" value={material.challengeReference} /><Fact label="Activation code" value={material.challengeSecret} /><Fact label="Expires" value={formatDate(material.expiresAt)} /></dl>
+    <label>Activation link<input readOnly value={material.activationUrl} onFocus={(event) => event.currentTarget.select()} /></label>
+    <div className="activationQr" aria-label="Activation QR code"><QRCode value={material.qrPayload} size={192} /></div>
+    <p className="privacyNote">Closing this panel permanently removes the plaintext material from this browser view. Reissue the invitation if it is lost.</p>
+    <button type="button" onClick={onDismiss}>I have handed it to the employee</button>
+  </section>;
 }
 
 interface AccessViewProps {

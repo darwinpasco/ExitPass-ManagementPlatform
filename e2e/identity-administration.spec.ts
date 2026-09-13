@@ -36,7 +36,12 @@ test.describe("governed User Administration", () => {
     await expect(page.getByLabel("User type").locator("option")).toHaveCount(6);
     await expect(page.getByText(/H-007 Denied User|H-007 Synthetic Target User|H-007 View Only/)).toHaveCount(0);
     await expect(page.getByLabel(/password|totp|seed|provisioning/i)).toHaveCount(0);
-    await expect(page.getByText(/Account setup and invitation delivery are handled separately/)).toBeVisible();
+    await expect(page.getByText("No password is collected here. The employee establishes it through the activation challenge.")).toBeVisible();
+    await expect(page.getByLabel("Activation delivery")).toBeVisible();
+    await expect(page.getByLabel("Activation delivery").getByRole("option", { name: "Email", exact: true })).toBeAttached();
+    await expect(page.getByLabel("Activation delivery").getByRole("option", { name: "On-site / Admin-issued", exact: true })).toBeAttached();
+    await page.getByLabel("Activation delivery").selectOption("ADMIN_ISSUED");
+    await page.getByLabel("I will show the activation code or QR directly to the intended employee.").check();
     await expect(page.getByRole("button", { name: "Add User" }).last()).toBeDisabled();
     await expect(page.getByLabel("Assigned Site").getByRole("option", { name: "PITX Level 3", exact: true })).toBeAttached();
     await expect(page.getByLabel("Assigned Site").getByRole("option", { name: "PITX Open Lot", exact: true })).toBeAttached();
@@ -176,6 +181,8 @@ test.describe("governed User Administration", () => {
     await page.getByRole("button", { name: /Synthetic Administration User/ }).click();
     await page.getByRole("button", { name: "Add User" }).click();
     const form = page.getByRole("heading", { name: "Add User" }).locator("xpath=ancestor::form");
+    await form.getByLabel("Activation delivery").selectOption("ADMIN_ISSUED");
+    await form.getByLabel("I will show the activation code or QR directly to the intended employee.").check();
     await form.getByLabel("Username").fill("uncertain.user");
     await form.getByLabel("Display name").fill("Uncertain User");
     await form.getByLabel("Reason").fill("MANUAL_VALIDATION");
