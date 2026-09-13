@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AccountLifecycleFrame } from "./AccountLifecycleFrame";
 import {
   AccountActivationError,
   createAccountActivationClient,
@@ -73,17 +74,17 @@ export function AccountActivationPage({ initialMaterial, client: injectedClient 
   }
 
   if (view === "SUCCESS") {
-    return <ActivationFrame>
+    return <AccountLifecycleFrame description="Secure account activation">
       <section className="activationState success" aria-labelledby="activation-success-title">
         <p className="eyebrow">Activation complete</p>
         <h2 id="activation-success-title">Account activated</h2>
         <p>Your password is established. Sign in with your username and new password.</p>
         <a className="buttonLink" href="/management-platform/">Sign in</a>
       </section>
-    </ActivationFrame>;
+    </AccountLifecycleFrame>;
   }
 
-  return <ActivationFrame>
+  return <AccountLifecycleFrame description="Secure account activation">
     <form className="activationForm" aria-labelledby="activation-title" onSubmit={submit}>
       <div>
         <p className="eyebrow">First-time account setup</p>
@@ -109,16 +110,5 @@ export function AccountActivationPage({ initialMaterial, client: injectedClient 
       <button type="submit" disabled={view === "SUBMITTING"}>{view === "SUBMITTING" ? "Activating account" : "Activate account"}</button>
       <p className="activationHelp">Activation details and passwords are used only for this activation attempt and are not saved in browser storage.</p>
     </form>
-  </ActivationFrame>;
-}
-
-function ActivationFrame({ children }: { children: React.ReactNode }) {
-  return <main className="accountActivationShell" aria-labelledby="activation-app-title">
-    <header className="activationHeader">
-      <p className="eyebrow">Employee account access</p>
-      <h1 id="activation-app-title">ExitPass</h1>
-      <p>Secure account activation</p>
-    </header>
-    <section className="activationWorkspace">{children}</section>
-  </main>;
+  </AccountLifecycleFrame>;
 }

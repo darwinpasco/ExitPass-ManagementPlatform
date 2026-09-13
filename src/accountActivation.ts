@@ -1,6 +1,6 @@
 export const accountActivationRoute = "/account/activate";
 export const accountActivationApiRoute = "/v1/human-authentication/activations";
-const transientBootstrapKey = "__EXITPASS_TRANSIENT_ACCOUNT_ACTIVATION__";
+export const accountActivationBootstrapKey = "__EXITPASS_TRANSIENT_ACCOUNT_ACTIVATION__";
 
 export interface AccountActivationMaterial {
   challengeReference: string;
@@ -37,7 +37,15 @@ export function captureAccountActivationMaterial(
   location: Pick<Location, "href" | "pathname"> = window.location,
   history: Pick<History, "replaceState" | "state"> = window.history
 ): AccountActivationMaterial | undefined {
-  if (normalizePath(location.pathname) !== accountActivationRoute) return undefined;
+  return captureCredentialChallengeMaterial(accountActivationRoute, location, history);
+}
+
+export function captureCredentialChallengeMaterial(
+  route: string,
+  location: Pick<Location, "href" | "pathname"> = window.location,
+  history: Pick<History, "replaceState" | "state"> = window.history
+): AccountActivationMaterial | undefined {
+  if (normalizePath(location.pathname) !== route) return undefined;
 
   const url = new URL(location.href);
   const challengeReference = url.searchParams.get("challengeReference")?.trim() ?? "";
@@ -53,9 +61,13 @@ export function captureAccountActivationMaterial(
 }
 
 export function consumeAccountActivationBootstrap(): AccountActivationMaterial | undefined {
+  return consumeCredentialChallengeBootstrap(accountActivationBootstrapKey);
+}
+
+export function consumeCredentialChallengeBootstrap(bootstrapKey: string): AccountActivationMaterial | undefined {
   const target = window as unknown as Window & Record<string, unknown>;
-  const candidate = target[transientBootstrapKey];
-  delete target[transientBootstrapKey];
+  const candidate = target[bootstrapKey];
+  delete target[bootstrapKey];
   if (!isRecord(candidate)
     || typeof candidate.challengeReference !== "string"
     || typeof candidate.challengeSecret !== "string"

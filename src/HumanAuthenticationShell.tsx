@@ -225,6 +225,7 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
             <button type="submit" disabled={submitting}>{submitting ? "Signing in" : isTotp ? "Verify and sign in" : "Sign in"}</button>
             {isTotp && <button className="secondaryButton" type="button" disabled={submitting} onClick={() => { clearCredentials(); setUsername(""); setView({ status: "login" }); }}>Use another account</button>}
           </div>
+          {!isTotp && <a className="authRecoveryLink" href="/account/forgot-password">Forgot password?</a>}
         </form>
       </AuthenticationFrame>
     );

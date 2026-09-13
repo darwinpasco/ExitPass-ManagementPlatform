@@ -5,6 +5,7 @@ import { humanSessionRoute } from "./src/humanAuthentication";
 import {
   createManagementPlatformViteConfig,
   defaultApiProxyTarget,
+  publicAccountLifecycleRoutes,
   resolveApiProxyTarget
 } from "./vite.config";
 
@@ -49,5 +50,13 @@ describe("Management Platform Vite proxy configuration", () => {
     expect(humanSessionRoute.startsWith("/v1/")).toBe(true);
     expect(config.server?.proxy).toHaveProperty("/v1");
     expect(config.server?.proxy?.["/v1"]).not.toHaveProperty("headers");
+  });
+
+  it("serves all governed public account-lifecycle routes directly", () => {
+    expect(publicAccountLifecycleRoutes).toEqual([
+      "/account/activate",
+      "/account/forgot-password",
+      "/account/reset-password"
+    ]);
   });
 });
