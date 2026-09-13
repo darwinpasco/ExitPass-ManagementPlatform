@@ -21,6 +21,30 @@ describe("identity administration API client", () => {
     expect(authorizeUnsafeRequest).toHaveBeenCalledOnce();
   });
 
+  it("issues only a governed admin handoff challenge and leaves expiry to server policy", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(String(input)).toBe(`${identityAdministrationApiRoute}/users/user-1/credential-reset-challenges`);
+      expect(init?.method).toBe("POST");
+      const body = JSON.parse(String(init?.body));
+      expect(body).toEqual({
+        purpose: "PASSWORD_RESET",
+        reasonCode: "NO_EMAIL_RECOVERY",
+        deliveryMode: "ADMIN_ISSUED",
+        adminIssuedHandoffAcknowledged: true
+      });
+      expect(JSON.stringify(body)).not.toMatch(/newPassword|temporaryPassword|expiresAt/i);
+      return json({ challengeReference: "reset-reference", expiresAt: "2030-01-01T00:30:00Z", deliveryMode: "ADMIN_ISSUED", deliveryClassification: "ADMIN_ISSUED", oneTimeActivation: null, oneTimeCredential: null });
+    });
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl, authorizeUnsafeRequest: () => undefined }));
+
+    await client.issueCredentialResetChallenge("user-1", {
+      purpose: "PASSWORD_RESET",
+      reasonCode: "NO_EMAIL_RECOVERY",
+      deliveryMode: "ADMIN_ISSUED",
+      adminIssuedHandoffAcknowledged: true
+    });
+  });
+
   it("builds server-driven user filters without sending scope authority", async () => {
     const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       expect(String(input)).toBe(`${identityAdministrationApiRoute}/users?query=alex&status=ACTIVE&offset=25&limit=25`);

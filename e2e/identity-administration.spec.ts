@@ -201,4 +201,36 @@ test.describe("governed User Administration", () => {
     await expect(page.getByText("Information may be out of date.")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Save Profile" })).toBeEnabled();
   });
+
+  test("admin-issued password recovery is a one-time no-email handoff", async ({ page }) => {
+    const consoleMessages: string[] = [];
+    const requestUrls: string[] = [];
+    page.on("console", (message) => consoleMessages.push(message.text()));
+    page.on("request", (request) => requestUrls.push(request.url()));
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=no-email-recovery");
+    await page.getByRole("button", { name: /Synthetic Administration User/ }).click();
+    await expect(page.getByText("Administrator-issued recovery available")).toBeVisible();
+    const form = page.getByRole("heading", { name: "Issue password recovery" }).locator("xpath=ancestor::form");
+    await expect(form.getByLabel(/password/i)).toHaveCount(0);
+    await form.getByLabel("Reason").fill("NO_EMAIL_RECOVERY");
+    await form.getByLabel(/hand this one-time recovery material directly/i).check();
+    await form.getByRole("button", { name: "Issue password recovery" }).click();
+
+    await expect(page.getByRole("heading", { name: "One-time password recovery material" })).toBeVisible();
+    await expect(page.getByText("task-owned-recovery-code")).toBeVisible();
+    await expect(page.getByLabel("Password recovery QR code")).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)).toBe(false);
+    const storage = await page.evaluate(async () => ({
+      local: Object.fromEntries(Object.entries(localStorage)),
+      session: Object.fromEntries(Object.entries(sessionStorage)),
+      indexedDb: await indexedDB.databases()
+    }));
+    expect(JSON.stringify(storage)).not.toMatch(/task-owned-recovery-code|reset-password|recovery-reference/i);
+    expect(consoleMessages.join("\n")).not.toMatch(/task-owned-recovery-code|reset-password|recovery-reference/i);
+    expect(requestUrls.join("\n")).not.toMatch(/task-owned-recovery-code|challengeSecret=/i);
+    await page.getByRole("button", { name: "Handoff complete" }).focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByText("task-owned-recovery-code")).toHaveCount(0);
+  });
 });

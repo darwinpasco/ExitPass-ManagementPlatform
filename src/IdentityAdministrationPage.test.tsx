@@ -114,6 +114,68 @@ describe("IdentityAdministrationPage", () => {
     confirm.mockRestore();
   });
 
+  it("issues no-email password recovery material once without collecting an employee password", async () => {
+    const client = mockClient();
+    const target = { ...userDetail().user, maskedEmail: null };
+    client.listUsers.mockResolvedValue([target]);
+    client.getUser.mockResolvedValue({ ...userDetail(), user: target });
+    client.issueCredentialResetChallenge.mockResolvedValue({
+      challengeReference: "reset-reference",
+      expiresAt: "2030-01-01T00:30:00Z",
+      deliveryMode: "ADMIN_ISSUED",
+      deliveryClassification: "ADMIN_ISSUED",
+      oneTimeActivation: null,
+      oneTimeCredential: {
+        challengeReference: "reset-reference",
+        challengeSecret: "task-owned-reset-code",
+        expiresAt: "2030-01-01T00:30:00Z",
+        lifecycleUrl: "https://accounts.exitpass.test/account/reset-password?challengeReference=reset-reference&challengeSecret=task-owned-reset-code",
+        qrPayload: "https://accounts.exitpass.test/account/reset-password?challengeReference=reset-reference&challengeSecret=task-owned-reset-code"
+      }
+    } as never);
+    const stored = vi.spyOn(Storage.prototype, "setItem");
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+
+    expect(await screen.findByText("Administrator-issued recovery available")).toBeInTheDocument();
+    const form = screen.getByRole("heading", { name: "Issue password recovery" }).closest("form")!;
+    expect(within(form).queryByLabelText(/new password|temporary password|confirm password/i)).not.toBeInTheDocument();
+    await userEvent.type(within(form).getByLabelText("Reason"), "NO_EMAIL_RECOVERY");
+    await userEvent.click(within(form).getByLabelText(/hand this one-time recovery material directly/i));
+    await userEvent.click(within(form).getByRole("button", { name: "Issue password recovery" }));
+
+    expect(client.issueCredentialResetChallenge).toHaveBeenCalledWith(target.userReference, {
+      purpose: "PASSWORD_RESET",
+      reasonCode: "NO_EMAIL_RECOVERY",
+      deliveryMode: "ADMIN_ISSUED",
+      adminIssuedHandoffAcknowledged: true
+    });
+    expect(await screen.findByText("task-owned-reset-code")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password recovery QR code")).toBeInTheDocument();
+    expect(stored).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Handoff complete" }));
+    expect(screen.queryByText("task-owned-reset-code")).not.toBeInTheDocument();
+    stored.mockRestore();
+  });
+
+  it("shows email self-service posture and no admin-issued recovery action when email exists", async () => {
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    expect(await screen.findByText("Email self-service available")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Issue password recovery" })).not.toBeInTheDocument();
+  });
+
+  it("does not expose password recovery controls without CREDENTIAL_RESET authority", async () => {
+    const client = mockClient();
+    const target = { ...userDetail().user, maskedEmail: null };
+    client.listUsers.mockResolvedValue([target]);
+    client.getUser.mockResolvedValue({ ...userDetail(), user: target });
+    render(<IdentityAdministrationPage client={client} permissions={Object.values(identityAdministrationPermissions).filter((permission) => permission !== identityAdministrationPermissions.credentialReset)} />);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    expect(await screen.findByText("Administrator-issued recovery available")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Issue password recovery" })).not.toBeInTheDocument();
+  });
+
   it("renders PITX and its two authoritative child Sites without generated or synthetic options", async () => {
     const client = mockClient();
     client.getDelegableScopes.mockResolvedValue({
@@ -565,6 +627,7 @@ function mockClient() {
     createUser: vi.fn(async (_body: Record<string, unknown>) => ({ user: { ...user.user, status: "INVITED" }, invitation: invitedStatus(), oneTimeActivation: null })),
     reissueInvitation: vi.fn(async (_reference: string, _body: Record<string, unknown>) => ({ challengeReference: "challenge-2", expiresAt: "2030-01-01T00:30:00Z", deliveryMode: "EMAIL" as const, deliveryClassification: "EMAIL_SENT", oneTimeActivation: null })),
     cancelInvitation: vi.fn(async () => ({ ...user.user, status: "INACTIVE", rowVersion: user.user.rowVersion + 1 })),
+    issueCredentialResetChallenge: vi.fn(async () => { throw uiError("not-authorized", "Credential reset is unavailable."); }),
     updateUser: vi.fn(async (_reference: string, _body: Record<string, unknown>) => user.user), changeLifecycle: vi.fn(async () => user.user),
     listRoles: vi.fn(async (filters: { userType?: string; directAddUserOnly?: boolean } = {}) => [
       role("SITE_OPERATOR", "Site Operator", "33333333-3333-4333-8333-333333333333", ["SITE_OPERATOR"]),
