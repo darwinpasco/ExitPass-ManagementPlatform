@@ -5,13 +5,22 @@ import react from "@vitejs/plugin-react";
 export const defaultApiProxyTarget = "https://localhost:56064";
 const defaultDevPort = Number(process.env.MANAGEMENT_PLATFORM_DEV_PORT ?? 5178);
 const accountActivationRoute = "/account/activate";
+const forgotPasswordRoute = "/account/forgot-password";
+const resetPasswordRoute = "/account/reset-password";
+export const publicAccountLifecycleRoutes = [accountActivationRoute, forgotPasswordRoute, resetPasswordRoute] as const;
 const activationBootstrapScript = `(() => {
-  if (window.location.pathname.replace(/\\/+$/, "") !== "${accountActivationRoute}") return;
+  const path = window.location.pathname.replace(/\\/+$/, "");
+  const bootstrapKey = path === "${accountActivationRoute}"
+    ? "__EXITPASS_TRANSIENT_ACCOUNT_ACTIVATION__"
+    : path === "${resetPasswordRoute}"
+      ? "__EXITPASS_TRANSIENT_PASSWORD_RESET__"
+      : undefined;
+  if (!bootstrapKey) return;
   const url = new URL(window.location.href);
   const challengeReference = (url.searchParams.get("challengeReference") || "").trim();
   const challengeSecret = (url.searchParams.get("challengeSecret") || "").trim();
   if (challengeReference && challengeSecret) {
-    Object.defineProperty(window, "__EXITPASS_TRANSIENT_ACCOUNT_ACTIVATION__", {
+    Object.defineProperty(window, bootstrapKey, {
       value: { challengeReference, challengeSecret }, configurable: true
     });
   }
@@ -22,7 +31,7 @@ const activationBootstrapScript = `(() => {
   }
 })();`;
 
-const developmentActivationHtml = `<!doctype html>
+const developmentAccountLifecycleHtml = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -48,7 +57,7 @@ export function accountActivationHistoryFallback(): Plugin {
   const rewrite = (request: { url?: string }) => {
     if (!request.url) return false;
     const [path, query] = request.url.split("?", 2);
-    if (path.replace(/\/+$/, "") === accountActivationRoute) {
+    if (publicAccountLifecycleRoutes.includes(path.replace(/\/+$/, "") as typeof publicAccountLifecycleRoutes[number])) {
       request.url = `/management-platform/${query ? `?${query}` : ""}`;
       return true;
     }
@@ -69,12 +78,12 @@ export function accountActivationHistoryFallback(): Plugin {
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
         const path = request.url?.split("?", 1)[0].replace(/\/+$/, "");
-        if (path === accountActivationRoute) {
+        if (publicAccountLifecycleRoutes.includes(path as typeof publicAccountLifecycleRoutes[number])) {
           response.statusCode = 200;
           response.setHeader("Content-Type", "text/html; charset=utf-8");
           response.setHeader("Cache-Control", "no-store, private");
           response.setHeader("Referrer-Policy", "no-referrer");
-          response.end(developmentActivationHtml);
+          response.end(developmentAccountLifecycleHtml);
           return;
         }
         next();

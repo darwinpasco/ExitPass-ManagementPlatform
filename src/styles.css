@@ -165,6 +165,22 @@ body {
   outline-offset: 2px;
 }
 
+.accountLifecycleBackLink,
+.authRecoveryLink {
+  color: #245b74;
+  font-weight: 700;
+  width: fit-content;
+}
+
+.accountLifecycleBackLink:hover,
+.accountLifecycleBackLink:focus-visible,
+.authRecoveryLink:hover,
+.authRecoveryLink:focus-visible {
+  color: #17465c;
+  outline: 3px solid #b4d0da;
+  outline-offset: 2px;
+}
+
 @media (max-width: 600px) {
   .accountActivationShell {
     padding: 20px 16px;

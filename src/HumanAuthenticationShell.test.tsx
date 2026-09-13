@@ -20,6 +20,7 @@ describe("Management Platform I-020 session shell", () => {
     client.login.mockResolvedValue(successResponse());
 
     render(<HumanAuthenticationShell client={client} />);
+    expect(await screen.findByRole("link", { name: "Forgot password?" })).toHaveAttribute("href", "/account/forgot-password");
     await fillLogin("ordinary.user", "ordinary-password");
 
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
