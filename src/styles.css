@@ -63,6 +63,123 @@ body {
   overflow-x: hidden;
 }
 
+.accountActivationShell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+  padding: 32px;
+}
+
+.activationHeader,
+.activationWorkspace {
+  margin: 0 auto;
+  max-width: 560px;
+  width: 100%;
+}
+
+.activationHeader {
+  padding: 7vh 0 24px;
+}
+
+.activationHeader h1,
+.activationForm h2,
+.activationState h2 {
+  margin: 0;
+}
+
+.activationHeader h1 {
+  font-size: 2.2rem;
+  line-height: 1.1;
+}
+
+.activationHeader > p:last-child,
+.activationForm p,
+.activationState p {
+  color: #344756;
+  margin: 8px 0 0;
+}
+
+.activationForm,
+.activationState {
+  background: #fff;
+  border: 1px solid #dfe5ea;
+  border-radius: 10px;
+  box-shadow: 0 16px 36px rgb(25 39 52 / 9%);
+  display: grid;
+  gap: 14px;
+  padding: 28px;
+}
+
+.activationForm label {
+  font-weight: 700;
+}
+
+.activationPasswordFields {
+  border-top: 1px solid #dfe5ea;
+  display: grid;
+  gap: 12px;
+  margin-top: 4px;
+  padding-top: 18px;
+}
+
+.activationNotice {
+  border-left: 4px solid #9a2f2f;
+  display: grid;
+  gap: 5px;
+  padding: 12px 14px;
+}
+
+.activationNotice.danger {
+  background: #fff1f1;
+  color: #742323;
+}
+
+.activationNotice.warning {
+  background: #fff8e8;
+  border-color: #9b6b00;
+  color: #654700;
+}
+
+.activationHelp {
+  font-size: .86rem;
+}
+
+.buttonLink {
+  background: #245b74;
+  border: 1px solid #245b74;
+  border-radius: 6px;
+  color: #fff;
+  display: inline-flex;
+  font-weight: 700;
+  justify-content: center;
+  min-height: 40px;
+  padding: 9px 14px;
+  text-decoration: none;
+  width: fit-content;
+}
+
+.buttonLink:hover,
+.buttonLink:focus-visible {
+  background: #17465c;
+  outline: 3px solid #7ba6b6;
+  outline-offset: 2px;
+}
+
+@media (max-width: 600px) {
+  .accountActivationShell {
+    padding: 20px 16px;
+  }
+
+  .activationHeader {
+    padding-top: 4vh;
+  }
+
+  .activationForm,
+  .activationState {
+    padding: 20px;
+  }
+}
+
 button,
 select,
 input,
