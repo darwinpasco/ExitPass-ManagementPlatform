@@ -17,6 +17,7 @@ export const identityAdministrationPermissions = {
   accessReviewManage: "identity.access-review.manage",
   sessionView: "human-authentication.session.admin.view",
   sessionRevoke: "human-authentication.session.admin.revoke",
+  credentialReset: "human-authentication.credential.reset",
   mfaStatusView: "human-authentication.mfa.status.view",
   mfaReset: "human-authentication.mfa.reset",
   mfaRemove: "human-authentication.mfa.remove"
@@ -106,6 +107,23 @@ export interface OneTimeActivationMaterial {
   expiresAt: string;
   activationUrl: string;
   qrPayload: string;
+}
+
+export interface OneTimeCredentialMaterial {
+  challengeReference: string;
+  challengeSecret: string;
+  expiresAt: string;
+  lifecycleUrl: string;
+  qrPayload: string;
+}
+
+export interface CredentialResetChallengeResult {
+  challengeReference: string;
+  expiresAt: string;
+  deliveryMode: ActivationDeliveryMode;
+  deliveryClassification: string;
+  oneTimeActivation: OneTimeActivationMaterial | null;
+  oneTimeCredential: OneTimeCredentialMaterial | null;
 }
 
 export interface CreateIdentityUserResult {
@@ -221,6 +239,7 @@ export interface IdentityAdministrationClient {
   createUser(body: Record<string, unknown>): Promise<CreateIdentityUserResult>;
   reissueInvitation(userReference: string, body: Record<string, unknown>): Promise<InvitationReissueResult>;
   cancelInvitation(userReference: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
+  issueCredentialResetChallenge(userReference: string, body: Record<string, unknown>): Promise<CredentialResetChallengeResult>;
   updateUser(userReference: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
   changeLifecycle(userReference: string, action: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
   listRoles(filters?: { userType?: string; directAddUserOnly?: boolean }, signal?: AbortSignal): Promise<IdentityRoleDefinition[]>;
@@ -241,19 +260,19 @@ export interface IdentityAdministrationClient {
   listAuditEvents(userReference: string, signal?: AbortSignal): Promise<IdentityAuditEntry[]>;
 }
 
-export type IdentityAdministrationScenarioName = "populated" | "empty" | "permission-denied" | "conflict" | "unavailable" | "partial-failure" | "global-readonly" | "paginated" | "elevated-rediscovery" | "mutation-uncertain";
+export type IdentityAdministrationScenarioName = "populated" | "empty" | "permission-denied" | "conflict" | "unavailable" | "partial-failure" | "global-readonly" | "paginated" | "elevated-rediscovery" | "mutation-uncertain" | "no-email-recovery";
 
 export function resolveIdentityAdministrationScenario(enabled: boolean, search: string): { name: IdentityAdministrationScenarioName; client: IdentityAdministrationClient } | undefined {
   if (!enabled) return undefined;
   const value = new URLSearchParams(search).get("mpIdentityScenario");
-  const supported: IdentityAdministrationScenarioName[] = ["populated", "empty", "permission-denied", "conflict", "unavailable", "partial-failure", "global-readonly", "paginated", "elevated-rediscovery", "mutation-uncertain"];
+  const supported: IdentityAdministrationScenarioName[] = ["populated", "empty", "permission-denied", "conflict", "unavailable", "partial-failure", "global-readonly", "paginated", "elevated-rediscovery", "mutation-uncertain", "no-email-recovery"];
   const name: IdentityAdministrationScenarioName = supported.includes(value as IdentityAdministrationScenarioName) ? value as IdentityAdministrationScenarioName : "populated";
   const error = name === "permission-denied"
     ? createUiError("permission-denied", "IDENTITY_ADMIN_FORBIDDEN", "You do not have permission for this Management Platform action.", "support-identity-denied")
     : name === "unavailable"
       ? createUiError("integration-unavailable", "IDENTITY_ADMIN_UNAVAILABLE", "User Administration is temporarily unavailable.", "support-identity-unavailable", 503, true)
       : undefined;
-  const user = syntheticUser();
+  const user = name === "no-email-recovery" ? { ...syntheticUser(), maskedEmail: null } : syntheticUser();
   const invitation = syntheticInvitation();
   const detail: IdentityUserDetail = { user, invitation, roleAssignments: [syntheticAssignment()], scopeGrants: name === "global-readonly" ? [syntheticGrant(), { ...syntheticGrant(), grantReference: "81000000-0000-4000-8000-000000000013", scopeType: "GLOBAL", siteReference: null, siteGroupReference: null }] : [syntheticGrant()] };
   const fail = async <T>(): Promise<T> => { throw error; };
@@ -267,6 +286,22 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
       : async () => ({ user: { ...user, username: "invited.user", displayName: "Invited User", status: "INVITED", rowVersion: 1 }, invitation, oneTimeActivation: null }),
     reissueInvitation: async () => ({ challengeReference: "invitation-reference", expiresAt: invitation.expiresAt!, deliveryMode: "EMAIL", deliveryClassification: "EMAIL_SENT", oneTimeActivation: null }),
     cancelInvitation: async () => ({ ...user, status: "INACTIVE", rowVersion: user.rowVersion + 1 }),
+    issueCredentialResetChallenge: name === "no-email-recovery"
+      ? async () => ({
+          challengeReference: "recovery-reference",
+          expiresAt: "2030-03-01T08:30:00Z",
+          deliveryMode: "ADMIN_ISSUED",
+          deliveryClassification: "ADMIN_ISSUED",
+          oneTimeActivation: null,
+          oneTimeCredential: {
+            challengeReference: "recovery-reference",
+            challengeSecret: "task-owned-recovery-code",
+            expiresAt: "2030-03-01T08:30:00Z",
+            lifecycleUrl: "https://accounts.exitpass.test/account/reset-password?challengeReference=recovery-reference&challengeSecret=task-owned-recovery-code",
+            qrPayload: "https://accounts.exitpass.test/account/reset-password?challengeReference=recovery-reference&challengeSecret=task-owned-recovery-code"
+          }
+        })
+      : async () => { throw createUiError("permission-denied", "CREDENTIAL_RESET_NOT_AUTHORIZED", "Credential reset is not available in this scenario."); },
     updateUser: name === "conflict" ? async () => { throw createUiError("conflict", "IDENTITY_ADMIN_VERSION_CONFLICT", "The authoritative user changed. Reload before retrying.", "support-identity-conflict", 409); } : async () => ({ ...user, rowVersion: user.rowVersion + 1 }),
     changeLifecycle: async (_reference, action) => ({ ...user, status: action.toUpperCase(), rowVersion: user.rowVersion + 1 }),
     listRoles: name === "partial-failure" ? sectionUnavailable : async (filters = {}) => [...syntheticDirectRoles(), syntheticRole()].filter((role) =>
@@ -303,6 +338,7 @@ export function createIdentityAdministrationClient(api: CentralPmsApiClient): Id
     createUser: (body) => mutate<unknown>(`${identityAdministrationApiRoute}/users`, "POST", body).then(asObject<CreateIdentityUserResult>),
     reissueInvitation: (reference, body) => mutate<unknown>(`${userPath(reference)}/invitation/reissue`, "POST", body).then(asObject<InvitationReissueResult>),
     cancelInvitation: (reference, body) => mutate<unknown>(`${userPath(reference)}/invitation/cancel`, "POST", body).then(asObject<IdentityUserSummary>),
+    issueCredentialResetChallenge: (reference, body) => mutate<unknown>(`${userPath(reference)}/credential-reset-challenges`, "POST", body).then(asObject<CredentialResetChallengeResult>),
     updateUser: (reference, body) => mutate<unknown>(userPath(reference), "PATCH", body).then(asObject<IdentityUserSummary>),
     changeLifecycle: (reference, action, body) => mutate<unknown>(`${userPath(reference)}/${assertLifecycleAction(action)}`, "POST", body).then(asObject<IdentityUserSummary>),
     listRoles(filters = {}, signal) {
