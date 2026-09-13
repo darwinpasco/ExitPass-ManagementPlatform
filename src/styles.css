@@ -114,6 +114,58 @@ body {
   font-weight: 700;
 }
 
+.mfaEnrollment {
+  background: #fff;
+  border: 1px solid #dfe5ea;
+  border-radius: 10px;
+  box-shadow: 0 16px 36px rgb(25 39 52 / 9%);
+  display: grid;
+  gap: 18px;
+  padding: 28px;
+}
+
+.mfaEnrollment h2,
+.mfaEnrollment h3,
+.mfaEnrollment p {
+  margin: 0;
+}
+
+.mfaEnrollmentActions,
+.mfaConfirmForm,
+.mfaManualSetup {
+  display: grid;
+  gap: 12px;
+}
+
+.mfaSetupMaterial {
+  align-items: start;
+  display: grid;
+  gap: 18px;
+  grid-template-columns: 218px minmax(0, 1fr);
+}
+
+.mfaQr {
+  background: #fff;
+  border: 1px solid #cbd5dc;
+  justify-self: start;
+  padding: 12px;
+}
+
+.mfaManualSetup output {
+  background: #f4f6f8;
+  border: 1px solid #cbd5dc;
+  border-radius: 4px;
+  display: block;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+  font-size: .92rem;
+  overflow-wrap: anywhere;
+  padding: 10px;
+}
+
+.mfaConfirmForm label {
+  font-weight: 700;
+}
+
 .activationPasswordFields {
   border-top: 1px solid #dfe5ea;
   display: grid;
@@ -191,8 +243,13 @@ body {
   }
 
   .activationForm,
-  .activationState {
+  .activationState,
+  .mfaEnrollment {
     padding: 20px;
+  }
+
+  .mfaSetupMaterial {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

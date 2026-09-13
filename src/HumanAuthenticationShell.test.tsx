@@ -5,6 +5,7 @@ import { HumanAuthenticationShell } from "./HumanAuthenticationShell";
 import { HumanAuthenticationError, managementPlatformAudience, type HumanAuthenticationClient, type HumanAuthenticationResponse, type HumanSessionDto } from "./humanAuthentication";
 import { identityAdministrationPermissions } from "./identityAdministration";
 import { managementPlatformOverviewPermission } from "./permissions";
+import { mfaEnrollmentRoute } from "./mfaEnrollment";
 
 describe("Management Platform I-020 session shell", () => {
   afterEach(() => {
@@ -152,14 +153,60 @@ describe("Management Platform I-020 session shell", () => {
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
   });
 
-  it("keeps a restricted server session out of the workspace", async () => {
+  it("routes an MFA enrollment session to the bounded enrollment page and keeps it out of the workspace", async () => {
     const client = mockClient();
     client.getCurrentSession.mockResolvedValue(successResponse(session({ privilegedAccount: true, mfaRequired: true, mfaSatisfied: false, permissions: [], siteReferences: [], siteGroupReferences: [] })));
 
     render(<HumanAuthenticationShell client={client} />);
 
-    expect(await screen.findByRole("heading", { name: "Workspace access is restricted" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Set up an authenticator" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe(mfaEnrollmentRoute);
     expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
+    expect(screen.queryByText("User Administration")).not.toBeInTheDocument();
+  });
+
+  it("routes privileged first login to enrollment while direct enrollment without a session returns to sign in", async () => {
+    const client = mockClient();
+    const restricted = successResponse(session({
+      username: "privileged.admin",
+      privilegedAccount: true,
+      mfaRequired: true,
+      mfaSatisfied: false,
+      permissions: [],
+      siteReferences: [],
+      siteGroupReferences: []
+    }));
+    client.getCurrentSession.mockRejectedValueOnce(sessionEnded()).mockResolvedValueOnce(restricted);
+    client.login.mockResolvedValue(restricted);
+    const first = render(<HumanAuthenticationShell client={client} />);
+
+    await fillLogin("privileged.admin", "privileged-password");
+    expect(await screen.findByRole("heading", { name: "Set up an authenticator" })).toBeVisible();
+    expect(window.location.pathname).toBe(mfaEnrollmentRoute);
+    first.unmount();
+
+    window.history.replaceState(null, "", mfaEnrollmentRoute);
+    const noSession = mockClient();
+    noSession.getCurrentSession.mockRejectedValue(sessionEnded());
+    render(<HumanAuthenticationShell client={noSession} />);
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeVisible();
+    expect(window.location.pathname).toBe("/management-platform/");
+  });
+
+  it("routes a fully authenticated session away from the enrollment route to the normal workspace", async () => {
+    window.history.replaceState(null, "", mfaEnrollmentRoute);
+    const client = mockClient();
+    client.getCurrentSession.mockResolvedValue(successResponse(session({
+      privilegedAccount: true,
+      mfaRequired: true,
+      mfaSatisfied: true,
+      assurance: "PASSWORD_TOTP"
+    })));
+
+    render(<HumanAuthenticationShell client={client} />);
+
+    expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeVisible();
+    expect(window.location.pathname).toBe("/management-platform/");
   });
 
   it("handles unavailable and malformed startup responses without exposing protected content", async () => {

@@ -128,6 +128,7 @@ export function createHumanAuthenticationClient(options: { fetchImpl?: typeof fe
         body: body === undefined ? undefined : JSON.stringify(body),
         credentials: "same-origin",
         cache: "no-store",
+        referrerPolicy: "no-referrer",
         signal
       });
     } catch (error) {
