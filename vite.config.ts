@@ -7,7 +7,10 @@ const defaultDevPort = Number(process.env.MANAGEMENT_PLATFORM_DEV_PORT ?? 5178);
 const accountActivationRoute = "/account/activate";
 const forgotPasswordRoute = "/account/forgot-password";
 const resetPasswordRoute = "/account/reset-password";
+const mfaEnrollmentRoute = "/account/mfa-enrollment";
 export const publicAccountLifecycleRoutes = [accountActivationRoute, forgotPasswordRoute, resetPasswordRoute] as const;
+export const authenticatedAccountLifecycleRoutes = [mfaEnrollmentRoute] as const;
+const accountLifecycleRoutes = [...publicAccountLifecycleRoutes, ...authenticatedAccountLifecycleRoutes] as const;
 const activationBootstrapScript = `(() => {
   const path = window.location.pathname.replace(/\\/+$/, "");
   const bootstrapKey = path === "${accountActivationRoute}"
@@ -57,7 +60,7 @@ export function accountActivationHistoryFallback(): Plugin {
   const rewrite = (request: { url?: string }) => {
     if (!request.url) return false;
     const [path, query] = request.url.split("?", 2);
-    if (publicAccountLifecycleRoutes.includes(path.replace(/\/+$/, "") as typeof publicAccountLifecycleRoutes[number])) {
+    if (accountLifecycleRoutes.includes(path.replace(/\/+$/, "") as typeof accountLifecycleRoutes[number])) {
       request.url = `/management-platform/${query ? `?${query}` : ""}`;
       return true;
     }
@@ -78,7 +81,7 @@ export function accountActivationHistoryFallback(): Plugin {
     configureServer(server) {
       server.middlewares.use((request, response, next) => {
         const path = request.url?.split("?", 1)[0].replace(/\/+$/, "");
-        if (publicAccountLifecycleRoutes.includes(path as typeof publicAccountLifecycleRoutes[number])) {
+        if (accountLifecycleRoutes.includes(path as typeof accountLifecycleRoutes[number])) {
           response.statusCode = 200;
           response.setHeader("Content-Type", "text/html; charset=utf-8");
           response.setHeader("Cache-Control", "no-store, private");

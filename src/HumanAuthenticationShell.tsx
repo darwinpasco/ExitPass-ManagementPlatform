@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { App } from "./App";
+import { MfaEnrollmentPage } from "./MfaEnrollmentPage";
 import {
   HumanAuthenticationError,
   createHumanAuthenticationClient,
@@ -9,6 +10,7 @@ import {
   type HumanAuthenticationResponse,
   type HumanSessionDto
 } from "./humanAuthentication";
+import { mfaEnrollmentRoute, type MfaEnrollmentClient } from "./mfaEnrollment";
 import type { ManagementPlatformAuthState } from "./types";
 
 type SessionView =
@@ -21,9 +23,10 @@ type SessionView =
 
 interface HumanAuthenticationShellProps {
   client?: HumanAuthenticationClient;
+  enrollmentClient?: MfaEnrollmentClient;
 }
 
-export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthenticationShellProps) {
+export function HumanAuthenticationShell({ client: injectedClient, enrollmentClient }: HumanAuthenticationShellProps) {
   const client = useMemo(() => injectedClient ?? createHumanAuthenticationClient(), [injectedClient]);
   const [view, setView] = useState<SessionView>({ status: "loading" });
   const [username, setUsername] = useState("");
@@ -46,6 +49,9 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
     clearCredentials();
     setLogoutError(undefined);
     setView({ status: "login", message });
+    if (window.location.pathname.replace(/\/+$/, "") === mfaEnrollmentRoute) {
+      window.history.replaceState(window.history.state, "", "/management-platform/");
+    }
   }, [clearCredentials, client]);
 
   const applySession = useCallback((response: HumanAuthenticationResponse) => {
@@ -59,10 +65,16 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
         : "Authenticator enrollment or verification is required before this account can use privileged Management Platform capabilities.";
       clearCredentials();
       setView({ status: "restricted", session: response.session, message });
+      if (!response.session.passwordChangeRequired) {
+        window.history.replaceState(window.history.state, "", mfaEnrollmentRoute);
+      }
       return;
     }
     clearCredentials();
     setView({ status: "authenticated", authState: toManagementPlatformAuthState(response.session) });
+    if (window.location.pathname.replace(/\/+$/, "") === mfaEnrollmentRoute) {
+      window.history.replaceState(window.history.state, "", "/management-platform/");
+    }
   }, [clearCredentials, enterLogin]);
 
   const readCurrentSession = useCallback(async (signal?: AbortSignal) => {
@@ -134,8 +146,9 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
     } catch (error) {
       const mapped = asAuthenticationError(error);
       setTotpCode("");
-      if (mapped.kind === "mfa-required" || mapped.kind === "invalid-totp") {
-        setView({ status: "totp", message: mapped.kind === "invalid-totp" ? mapped.message : undefined });
+      if (mapped.kind === "mfa-required" || mapped.kind === "invalid-totp"
+        || (view.status === "totp" && (mapped.kind === "throttled" || mapped.kind === "unavailable"))) {
+        setView({ status: "totp", message: mapped.kind === "mfa-required" ? undefined : mapped.message });
       } else {
         setView({ status: "login", message: mapped.message, retryable: mapped.retryable });
         if (mapped.kind !== "throttled") {
@@ -232,6 +245,14 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
   }
 
   if (view.status === "restricted") {
+    if (!view.session.passwordChangeRequired) {
+      return <MfaEnrollmentPage
+        session={view.session}
+        authenticationClient={client}
+        enrollmentClient={enrollmentClient}
+        onSignIn={enterLogin}
+      />;
+    }
     return (
       <AuthenticationFrame>
         <section className="authState warning" aria-labelledby="account-action-title">
