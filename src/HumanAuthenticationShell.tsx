@@ -62,9 +62,9 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
       setView({ status: "password", mode: "first", session: response.session });
       return;
     }
-    if (isRestrictedSession(response.session)) {
+    if (isRestrictedSession(response.session) || response.session.assurance !== "PASSWORD_TOTP" || !response.session.mfaSatisfied) {
       clearCredentials();
-      setView({ status: "restricted", session: response.session, message: "Authenticator enrollment or verification must be completed through the governed provisioning workflow." });
+      setView({ status: "restricted", session: response.session, message: "Authenticator verification is required. Contact an authorized administrator to complete governed provisioning." });
       return;
     }
     clearCredentials();

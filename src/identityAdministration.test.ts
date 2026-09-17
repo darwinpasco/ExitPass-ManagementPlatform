@@ -106,7 +106,8 @@ describe("identity administration API client", () => {
     ["unknown role", { ...authoritativeRole(), code: "UNKNOWN_ROLE" }],
     ["invalid scope", { ...authoritativeRole(), scopePolicy: { allowedScopeTypes: ["REGION"], assignmentRequired: true, defaultScope: null } }],
     ["required scope with no choices", { ...authoritativeRole(), scopePolicy: { allowedScopeTypes: [], assignmentRequired: true, defaultScope: null } }],
-    ["default scope outside allowed scopes", { ...authoritativeRole(), scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "GLOBAL" } }]
+    ["default scope outside allowed scopes", { ...authoritativeRole(), scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "GLOBAL" } }],
+    ["Executive scope outside Global", { ...authoritativeRole(), code: "EXECUTIVE_MANAGEMENT", scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" } }]
   ])("fails closed for %s from the H1 role catalog", async (_name, role) => {
     const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl: vi.fn(async () => json([role])) }));
     await expect(client.listRoles()).rejects.toMatchObject({ kind: "malformed-response", code: "IDENTITY_ADMIN_MALFORMED_RESPONSE" });

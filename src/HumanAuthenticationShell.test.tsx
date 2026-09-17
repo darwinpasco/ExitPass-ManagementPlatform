@@ -135,13 +135,15 @@ describe("Management Platform I-020 session shell", () => {
     expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
   });
 
-  it("keeps a restricted server session out of the workspace", async () => {
+  it("keeps sessions without satisfied TOTP out of the workspace without offering enrollment", async () => {
     const client = mockClient();
-    client.getCurrentSession.mockResolvedValue(successResponse(session({ privilegedAccount: true, mfaRequired: true, mfaSatisfied: false, permissions: [], siteReferences: [], siteGroupReferences: [] })));
+    client.getCurrentSession.mockResolvedValue(successResponse(session({ mfaRequired: true, mfaSatisfied: false, permissions: [] })));
 
     render(<HumanAuthenticationShell client={client} />);
 
     expect(await screen.findByRole("heading", { name: "Workspace access is restricted" })).toBeInTheDocument();
+    expect(screen.getByText(/authorized administrator/)).toBeInTheDocument();
+    expect(screen.queryByText(/set up an authenticator/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Dashboard" })).not.toBeInTheDocument();
   });
 
@@ -212,11 +214,11 @@ function session(overrides: Partial<HumanSessionDto> = {}): HumanSessionDto {
     username: "ordinary.user",
     displayName: "Ordinary Management User",
     audience: managementPlatformAudience,
-    assurance: "PASSWORD",
+    assurance: "PASSWORD_TOTP",
     privilegedAccount: false,
     passwordChangeRequired: false,
-    mfaRequired: false,
-    mfaSatisfied: false,
+    mfaRequired: true,
+    mfaSatisfied: true,
     authenticatedAt: "2030-01-01T00:00:00Z",
     lastSeenAt: "2030-01-01T00:00:00Z",
     idleExpiresAt: "2030-01-01T00:30:00Z",

@@ -334,7 +334,8 @@ function asRoleCatalog(value: unknown): IdentityRoleDefinition[] {
     const allowedScopeTypes = item.scopePolicy.allowedScopeTypes as unknown[];
     if (new Set(allowedScopeTypes).size !== allowedScopeTypes.length ||
         (item.scopePolicy.assignmentRequired === true && allowedScopeTypes.length === 0) ||
-        (item.scopePolicy.defaultScope !== undefined && item.scopePolicy.defaultScope !== null && !allowedScopeTypes.includes(item.scopePolicy.defaultScope))) malformed();
+        (item.scopePolicy.defaultScope !== undefined && item.scopePolicy.defaultScope !== null && !allowedScopeTypes.includes(item.scopePolicy.defaultScope)) ||
+        (item.code === "EXECUTIVE_MANAGEMENT" && (allowedScopeTypes.length !== 1 || allowedScopeTypes[0] !== "GLOBAL"))) malformed();
     return item as unknown as IdentityRoleDefinition;
   });
 }
