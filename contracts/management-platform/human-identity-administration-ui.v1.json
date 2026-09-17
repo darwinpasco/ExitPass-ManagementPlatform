@@ -1,68 +1,44 @@
 {
-  "contract": "management-platform-human-identity-administration-ui:v1",
-  "authority": "Central PMS I-021",
-  "route": "/management-platform/identity-administration",
-  "backendBaseRoute": "/v1/management-platform/identity",
-  "authentication": "shared H-006 I-020 session",
-  "csrf": "shared H-006 runtime-memory X-CSRF-Token decorator",
-  "authoritativeUserTypes": [
-    "INTERNAL_ADMIN",
-    "OPERATIONS_USER",
-    "SITE_OPERATOR",
-    "SUPPORT_USER",
-    "FINANCE_USER",
-    "COMPLIANCE_USER",
-    "MERCHANT_USER",
-    "SECURITY_USER",
-    "OTHER"
-  ],
-  "capabilities": [
-    "user list and detail",
-    "offset user-directory continuation with a page size of 50",
-    "Add User with an atomic initial role and Site or Site Group assignment, without credentials",
-    "profile, access dates, and Account Status",
-    "Roles & Permissions catalog and assignment",
-    "Site Access for Site and Site Group",
-    "Elevated Access requests, request-reference rediscovery, and decisions",
-    "Two-Factor Authentication status and authenticator reset or remove",
-    "Active Sessions and sign-out",
-    "Access Review",
-    "Activity Log"
-  ],
-  "globalScope": {
-    "enabled": false,
-    "returnedGrantPresentation": "visible and read-only with no mutation control",
-    "classification": "GLOBAL_SCOPE_POLICY_NOT_APPROVED",
-    "nullScopeIsGlobal": false
-  },
-  "privilegedAccess": {
-    "approvalIsEvidence": true,
-    "approvalImpliesActiveAuthority": false
-  },
-  "browserAuthority": {
-    "authentication": false,
-    "permissions": false,
-    "siteScope": false,
-    "siteGroupScope": false,
-    "selectedSite": false
-  },
-  "prohibitedData": [
-    "password",
-    "TOTP seed or code",
-    "provisioning URI or QR payload",
-    "session secret or cookie",
-    "bearer or refresh token",
-    "client-authored actor, role, permission, Site, or Site Group authority"
-  ],
-  "safeErrors": [400, 401, 403, 404, 409, 429, 503, "network", "malformed response"],
-  "partialFailure": "secondary sections retain successful user detail and render independent loading, empty, denied, unavailable, and retry states",
-  "uncertainMutation": "retained information is visibly stale and all unsafe controls remain disabled until directory and selected-user authority reload successfully",
-  "authorizedLanding": "the root opens the first permitted module without weakening any destination guard; no available module produces an explicit authenticated state",
-  "siteGroupPresentation": "Site Group authority remains distinct from direct Site grants and is not expanded in the browser",
-  "responsiveMasterDetail": "desktop remains side by side; tablet and narrow selection moves and focuses the selected-user detail before the directory",
-  "authenticationFreshness": "I-021 uses the normal active H-006 session; privileged-account TOTP is enforced at login and no separate step-up flow is used",
-  "atomicUserCreation": "user, initial non-privileged role, and required Site or Site Group grant succeed or fail in one Central PMS transaction",
-  "assignableRoles": "known active Central PMS role codes use business labels; synthetic and test roles are excluded; user type filters compatible directly assignable roles and Central PMS validates the pair",
-  "webSession": "30-minute sliding idle timeout with an eight-hour fixed absolute limit; successful authenticated activity is rediscovered through H-006 current-session readback",
-  "sessionLoss": "H-006 removes the workspace and never replays a mutation"
+    "contract":  "management-platform-human-identity-administration-ui:v1",
+    "authority":  "Central PMS H1/H2",
+    "route":  "/management-platform/identity-administration",
+    "backendBaseRoute":  "/v1/management-platform/identity",
+    "roleCatalog":  {
+                        "productionSource":  "GET /v1/management-platform/identity/roles",
+                        "authority":  "H1 ApprovedIdentityRoleCatalog",
+                        "requiredForMutation":  [
+                                                    "applicationAccess",
+                                                    "scopePolicy.allowedScopeTypes",
+                                                    "scopePolicy.assignmentRequired"
+                                                ],
+                        "parkedBackendMismatch":  "IdentityRoleDefinition currently omits applicationAccess and scopePolicy. H3 rejects that response and disables role/scope mutation instead of using local fallback policy."
+                    },
+    "userType":  "legacy backend field only; H3 does not derive it from role or use it to filter roles",
+    "capabilities":  [
+                         "authoritative user list and detail",
+                         "role and scope selection from valid H1 metadata",
+                         "one-time H2 temporary-password and TOTP provisioning presentation",
+                         "profile, lifecycle, sessions, MFA status, access review, and audit presentation"
+                     ],
+    "globalScope":  {
+                        "source":  "H1 scopePolicy",
+                        "executiveManagement":  "H1 returns GLOBAL as the only allowed scope and enforces it",
+                        "nullScopeIsGlobal":  false
+                    },
+    "createUser":  {
+                       "route":  "POST /v1/management-platform/identity/users",
+                       "response":  "user + invitation + oneTimeBootstrap",
+                       "parkedRequestMismatch":  "Backend requires userType and activationDeliveryMode, and the ADMIN_ISSUED flow carries adminIssuedHandoffAcknowledged. H3 does not derive userType or silently assert handoff acknowledgement. Backend alignment is required before production creation can integrate."
+                   },
+    "browserAuthority":  {
+                             "authentication":  false,
+                             "roleAvailability":  false,
+                             "applicationEligibility":  false,
+                             "permissions":  false,
+                             "scopePolicy":  false,
+                             "roleScopeValidation":  false
+                         },
+    "failurePolicy":  "Missing, malformed, unavailable, or unknown H1 role metadata disables assignment and scope mutation; production never substitutes the development fixture catalog.",
+    "developmentFixture":  "DEV-only resolver plus explicit isolated test-harness enable flag",
+    "secretHandling":  "oneTimeBootstrap is mapped to in-memory presentation and cleared when the provisioning panel closes"
 }

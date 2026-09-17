@@ -1643,3 +1643,26 @@ code {
     width: 100%;
   }
 }
+
+.linkButton {
+  background: transparent;
+  border-color: transparent;
+  color: #155f78;
+  padding-inline: 4px;
+  text-decoration: underline;
+}
+
+.rolePolicySummary,
+.provisioningPanel {
+  background: #f5f9fb;
+  border: 1px solid #b8cbd5;
+  border-radius: 6px;
+  grid-column: 1 / -1;
+  padding: 14px;
+}
+
+.rolePolicySummary p,
+.provisioningPanel p { margin: 6px 0; }
+.provisioningPanel { border-left: 4px solid #b56b00; }
+.provisioningPanel .factGrid { margin-block: 14px; }
+.totpQr { background: #fff; border: 1px solid #cbd5dc; display: block; height: min(240px, 70vw); margin-block: 12px; padding: 8px; width: min(240px, 70vw); }

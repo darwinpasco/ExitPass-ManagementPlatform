@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { IdentityAdministrationPage } from "./IdentityAdministrationPage";
-import { identityAdministrationPermissions, type IdentityAdministrationClient, type IdentityUserDetail, type IdentityUserSummary } from "./identityAdministration";
+import { identityAdministrationPermissions, type IdentityAdministrationClient, type IdentityUserDetail, type IdentityUserSummary, type IdentityRoleDefinition } from "./identityAdministration";
 
 describe("IdentityAdministrationPage", () => {
   it("renders a populated governed user list and coherent detail without raw identifiers", async () => {
@@ -10,7 +10,7 @@ describe("IdentityAdministrationPage", () => {
     expect(await screen.findByRole("button", { name: /Alex Rivera/ })).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /Alex Rivera/ }));
     expect(await screen.findByRole("heading", { name: "Alex Rivera" })).toBeInTheDocument();
-    expect(screen.getByText(/alex\.rivera · Site Operator/)).toBeInTheDocument();
+    expect(screen.getByText(/alex\.rivera · Legacy classification: Site Operator/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Account Status" })).toBeInTheDocument();
     expect(document.body.textContent).not.toContain("11111111-1111-4111-8111-111111111111");
   });
@@ -22,158 +22,102 @@ describe("IdentityAdministrationPage", () => {
     expect(await screen.findByText("No users match the current search.")).toBeInTheDocument();
   });
 
-  it("creates users without password or invented delivery controls", async () => {
+  it("displays the eight approved roles without a user-type gate", async () => {
+    renderPage();
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    expect(within(form).queryByLabelText("User type")).not.toBeInTheDocument();
+    expect(Array.from((within(form).getByLabelText("Initial role") as HTMLSelectElement).options).map((option) => option.text)).toEqual([
+      "Select a role", "System Administrator", "Operations Supervisor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
+    ]);
+    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-system");
+    expect(within(form).getByRole("note", { name: "System Administrator access" })).toHaveTextContent("does not grant operational, cashier, statutory-discount approval, or business-workflow authority");
+  });
+
+  it("renders application and scope choices from authoritative backend role metadata", async () => {
+    const client = mockClient();
+    const serverRole = role("OPERATIONS_SUPERVISOR", "Operations Supervisor", "role-operations");
+    serverRole.applicationAccess = ["APT"];
+    serverRole.scopePolicy = { allowedScopeTypes: ["SITE_GROUP"], assignmentRequired: true };
+    client.listRoles.mockResolvedValue([serverRole]);
+    renderPage(client);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-operations");
+
+    expect(within(form).getByRole("note", { name: "Operations Supervisor access" })).toHaveTextContent("Applications from Central PMS: APT");
+    expect(within(form).getByLabelText("Access level")).toHaveValue("SITE_GROUP");
+    expect(within(form).getByLabelText("Access level")).toBeDisabled();
+  });
+  it("does not offer a backend role that is ineligible for direct user creation", async () => {
+    const client = mockClient();
+    client.listRoles.mockResolvedValue([{ ...role("SITE_OPERATOR", "Site Operator", "role-site-operator"), directAddUserEligible: false }]);
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    expect(within(form).queryByRole("option", { name: "Site Operator" })).not.toBeInTheDocument();
+    expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
+  });
+  it("makes Executive / Management explicitly Global-only", async () => {
     const client = mockClient();
     renderPage(client);
     await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
-    expect(screen.queryByLabelText(/password/i)).not.toBeInTheDocument();
-    expect(screen.queryByText(/send email|send sms/i)).not.toBeInTheDocument();
     const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
-    expect(within(form).getByLabelText("User type")).toHaveValue("");
-    expect(Array.from((within(form).getByLabelText("User type") as HTMLSelectElement).options).map((option) => option.value)).toEqual([
-      "", "SITE_OPERATOR"
-    ]);
-    await userEvent.type(within(form).getByLabelText("Username"), "new.user");
-    await userEvent.type(within(form).getByLabelText("Display name"), "New User");
-    await userEvent.type(within(form).getByLabelText("Reason"), "AUTHORIZED_INVITE");
-    expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
-    expect(client.createUser).not.toHaveBeenCalled();
-    await userEvent.selectOptions(within(form).getByLabelText("User type"), "SITE_OPERATOR");
-    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "33333333-3333-4333-8333-333333333333");
-    expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
-    await userEvent.selectOptions(within(form).getByLabelText("Assigned Site"), "site-1");
-    expect(within(form).getByRole("button", { name: "Add User" })).toBeEnabled();
+    await userEvent.type(within(form).getByLabelText("Username"), "executive.user");
+    await userEvent.type(within(form).getByLabelText("Display name"), "Executive User");
+    await userEvent.type(within(form).getByLabelText("Reason"), "AUTHORIZED_EXECUTIVE");
+    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-executive");
+    const scope = within(form).getByLabelText("Access level");
+    expect(scope).toHaveValue("GLOBAL");
+    expect(scope).toBeDisabled();
+    expect(within(scope).getAllByRole("option")).toHaveLength(1);
     await userEvent.click(within(form).getByRole("button", { name: "Add User" }));
     await waitFor(() => expect(client.createUser).toHaveBeenCalledOnce());
-    expect(client.createUser.mock.calls[0][0]).toMatchObject({ userType: "SITE_OPERATOR", initialRoleReference: "33333333-3333-4333-8333-333333333333", initialScopeType: "SITE", initialSiteReference: "site-1", initialSiteGroupReference: null });
-    expect(JSON.stringify(client.createUser.mock.calls[0][0])).not.toMatch(/password|totp|seed/i);
+    expect(client.createUser.mock.calls[0][0]).toMatchObject({ initialRoleReference: "role-executive", initialScopeType: "GLOBAL", initialSiteReference: null, initialSiteGroupReference: null });
+    expect(client.createUser.mock.calls[0][0]).not.toHaveProperty("userType");
   });
 
-  it("renders PITX and its two authoritative child Sites without generated or synthetic options", async () => {
+  it("shows provisioning material once, then returns to TOTP status only", async () => {
     const client = mockClient();
-    client.getDelegableScopes.mockResolvedValue({
-      siteGroups: [{ siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }],
-      sites: [
-        { siteId: "2d1dcdf8-f563-537c-8542-0bde7cc9da97", siteCode: "PITX-LEVEL-3", siteName: "PITX Level 3", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null },
-        { siteId: "b336964f-3b84-5404-8690-97ead0929b1f", siteCode: "PITX-OPEN-LOT", siteName: "PITX Open Lot", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }
-      ]
-    });
     renderPage(client);
     await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
     const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
-    const siteSelect = within(form).getByLabelText("Assigned Site");
-    expect(await within(siteSelect).findByRole("option", { name: "PITX Level 3" })).toHaveValue("2d1dcdf8-f563-537c-8542-0bde7cc9da97");
-    expect(within(siteSelect).getByRole("option", { name: "PITX Open Lot" })).toHaveValue("b336964f-3b84-5404-8690-97ead0929b1f");
-    await userEvent.selectOptions(within(form).getByLabelText("Site access level"), "SITE_GROUP");
-    expect(within(form).getByRole("option", { name: "PITX" })).toHaveValue("a6dbadf6-68b5-5bed-a7e0-a75faee70841");
-    expect(form.textContent).not.toMatch(/Authorized Site Group|Site scope|Test Site|SAMPLE-METRO|Mactan Newtown/i);
-  });
-
-  it("fails closed when authoritative delegable scope metadata is unavailable", async () => {
-    const client = mockClient();
-    client.getDelegableScopes.mockRejectedValue(uiError("integration-unavailable", "Authoritative Site access is temporarily unavailable.", true));
-    renderPage(client);
-    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
-    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
-    expect(await within(form).findByText("Authoritative Site access: Unavailable")).toBeInTheDocument();
-    expect(within(form).getByLabelText("Assigned Site")).toBeDisabled();
-    expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
-    expect(form.textContent).not.toMatch(/Authorized Site Group|Site scope|Test Site|SAMPLE-METRO/i);
-  });
-
-  it("fails closed with no local fallback when the authoritative role catalog is unavailable", async () => {
-    const client = mockClient();
-    client.listRoles.mockRejectedValue(uiError("integration-unavailable", "Role catalog is temporarily unavailable.", true));
-    renderPage(client);
-    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
-    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
-    expect(await within(form).findByText("Role catalog: Unavailable")).toBeInTheDocument();
-    expect(within(form).getByLabelText("User type")).toBeDisabled();
-    expect(within(form).getByLabelText("Initial role")).toBeDisabled();
-    expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
-    expect(client.createUser).not.toHaveBeenCalled();
-  });
-
-  it("refreshes page one and opens the atomically created user", async () => {
-    const client = mockClient();
-    const created = { ...userDetail().user, userReference: "created-user", username: "new.operator", displayName: "New Operator", status: "INVITED" };
-    client.createUser.mockResolvedValue(created);
-    client.listUsers.mockResolvedValueOnce([userDetail().user]).mockResolvedValueOnce([created, userDetail().user]);
-    client.getUser.mockImplementation(async (reference: string) => reference === created.userReference ? { ...userDetail(), user: created } : userDetail());
-    renderPage(client);
-
-    await screen.findByRole("button", { name: /Alex Rivera/ });
-    await userEvent.type(screen.getByLabelText("Search users"), "old filter");
-    await userEvent.selectOptions(screen.getByLabelText("Status"), "ACTIVE");
-    await userEvent.click(screen.getByRole("button", { name: "Add User" }));
-    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
-    await userEvent.type(within(form).getByLabelText("Username"), created.username);
-    await userEvent.type(within(form).getByLabelText("Display name"), created.displayName);
-    await userEvent.type(within(form).getByLabelText("Reason"), "AUTHORIZED_INVITE");
-    await userEvent.selectOptions(within(form).getByLabelText("Site access level"), "SITE_GROUP");
-    await userEvent.selectOptions(within(form).getByLabelText("User type"), "SITE_OPERATOR");
-    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "33333333-3333-4333-8333-333333333333");
-    await userEvent.selectOptions(within(form).getByLabelText("Assigned Site Group"), "group-1");
+    await userEvent.type(within(form).getByLabelText("Username"), "new.operator");
+    await userEvent.type(within(form).getByLabelText("Display name"), "New Operator");
+    await userEvent.type(within(form).getByLabelText("Reason"), "AUTHORIZED_PROVISIONING");
+    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-site-operator");
+    await userEvent.selectOptions(within(form).getByLabelText("Assigned Site"), "site-1");
     await userEvent.click(within(form).getByRole("button", { name: "Add User" }));
-
-    expect(await screen.findByRole("heading", { name: "New Operator" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Search users")).toHaveValue("");
-    expect(screen.getByLabelText("Status")).toHaveValue("");
-    expect(screen.getByText("2 returned")).toBeInTheDocument();
-    expect(client.listUsers).toHaveBeenLastCalledWith({ query: undefined, status: undefined, offset: 0, limit: 50 });
-    expect(client.createUser).toHaveBeenCalledWith(expect.objectContaining({ initialScopeType: "SITE_GROUP", initialSiteReference: null, initialSiteGroupReference: "group-1" }));
-    expect(screen.getByText("User added with an initial role and access assignment.")).toBeInTheDocument();
+    const provisioning = await screen.findByRole("region", { name: "Provision Alex Rivera" });
+    expect(provisioning).toHaveTextContent("Temporary-Only-72h!");
+    expect(provisioning).toHaveTextContent("JBSWY3DPEHPK3PXP");
+    expect(localStorage).toHaveLength(0);
+    await userEvent.click(within(provisioning).getByRole("button", { name: "I have completed provisioning" }));
+    expect(screen.queryByText("Temporary-Only-72h!")).not.toBeInTheDocument();
+    await userEvent.click(await screen.findByRole("tab", { name: "Security" }));
+    expect(await screen.findByText("Required for sign-in")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/JBSWY3DPEHPK3PXP|otpauth:/i);
   });
-
-  it("reloads server-owned eligible roles and renders canonical names without aliases", async () => {
-    const client = mockClient();
-    const catalog = [
-      role("SITE_OPERATOR", "Site Operator", "site-operator", ["SITE_OPERATOR"]),
-      role("SUPPORT_AGENT", "Support Agent", "support", ["SUPPORT_USER"]),
-      role("FINANCE_RECONCILIATION_ANALYST", "Finance / Reconciliation Analyst", "finance", ["FINANCE_USER"]),
-      role("MERCHANT_ADMIN", "Merchant Administrator", "merchant", ["MERCHANT_USER"])
-    ];
-    client.listRoles.mockImplementation(async (filters = {}) => catalog.filter((candidate) =>
-      (!filters.userType || candidate.allowedUserTypes.includes(filters.userType)) &&
-      (!filters.directAddUserOnly || candidate.directAddUserEligible)));
-    renderPage(client);
-    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
-    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
-    const userType = within(form).getByLabelText("User type");
-    const initialRole = within(form).getByLabelText("Initial role");
-
-    expect(Array.from((userType as HTMLSelectElement).options).map((option) => option.value)).toEqual(["", "SITE_OPERATOR", "SUPPORT_USER", "FINANCE_USER", "MERCHANT_USER"]);
-    await userEvent.selectOptions(userType, "SITE_OPERATOR");
-    await waitFor(() => expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Site Operator"]));
-    await userEvent.selectOptions(initialRole, "site-operator");
-    await userEvent.selectOptions(userType, "SUPPORT_USER");
-    await waitFor(() => expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Support Agent"]));
-    expect(initialRole).toHaveValue("");
-    await userEvent.selectOptions(userType, "FINANCE_USER");
-    await waitFor(() => expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Finance / Reconciliation Analyst"]));
-    await userEvent.selectOptions(userType, "MERCHANT_USER");
-    await waitFor(() => expect(Array.from((initialRole as HTMLSelectElement).options).map((option) => option.text)).toEqual(["Select a role", "Merchant Administrator"]));
-    expect(within(initialRole).queryByText(/Finance User|Merchant User|Support Staff|Site Administrator/)).not.toBeInTheDocument();
-    expect(client.listRoles).toHaveBeenCalledWith({ userType: "SUPPORT_USER", directAddUserOnly: true }, expect.any(AbortSignal));
-    expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
-  });
-
-  it("uses neutral access-assignment wording for a Site Group grant", async () => {
+  it("limits scope mutations to the selected backend role policy", async () => {
     const client = mockClient();
     renderPage(client);
     await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
     await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
-    const form = screen.getByRole("heading", { name: "Add Site Access" }).closest("form")!;
-    await userEvent.selectOptions(within(form).getByLabelText("Access level"), "SITE_GROUP");
-    await userEvent.selectOptions(within(form).getByLabelText("Site Group"), "group-1");
-    await userEvent.type(within(form).getByLabelText("Reason"), "AUTHORIZED_GROUP_ACCESS");
+    const form = screen.getByRole("heading", { name: "Add Scope Access" }).closest("form")!;
+    const scopeType = within(form).getByLabelText("Scope access level");
+    expect(scopeType).toHaveValue("SITE");
+    expect(scopeType).toBeDisabled();
+    expect(within(scopeType).queryByRole("option", { name: "Site Group" })).not.toBeInTheDocument();
+    await userEvent.selectOptions(within(form).getByLabelText("Site"), "site-1");
+    await userEvent.type(within(form).getByLabelText("Reason"), "AUTHORIZED_SITE_ACCESS");
     await userEvent.click(within(form).getByRole("button", { name: "Add Access" }));
 
     expect(await screen.findByText("Access assignment added.")).toBeInTheDocument();
     expect(client.grantScope).toHaveBeenCalledWith(
       userDetail().user.userReference,
       "assignment-1",
-      expect.objectContaining({ scopeType: "SITE_GROUP", siteReference: null, siteGroupReference: "group-1" })
+      expect.objectContaining({ scopeType: "SITE", siteReference: "site-1", siteGroupReference: null })
     );
   });
 
@@ -235,17 +179,6 @@ describe("IdentityAdministrationPage", () => {
     expect(screen.getByRole("button", { name: "Save Profile" })).toBeEnabled();
   });
 
-  it("keeps GLOBAL fail-closed while offering only authorized Site and Site Group inputs", async () => {
-    renderPage();
-    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
-    await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
-    expect(screen.getAllByText(/Organization-wide access is not available/i).length).toBeGreaterThan(0);
-    const scopeType = screen.getByLabelText("Access level");
-    expect(within(scopeType).queryByRole("option", { name: /global/i })).not.toBeInTheDocument();
-    expect(within(scopeType).getByRole("option", { name: "Site" })).toBeInTheDocument();
-    expect(within(scopeType).getByRole("option", { name: "Site Group" })).toBeInTheDocument();
-  });
-
   it("submits profile effectivity with the current row version", async () => {
     const client = mockClient();
     renderPage(client);
@@ -267,7 +200,7 @@ describe("IdentityAdministrationPage", () => {
     await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
     await userEvent.click(await screen.findByRole("tab", { name: "Roles & Permissions" }));
     const roleForm = screen.getByRole("heading", { name: "Add Role" }).closest("form")!;
-    await userEvent.selectOptions(within(roleForm).getByLabelText("Role"), "22222222-2222-4222-8222-222222222222");
+    await userEvent.selectOptions(within(roleForm).getByLabelText("Role"), "role-system");
     await userEvent.type(within(roleForm).getByLabelText("Reason"), "TEMPORARY_SUPPORT");
     await userEvent.click(within(roleForm).getByRole("button", { name: "Add Role or Request Access" }));
     expect(await screen.findByText("Pending Decision")).toBeInTheDocument();
@@ -335,7 +268,7 @@ describe("IdentityAdministrationPage", () => {
     await userEvent.click(screen.getByRole("button", { name: "Remove Access" }));
     await waitFor(() => expect(client.revokeScope).toHaveBeenCalledOnce());
     expect(client.revokeScope.mock.calls[0][2]).toBe("grant-1");
-    expect(within(screen.getByLabelText("Access level")).queryByRole("option", { name: /global/i })).not.toBeInTheDocument();
+    expect(within(screen.getByLabelText("Scope access level")).queryByRole("option", { name: /global/i })).not.toBeInTheDocument();
     prompt.mockRestore();
   });
 
@@ -439,7 +372,7 @@ describe("IdentityAdministrationPage", () => {
     await userEvent.click(await screen.findByRole("tab", { name: "Security" }));
     expect(screen.getByRole("heading", { name: "Two-Factor Authentication" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Active Sessions" })).toBeInTheDocument();
-    expect(await screen.findByText("Required for elevated Management Platform access")).toBeInTheDocument();
+    expect(await screen.findByText("Required for sign-in")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/totp-secret-value|session-secret-value|otpauth:\/\//i);
     await userEvent.click(screen.getByRole("button", { name: "Sign Out Session" }));
     await waitFor(() => expect(client.revokeSession).toHaveBeenCalledOnce());
@@ -471,8 +404,7 @@ function renderPage(client = mockClient()) {
 }
 
 async function selectInitialAccess(form: HTMLElement) {
-  await userEvent.selectOptions(within(form).getByLabelText("User type"), "SITE_OPERATOR");
-  await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "33333333-3333-4333-8333-333333333333");
+  await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-site-operator");
   await userEvent.selectOptions(within(form).getByLabelText("Assigned Site"), "site-1");
 }
 
@@ -494,12 +426,17 @@ function mockClient() {
   const user = userDetail();
   return {
     listUsers: vi.fn(async (_filters: { query?: string; status?: string; offset?: number; limit?: number } = {}) => [user.user]), getUser: vi.fn(async (_reference: string) => user),
-    createUser: vi.fn(async (_body: Record<string, unknown>) => user.user), updateUser: vi.fn(async (_reference: string, _body: Record<string, unknown>) => user.user), changeLifecycle: vi.fn(async () => user.user),
-    listRoles: vi.fn(async (filters: { userType?: string; directAddUserOnly?: boolean } = {}) => [
-      role("SITE_OPERATOR", "Site Operator", "33333333-3333-4333-8333-333333333333", ["SITE_OPERATOR"]),
-      role("SYSTEM_RBAC_ADMINISTRATOR", "System / RBAC Administrator", "22222222-2222-4222-8222-222222222222", ["INTERNAL_ADMIN"], true)
-    ].filter((candidate) => (!filters.userType || candidate.allowedUserTypes.includes(filters.userType)) &&
-      (!filters.directAddUserOnly || candidate.directAddUserEligible))),
+    createUser: vi.fn(async (_body: Record<string, unknown>) => ({ user: user.user, provisioning: provisioningMaterial() })), updateUser: vi.fn(async (_reference: string, _body: Record<string, unknown>) => user.user), changeLifecycle: vi.fn(async () => user.user),
+    listRoles: vi.fn(async () => [
+      role("SYSTEM_ADMINISTRATOR", "System Administrator", "role-system", [], true),
+      role("OPERATIONS_SUPERVISOR", "Operations Supervisor", "role-operations"),
+      role("SITE_OPERATOR", "Site Operator", "role-site-operator"),
+      role("PARKING_ATTENDANT", "Parking Attendant", "role-attendant"),
+      role("APT_CASHIER_OPERATOR", "APT / Cashier Operator", "role-apt"),
+      role("FINANCE_RECONCILIATION_ANALYST", "Finance / Reconciliation Analyst", "role-finance"),
+      role("COMPLIANCE_POLICY_ADMINISTRATOR", "Compliance / Policy Administrator", "role-compliance"),
+      role("EXECUTIVE_MANAGEMENT", "Executive / Management", "role-executive")
+    ]),
     listPermissions: vi.fn(async () => [{ permissionReference: "permission-1", code: "user.view", name: "View users", domain: "Identity", action: "VIEW", status: "ACTIVE", isSensitive: false, requiresAudit: true, rowVersion: 1 }]),
     getDelegableScopes: vi.fn(async () => ({
       siteGroups: [{ siteGroupId: "group-1", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null }],
@@ -513,9 +450,12 @@ function mockClient() {
   } satisfies { [K in keyof IdentityAdministrationClient]: ReturnType<typeof vi.fn> };
 }
 
-function role(code: string, name: string, reference: string, allowedUserTypes: string[] = ["SITE_OPERATOR"], privileged = false) {
-  return { roleReference: reference, code, name, description: "Governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: privileged, requiresElevatedApproval: privileged, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: !privileged, humanAssignable: true, allowedUserTypes };
+function role(code: string, name: string, reference: string, allowedUserTypes: string[] = [], privileged = false): IdentityRoleDefinition {
+  const siteScoped = ["OPERATIONS_SUPERVISOR", "SITE_OPERATOR", "PARKING_ATTENDANT", "APT_CASHIER_OPERATOR"].includes(code);
+  const applicationAccess: IdentityRoleDefinition["applicationAccess"] = code === "OPERATIONS_SUPERVISOR" ? ["OPERATOR_CONSOLE", "MANAGEMENT_PLATFORM"] : code === "SITE_OPERATOR" ? ["OPERATOR_CONSOLE"] : code === "PARKING_ATTENDANT" ? ["NATIVE_PARKING_APP"] : code === "APT_CASHIER_OPERATOR" ? ["APT"] : ["MANAGEMENT_PLATFORM"];
+  return { roleReference: reference, code, name, description: "Governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: privileged, requiresElevatedApproval: privileged, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes, applicationAccess, scopePolicy: code === "EXECUTIVE_MANAGEMENT" ? { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true } : siteScoped ? { allowedScopeTypes: ["SITE"], assignmentRequired: true } : { allowedScopeTypes: [], assignmentRequired: false } } as const;
 }
+function provisioningMaterial() { return { temporaryPassword: "Temporary-Only-72h!", temporaryPasswordExpiresAt: "2030-01-04T00:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: "otpauth://totp/ExitPass:new.operator", totpQrImageDataUri: null, displayOnce: true as const, passwordChangeRequired: true as const }; }
 
-function userDetail(): IdentityUserDetail { return { user: { userReference: "11111111-1111-4111-8111-111111111111", username: "alex.rivera", displayName: "Alex Rivera", maskedEmail: "a***@example.test", maskedMobileNumber: "***1234", userType: "SITE_OPERATOR", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-01-01T00:00:00Z", rowVersion: 4 }, roleAssignments: [{ assignmentReference: "assignment-1", userReference: "11111111-1111-4111-8111-111111111111", roleReference: "22222222-2222-4222-8222-222222222222", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }], scopeGrants: [{ grantReference: "grant-1", assignmentReference: "assignment-1", scopeType: "SITE", siteReference: "site-1", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }] }; }
+function userDetail(): IdentityUserDetail { return { user: { userReference: "11111111-1111-4111-8111-111111111111", username: "alex.rivera", displayName: "Alex Rivera", maskedEmail: "a***@example.test", maskedMobileNumber: "***1234", userType: "SITE_OPERATOR", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-01-01T00:00:00Z", rowVersion: 4 }, roleAssignments: [{ assignmentReference: "assignment-1", userReference: "11111111-1111-4111-8111-111111111111", roleReference: "role-site-operator", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }], scopeGrants: [{ grantReference: "grant-1", assignmentReference: "assignment-1", scopeType: "SITE", siteReference: "site-1", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }] }; }
 function privilegedRequest(status: string) { return { requestReference: "request-1", targetUserReference: "user-1", requestedRoleReference: "role-1", requestedScopeType: null, requestedSiteReference: null, requestedSiteGroupReference: null, status, reasonCode: "AUTHORIZED", requestedEffectiveFrom: "2030-01-01T00:00:00Z", requestedEffectiveTo: null, requestedAt: "2030-01-01T00:00:00Z", requestedByUserReference: "admin-1", expiresAt: null, rowVersion: 1, decisions: [] }; }

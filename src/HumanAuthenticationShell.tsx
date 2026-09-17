@@ -14,7 +14,7 @@ import type { ManagementPlatformAuthState } from "./types";
 type SessionView =
   | { status: "loading" }
   | { status: "login"; message?: string; retryable?: boolean }
-  | { status: "totp"; message?: string }
+  | { status: "password"; mode: "first" | "forgot" | "expired"; message?: string; session?: HumanSessionDto }
   | { status: "restricted"; session: HumanSessionDto; message: string }
   | { status: "authenticated"; authState: ManagementPlatformAuthState }
   | { status: "unavailable"; message: string };
@@ -29,6 +29,8 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [totpCode, setTotpCode] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [expiredTemporaryPassword, setExpiredTemporaryPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [logoutPending, setLogoutPending] = useState(false);
   const [logoutError, setLogoutError] = useState<string>();
@@ -39,6 +41,8 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
   const clearCredentials = useCallback(() => {
     setPassword("");
     setTotpCode("");
+    setNewPassword("");
+    setExpiredTemporaryPassword("");
   }, []);
 
   const enterLogin = useCallback((message?: string) => {
@@ -53,12 +57,14 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
       enterLogin();
       return;
     }
+    if (response.session.passwordChangeRequired) {
+      setUsername(response.session.username);
+      setView({ status: "password", mode: "first", session: response.session });
+      return;
+    }
     if (isRestrictedSession(response.session)) {
-      const message = response.session.passwordChangeRequired
-        ? "A password change is required before this account can use the Management Platform. Use the governed account workflow or contact an authorized administrator."
-        : "Authenticator enrollment or verification is required before this account can use privileged Management Platform capabilities.";
       clearCredentials();
-      setView({ status: "restricted", session: response.session, message });
+      setView({ status: "restricted", session: response.session, message: "Authenticator enrollment or verification must be completed through the governed provisioning workflow." });
       return;
     }
     clearCredentials();
@@ -101,11 +107,8 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
   }, [clearCredentials, client, handleSessionReadError, readCurrentSession]);
 
   useEffect(() => {
-    if (view.status === "login") {
-      usernameRef.current?.focus();
-    } else if (view.status === "totp") {
-      totpRef.current?.focus();
-    }
+    if (view.status === "login") usernameRef.current?.focus();
+    if (view.status === "password") totpRef.current?.focus();
   }, [view.status]);
 
   useEffect(() => {
@@ -125,26 +128,35 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
   }, [enterLogin, view]);
 
   async function submitLogin(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitting(true);
-    setView((current) => current.status === "totp" ? { ...current, message: undefined } : { status: "login" });
+    event.preventDefault(); setSubmitting(true); setView({ status: "login" });
     try {
-      await client.login(username.trim(), password, view.status === "totp" ? totpCode.trim() : undefined);
+      await client.login(username.trim(), password, totpCode.trim());
       await readCurrentSession();
     } catch (error) {
-      const mapped = asAuthenticationError(error);
-      setTotpCode("");
-      if (mapped.kind === "mfa-required" || mapped.kind === "invalid-totp") {
-        setView({ status: "totp", message: mapped.kind === "invalid-totp" ? mapped.message : undefined });
-      } else {
-        setView({ status: "login", message: mapped.message, retryable: mapped.retryable });
-        if (mapped.kind !== "throttled") {
-          setPassword("");
-        }
+      const mapped = asAuthenticationError(error); setTotpCode("");
+      setView({ status: "login", message: mapped.message, retryable: mapped.retryable });
+      if (mapped.kind !== "throttled") setPassword("");
+    } finally { setSubmitting(false); }
+  }
+
+  async function submitPasswordMutation(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (view.status !== "password") return;
+    const mode = view.mode; setSubmitting(true); setView({ ...view, message: undefined });
+    try {
+      const normalizedUsername = username.trim();
+      const response = mode === "first"
+        ? await client.changeFirstPassword({ currentPassword: password, totpCode: totpCode.trim(), newPassword })
+        : mode === "expired"
+          ? await client.resetExpiredTemporaryPassword({ username: normalizedUsername, expiredTemporaryPassword, totpCode: totpCode.trim(), newPassword })
+          : await client.resetPassword({ username: normalizedUsername, totpCode: totpCode.trim(), newPassword });
+      if (response.outcome !== "PASSWORD_CHANGED" && response.outcome !== "PASSWORD_RESET_COMPLETED") {
+        throw new HumanAuthenticationError("malformed-response", "HUMAN_AUTHENTICATION_UNEXPECTED_PASSWORD_RESPONSE", "The password change could not be confirmed safely.");
       }
-    } finally {
-      setSubmitting(false);
-    }
+      enterLogin("Password changed. Sign in with your new password and current authenticator code.");
+    } catch (error) {
+      const mapped = asAuthenticationError(error); setTotpCode(""); setNewPassword("");
+      setView((current) => current.status === "password" ? { ...current, message: mapped.message } : { status: "password", mode, message: mapped.message });
+    } finally { setSubmitting(false); }
   }
 
   async function logout() {
@@ -195,41 +207,44 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
     );
   }
 
-  if (view.status === "login" || view.status === "totp") {
-    const isTotp = view.status === "totp";
+  if (view.status === "login") {
     return (
       <AuthenticationFrame>
         <form className="loginForm" aria-labelledby="login-title" onSubmit={submitLogin}>
-          <div>
-            <p className="eyebrow">Staff access</p>
-            <h2 id="login-title">{isTotp ? "Verification required" : "Sign in"}</h2>
-            <p>{isTotp ? "Enter the current code from your authenticator app." : "Use your Management Platform username and password."}</p>
-          </div>
+          <div><p className="eyebrow">Staff access</p><h2 id="login-title">Sign in</h2><p>Management Platform sign-in requires your username, password, and current authenticator code.</p></div>
           {view.message && <div className="authInlineError" role="alert">{view.message}</div>}
-          {!isTotp && (
-            <>
-              <label htmlFor="management-platform-username">Username</label>
-              <input ref={usernameRef} id="management-platform-username" name="username" autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} />
-              <label htmlFor="management-platform-password">Password</label>
-              <input id="management-platform-password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
-            </>
-          )}
-          {isTotp && (
-            <>
-              <p className="authAccount">Signing in as <strong>{username}</strong></p>
-              <label htmlFor="management-platform-totp">Verification code</label>
-              <input ref={totpRef} id="management-platform-totp" name="totpCode" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, ""))} />
-            </>
-          )}
-          <div className="authActions">
-            <button type="submit" disabled={submitting}>{submitting ? "Signing in" : isTotp ? "Verify and sign in" : "Sign in"}</button>
-            {isTotp && <button className="secondaryButton" type="button" disabled={submitting} onClick={() => { clearCredentials(); setUsername(""); setView({ status: "login" }); }}>Use another account</button>}
-          </div>
+          <label htmlFor="management-platform-username">Username</label>
+          <input ref={usernameRef} id="management-platform-username" name="username" autoComplete="username" required value={username} onChange={(event) => setUsername(event.target.value)} />
+          <label htmlFor="management-platform-password">Password</label>
+          <input id="management-platform-password" name="password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} />
+          <label htmlFor="management-platform-totp">Authenticator code</label>
+          <input ref={totpRef} id="management-platform-totp" name="totpCode" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, ""))} />
+          <div className="authActions"><button type="submit" disabled={submitting}>{submitting ? "Signing in" : "Sign in"}</button><button className="linkButton" type="button" disabled={submitting} onClick={() => { clearCredentials(); setView({ status: "password", mode: "forgot" }); }}>Forgot password</button></div>
         </form>
       </AuthenticationFrame>
     );
   }
 
+  if (view.status === "password") {
+    const first = view.mode === "first";
+    const expired = view.mode === "expired";
+    const title = first ? "Change temporary password" : expired ? "Reset an expired temporary password" : "Reset password";
+    return (
+      <AuthenticationFrame>
+        <form className="loginForm" aria-labelledby="password-title" onSubmit={submitPasswordMutation}>
+          <div><p className="eyebrow">Password security</p><h2 id="password-title">{title}</h2><p>{first ? "Change your temporary or current password before accessing permitted functions." : expired ? "Use the expired temporary password and your authenticator code to set a new password." : "Use your authenticator code to set a new password for an active account."}</p></div>
+          {view.message && <div className="authInlineError" role="alert">{view.message}</div>}
+          <label htmlFor="password-username">Username</label><input id="password-username" autoComplete="username" required readOnly={first} value={username} onChange={(event) => setUsername(event.target.value)} />
+          {first && <><label htmlFor="current-password">Temporary or current password</label><input id="current-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></>}
+          {expired && <><label htmlFor="expired-temporary-password">Expired temporary password</label><input id="expired-temporary-password" type="password" autoComplete="current-password" required value={expiredTemporaryPassword} onChange={(event) => setExpiredTemporaryPassword(event.target.value)} /></>}
+          <label htmlFor="password-totp">Authenticator code</label><input ref={totpRef} id="password-totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, ""))} />
+          <label htmlFor="new-password">New password</label><input id="new-password" type="password" autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
+          <div className="authActions"><button type="submit" disabled={submitting}>{submitting ? "Changing password" : "Change password"}</button>{!first && <button className="secondaryButton" type="button" disabled={submitting} onClick={() => enterLogin()}>Back to sign in</button>}</div>
+          {!first && <button className="linkButton" type="button" disabled={submitting} onClick={() => { setExpiredTemporaryPassword(""); setNewPassword(""); setTotpCode(""); setView({ status: "password", mode: expired ? "forgot" : "expired" }); }}>{expired ? "Reset an active account instead" : "My temporary password expired"}</button>}
+        </form>
+      </AuthenticationFrame>
+    );
+  }
   if (view.status === "restricted") {
     return (
       <AuthenticationFrame>

@@ -1,80 +1,69 @@
 {
-  "contract": "management-platform-human-authentication-consumer-ui:v1",
-  "status": "implemented",
-  "authority": "Central PMS I-020",
-  "audience": "MANAGEMENT_PLATFORM",
-  "routes": {
-    "login": "POST /v1/human-authentication/login",
-    "currentSession": "GET /v1/human-authentication/session",
-    "continueSession": "POST /v1/human-authentication/session/continue",
-    "logout": "POST /v1/human-authentication/logout"
-  },
-  "ordinaryLogin": [
-    "username",
-    "password",
-    "server session cookie",
-    "current-session readback",
-    "workspace"
-  ],
-  "privilegedLogin": [
-    "username",
-    "password",
-    "server-issued TOTP_REQUIRED classification",
-    "TOTP code",
-    "server session cookie",
-    "current-session readback",
-    "workspace"
-  ],
-  "sessionAuthority": {
-    "cookie": "server-issued secure HttpOnly cookie",
-    "browserReadableSecret": false,
-    "shadowBearerToken": false,
-    "frontendRefreshToken": false,
-    "startupAuthority": "GET /v1/human-authentication/session",
-    "permissionAuthority": "Central PMS effective permission readback",
-    "scopeAuthority": "Central PMS effective global, Site Group, and Site readback"
-  },
-  "csrf": {
-    "responseHeader": "X-CSRF-Token",
-    "runtimeMemoryOnly": true,
-    "requiredFor": [
-      "POST /v1/human-authentication/session/continue",
-      "POST /v1/human-authentication/logout"
-    ],
-    "persistentAuthority": false
-  },
-  "safeStates": [
-    "session loading",
-    "unauthenticated login",
-    "TOTP required",
-    "invalid credentials",
-    "invalid TOTP",
-    "throttled",
-    "restricted account action required",
-    "authenticated",
-    "expired",
-    "revoked",
-    "unavailable",
-    "malformed response",
-    "logout unconfirmed"
-  ],
-  "browserSecurity": {
-    "sameOriginCredentials": true,
-    "cacheMode": "no-store",
-    "privilegedIdentityHeaders": false,
-    "browserAuthStorage": false,
-    "totpPersistence": false,
-    "rawBackendErrors": false,
-    "developmentPrincipalInProduction": false
-  },
-  "nonGoals": [
-    "user administration",
-    "role assignment",
-    "scope administration",
-    "MFA administration",
-    "session administration",
-    "access review",
-    "WebAuthn",
-    "passkeys"
-  ]
+    "contract":  "management-platform-human-authentication-consumer-ui:v1",
+    "status":  "aligned-to-parked-H2",
+    "authority":  "Central PMS H2",
+    "audience":  "MANAGEMENT_PLATFORM",
+    "routes":  {
+                   "login":  "POST /v1/human-authentication/login",
+                   "currentSession":  "GET /v1/human-authentication/session",
+                   "continueSession":  "POST /v1/human-authentication/session/continue",
+                   "logout":  "POST /v1/human-authentication/logout",
+                   "firstPasswordChange":  "POST /v1/human-authentication/password/change",
+                   "forgotPassword":  "POST /v1/human-authentication/password-resets",
+                   "expiredTemporaryPassword":  "POST /v1/human-authentication/password-resets"
+               },
+    "requestShapes":  {
+                          "login":  [
+                                        "username",
+                                        "password",
+                                        "audience",
+                                        "totpCode"
+                                    ],
+                          "firstPasswordChange":  [
+                                                      "currentPassword",
+                                                      "newPassword",
+                                                      "totpCode"
+                                                  ],
+                          "forgotPassword":  [
+                                                 "username",
+                                                 "totpCode",
+                                                 "newPassword"
+                                             ],
+                          "expiredTemporaryPassword":  [
+                                                           "username",
+                                                           "expiredTemporaryPassword",
+                                                           "totpCode",
+                                                           "newPassword"
+                                                       ]
+                      },
+    "sessionAuthority":  {
+                             "cookie":  "server-issued secure HttpOnly cookie",
+                             "browserReadableSecret":  false,
+                             "startupAuthority":  "GET /v1/human-authentication/session",
+                             "permissionAndScopeAuthority":  "Central PMS HumanSessionDto",
+                             "passwordChangeRequired":  "restricted H2 session",
+                             "postMutation":  "H2 returns PASSWORD_CHANGED or PASSWORD_RESET_COMPLETED without a session; credential-version change revokes prior session authority and H3 returns to login"
+                         },
+    "csrf":  {
+                 "responseHeader":  "X-CSRF-Token",
+                 "runtimeMemoryOnly":  true,
+                 "requiredFor":  [
+                                     "POST /v1/human-authentication/session/continue",
+                                     "POST /v1/human-authentication/logout",
+                                     "POST /v1/human-authentication/password/change"
+                                 ]
+             },
+    "browserSecurity":  {
+                            "sameOriginCredentials":  true,
+                            "cacheMode":  "no-store",
+                            "browserAuthStorage":  false,
+                            "totpPersistence":  false,
+                            "developmentPrincipalInProduction":  false,
+                            "syntheticAuthenticationFallback":  false
+                        },
+    "prohibitedRecoveryChannels":  [
+                                       "email reset",
+                                       "email OTP",
+                                       "SMS OTP"
+                                   ]
 }

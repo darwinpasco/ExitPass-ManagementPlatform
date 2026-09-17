@@ -4,7 +4,7 @@ const appRoute = "/management-platform/";
 const csrfHeader = "x-csrf-token";
 
 test.describe("Management Platform I-020 human authentication consumer", () => {
-  test("ordinary login skips TOTP, rediscovers the session on refresh, and logs out through CSRF", async ({ page }) => {
+  test("Management Platform login requires TOTP, rediscovers the session on refresh, and logs out through CSRF", async ({ page }) => {
     const fixture = await installAuthenticationFixture(page);
     const requests: Request[] = [];
     const consoleErrors: string[] = [];
@@ -23,7 +23,7 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     await signIn(page, "ordinary.user", "ordinary-password");
 
     await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
-    await expect(page.getByLabel("Verification code")).toHaveCount(0);
+    await expect(page.getByLabel("Authenticator code")).toHaveCount(0);
     await expect(page.getByText("Ordinary Management User", { exact: true })).toBeVisible();
     await expect(page.getByText(/0 Site access grants; 1 Site Group access grant/).first()).toBeVisible();
     await expect(page.getByText(/Authorized Site Group \d+|Site scope \d+/i)).toHaveCount(0);
@@ -44,22 +44,12 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   });
 
-  test("privileged login presents TOTP only when required and handles an invalid code safely", async ({ page }) => {
-    await installAuthenticationFixture(page);
-    await page.goto(appRoute);
-    await signIn(page, "privileged.admin", "privileged-password");
-
-    const totp = page.getByLabel("Verification code");
-    await expect(totp).toBeFocused();
-    await totp.fill("000000");
-    await page.getByRole("button", { name: "Verify and sign in" }).click();
-    await expect(page.getByRole("alert")).toContainText("verification code was not accepted");
-    await expect(totp).toHaveValue("");
-
-    await totp.fill("123456");
-    await page.getByRole("button", { name: "Verify and sign in" }).click();
+  test("invalid TOTP is handled safely without a password-only fallback", async ({ page }) => {
+    await installAuthenticationFixture(page); await page.goto(appRoute);
+    await page.getByLabel("Username").fill("privileged.admin"); await page.getByLabel("Password").fill("privileged-password"); await page.getByLabel("Authenticator code").fill("000000"); await page.getByRole("button", { name: "Sign in" }).click();
+    await expect(page.getByRole("alert")).toContainText("verification code was not accepted"); await expect(page.getByLabel("Authenticator code")).toHaveValue("");
+    await page.getByLabel("Password").fill("privileged-password"); await page.getByLabel("Authenticator code").fill("123456"); await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByText("Privileged Administrator", { exact: true })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
   });
 
   test("invalid credentials and throttling remain anti-enumerating", async ({ page }) => {
@@ -71,6 +61,7 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
 
     await page.getByLabel("Username").fill("throttled.user");
     await page.getByLabel("Password").fill("another-password");
+    await page.getByLabel("Authenticator code").fill("123456");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByRole("alert")).toContainText("Too many attempts");
   });
@@ -164,6 +155,8 @@ test.describe("Management Platform I-020 human authentication consumer", () => {
     await page.keyboard.press("Tab");
     await page.keyboard.type("ordinary-password");
     await page.keyboard.press("Tab");
+    await page.keyboard.type("123456");
+    await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: "Sign in" })).toBeFocused();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
@@ -229,11 +222,11 @@ async function installAuthenticationFixture(page: Page): Promise<AuthenticationF
         await safeJson(route, 429, authError("AUTHENTICATION_THROTTLED", true));
         return;
       }
-      if (body.username === "privileged.admin" && !body.totpCode) {
+      if (!body.totpCode) {
         await safeJson(route, 401, authError("TOTP_REQUIRED"));
         return;
       }
-      if (body.username === "privileged.admin" && body.totpCode !== "123456") {
+      if (body.totpCode !== "123456") {
         await safeJson(route, 401, authError("TOTP_INVALID"));
         return;
       }
@@ -299,11 +292,11 @@ function session(privileged: boolean): Record<string, unknown> {
     username: privileged ? "privileged.admin" : "ordinary.user",
     displayName: privileged ? "Privileged Administrator" : "Ordinary Management User",
     audience: "MANAGEMENT_PLATFORM",
-    assurance: privileged ? "PASSWORD_TOTP" : "PASSWORD",
+    assurance: "PASSWORD_TOTP",
     privilegedAccount: privileged,
     passwordChangeRequired: false,
-    mfaRequired: privileged,
-    mfaSatisfied: privileged,
+    mfaRequired: true,
+    mfaSatisfied: true,
     authenticatedAt: "2030-01-01T00:00:00Z",
     lastSeenAt: "2030-01-01T00:00:00Z",
     idleExpiresAt: "2030-01-01T00:30:00Z",
@@ -332,6 +325,7 @@ async function safeJson(route: Route, status: number, body: unknown, headers: Re
 async function signIn(page: Page, username: string, password: string) {
   await page.getByLabel("Username").fill(username);
   await page.getByLabel("Password").fill(password);
+  await page.getByLabel("Authenticator code").fill("123456");
   await page.getByRole("button", { name: "Sign in" }).click();
 }
 

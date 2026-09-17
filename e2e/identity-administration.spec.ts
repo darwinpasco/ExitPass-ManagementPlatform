@@ -11,15 +11,15 @@ test.describe("governed User Administration", () => {
 
     await page.getByRole("tab", { name: "Roles & Permissions" }).click();
     await expect(page.getByRole("heading", { name: "Roles & Permissions" })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "Site Access", exact: true })).toBeVisible();
-    await expect(page.getByText(/Organization-wide access is not available/)).toBeVisible();
-    await expect(page.getByLabel("Access level").getByRole("option", { name: "Site", exact: true })).toBeAttached();
-    await expect(page.getByLabel("Access level").getByRole("option", { name: "Site Group", exact: true })).toBeAttached();
-    await expect(page.getByLabel("Access level").getByRole("option", { name: /global/i })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Scope Access", exact: true })).toBeVisible();
+    await expect(page.getByText(/Scope choices come from the selected role policy/)).toBeVisible();
+    await expect(page.getByLabel("Scope access level").getByRole("option", { name: "Site", exact: true })).toBeAttached();
+    await expect(page.getByLabel("Scope access level").getByRole("option", { name: "Site Group", exact: true })).toHaveCount(0);
+    await expect(page.getByLabel("Scope access level").getByRole("option", { name: /global/i })).toHaveCount(0);
 
     await page.getByRole("tab", { name: "Security" }).click();
     await expect(page.getByRole("heading", { name: "Two-Factor Authentication" })).toBeVisible();
-    await expect(page.getByText("Required for elevated Management Platform access")).toBeVisible();
+    await expect(page.getByText("Required for sign-in")).toBeVisible();
     await expect(page.getByRole("heading", { name: "Active Sessions" })).toBeVisible();
     await expect(page.getByText(/Session cookies, secrets, hashes/)).toBeVisible();
 
@@ -28,43 +28,47 @@ test.describe("governed User Administration", () => {
     expect(await page.locator("body").innerText()).not.toMatch(/81000000-0000-4000-8000-/i);
   });
 
-  test("create and governed mutation controls never request credentials", async ({ page }) => {
+  test("shows approved roles, Global-only Executive scope, and one-time provisioning", async ({ page }) => {
     await page.goto(route);
     await page.getByRole("button", { name: "Add User" }).click();
-    await expect(page.getByRole("heading", { name: "Add User" })).toBeVisible();
-    await expect(page.getByLabel("User type")).toHaveValue("");
-    await expect(page.getByLabel("User type").locator("option")).toHaveCount(6);
-    await expect(page.getByText(/H-007 Denied User|H-007 Synthetic Target User|H-007 View Only/)).toHaveCount(0);
-    await expect(page.getByLabel(/password|totp|seed|provisioning/i)).toHaveCount(0);
-    await expect(page.getByText(/Account setup and invitation delivery are handled separately/)).toBeVisible();
-    await expect(page.getByRole("button", { name: "Add User" }).last()).toBeDisabled();
-    await expect(page.getByLabel("Assigned Site").getByRole("option", { name: "PITX Level 3", exact: true })).toBeAttached();
-    await expect(page.getByLabel("Assigned Site").getByRole("option", { name: "PITX Open Lot", exact: true })).toBeAttached();
-    await expect(page.getByLabel("Assigned Site").getByRole("option", { name: /Test Site|SAMPLE-METRO|Mactan Newtown/i })).toHaveCount(0);
-    await expect(page.getByText(/Authorized Site Group \d+|Site scope \d+/i)).toHaveCount(0);
+    const form = page.getByRole("heading", { name: "Add User" }).locator("xpath=ancestor::form");
+    await expect(form.getByLabel("User type")).toHaveCount(0);
+    await expect(form.getByLabel("Initial role").locator("option")).toHaveText([
+      "Select a role", "System Administrator", "Operations Supervisor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
+    ]);
+    await form.getByLabel("Initial role").selectOption({ label: "Executive / Management" });
+    await expect(form.getByLabel("Access level")).toHaveValue("GLOBAL");
+    await expect(form.getByLabel("Access level")).toBeDisabled();
+    await expect(form.getByText(/Global scope required/)).toBeVisible();
 
-    await page.getByLabel("Site access level").selectOption("SITE_GROUP");
-    await expect(page.getByLabel("Assigned Site Group").getByRole("option", { name: "PITX", exact: true })).toBeAttached();
-    await expect(page.getByLabel("Assigned Site Group").getByRole("option", { name: /SAMPLE-METRO|Mactan Newtown/i })).toHaveCount(0);
-
-    await page.getByLabel("Site access level").selectOption("SITE");
-    await page.getByLabel("User type").selectOption("SITE_OPERATOR");
-    await page.getByLabel("Initial role").selectOption({ label: "Site Operator" });
-    await page.getByLabel("Assigned Site").selectOption("2d1dcdf8-f563-537c-8542-0bde7cc9da97");
-    await expect(page.getByRole("button", { name: "Add User" }).last()).toBeEnabled();
-
-    for (const [userType, roleName] of [
-      ["SUPPORT_USER", "Support Agent"],
-      ["FINANCE_USER", "Finance / Reconciliation Analyst"],
-      ["MERCHANT_USER", "Merchant Administrator"]
-    ]) {
-      await page.getByLabel("User type").selectOption(userType);
-      await expect(page.getByLabel("Initial role").getByRole("option", { name: roleName, exact: true })).toBeAttached();
-    }
-    const roleOptions = await page.getByLabel("Initial role").locator("option").allTextContents();
-    expect(roleOptions.join(" ")).not.toMatch(/Finance User|Merchant User|Support Staff|Site Administrator|SERVICE_PRINCIPAL/);
+    await form.getByLabel("Initial role").selectOption({ label: "Site Operator" });
+    await expect(form.getByLabel("Assigned Site").getByRole("option", { name: "PITX Level 3", exact: true })).toBeAttached();
+    await form.getByLabel("Username").fill("new.operator");
+    await form.getByLabel("Display name").fill("New Operator");
+    await form.getByLabel("Reason").fill("AUTHORIZED_PROVISIONING");
+    await form.getByLabel("Assigned Site").selectOption({ index: 1 });
+    await form.getByRole("button", { name: "Add User" }).click();
+    const provisioning = page.getByRole("region", { name: "Provision Invited User" });
+    await expect(provisioning).toContainText("Temporary password");
+    await expect(provisioning).toContainText("Authenticator secret");
+    await provisioning.getByRole("button", { name: "I have completed provisioning" }).click();
+    await expect(provisioning).toHaveCount(0);
   });
-
+  test("production runtime cannot activate synthetic identity or authentication fixtures", async ({ browser }) => {
+    const productionPort = Number(process.env.MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT ?? 5180);
+    const productionPage = await browser.newPage();
+    try {
+      await productionPage.route("**/v1/human-authentication/session", async (requestRoute) => {
+        await requestRoute.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ outcome: "FAILED", authenticated: false, session: null, aptSessionToken: null, errorCode: "SESSION_REQUIRED", retryable: false, correlationId: "10000000-0000-0000-0000-000000000099" }) });
+      });
+      await productionPage.goto(`http://127.0.0.1:${productionPort}/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=populated`);
+      await expect(productionPage.getByRole("heading", { name: "Sign in" })).toBeVisible();
+      await expect(productionPage.getByText("Synthetic Administration User")).toHaveCount(0);
+      await expect(productionPage.getByText(/Temporary-Only-72h|JBSWY3DPEHPK3PXP/)).toHaveCount(0);
+    } finally {
+      await productionPage.close();
+    }
+  });
   test("safe empty, denied, conflict, and unavailable scenarios remain distinct", async ({ page }) => {
     await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=empty");
     await expect(page.getByText("No users match the current search.")).toBeVisible();
@@ -96,7 +100,7 @@ test.describe("governed User Administration", () => {
     expect(responsiveOrder.detailTop).toBeLessThan(responsiveOrder.listTop);
     await page.getByRole("tab", { name: "Roles & Permissions" }).focus();
     await page.keyboard.press("Enter");
-    await expect(page.getByText(/Organization-wide access is not available/)).toBeVisible();
+    await expect(page.getByText(/Scope choices come from the selected role policy/)).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
     expect(overflow).toBe(false);
   });
@@ -141,18 +145,18 @@ test.describe("governed User Administration", () => {
     await globalRow.focus();
     await page.keyboard.press("Enter");
     await expect(globalRow.getByRole("button")).toHaveCount(0);
-    await expect(page.getByLabel("Access level").getByRole("option", { name: /global/i })).toHaveCount(0);
+    await expect(page.getByLabel("Scope access level").getByRole("option", { name: /global/i })).toHaveCount(0);
   });
 
   test("user directory continues beyond fifty records with bounded previous and next controls", async ({ page }) => {
     await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=paginated");
-    await expect(page.getByText("Page 1 · Showing 1-50")).toBeVisible();
+    await expect(page.getByText(/Page 1.*Showing 1-50/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Previous" })).toBeDisabled();
     await page.getByRole("button", { name: "Next" }).click();
-    await expect(page.getByText("Page 2 · Showing 51-53")).toBeVisible();
+    await expect(page.getByText(/Page 2.*Showing 51-53/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Next" })).toBeDisabled();
     await page.getByRole("button", { name: "Previous" }).click();
-    await expect(page.getByText("Page 1 · Showing 1-50")).toBeVisible();
+    await expect(page.getByText(/Page 1.*Showing 1-50/)).toBeVisible();
   });
 
   test("persisted applied Elevated Access requests can be reopened without browser authority", async ({ page }) => {
@@ -179,7 +183,6 @@ test.describe("governed User Administration", () => {
     await form.getByLabel("Username").fill("uncertain.user");
     await form.getByLabel("Display name").fill("Uncertain User");
     await form.getByLabel("Reason").fill("MANUAL_VALIDATION");
-    await form.getByLabel("User type").selectOption("SITE_OPERATOR");
     await form.getByLabel("Initial role").selectOption({ label: "Site Operator" });
     await form.getByLabel("Assigned Site").selectOption({ index: 1 });
     await form.getByRole("button", { name: "Add User" }).click();

@@ -1,0 +1,124 @@
+{
+    "contract":  "management-platform-user-administration-auth-redesign-ui:v1",
+    "reviewedAgainst":  {
+                            "H1":  "D:/wt/CodexH-IdentityRbac feature/management-platform-role-model-redesign parked working tree",
+                            "H2":  "D:/wt/CodexH-Authentication feature/human-authentication-policy-redesign parked working tree",
+                            "sharedHead":  "b39d07f9",
+                            "reviewDate":  "2026-09-17"
+                        },
+    "authority":  {
+                      "identityAndRbac":  "Central PMS H1",
+                      "authenticationAndPasswordLifecycle":  "Central PMS H2",
+                      "browser":  "presentation, contract validation, and request composition only"
+                  },
+    "roleCatalog":  {
+                        "productionSource":  "GET /v1/management-platform/identity/roles",
+                        "backendAuthority":  "ApprovedIdentityRoleCatalog and H1 repository validation",
+                        "requiredConsumerMetadata":  [
+                                                         "roleReference",
+                                                         "code",
+                                                         "name",
+                                                         "status",
+                                                         "humanAssignable",
+                                                         "applicationAccess",
+                                                         "scopePolicy.allowedScopeTypes",
+                                                         "scopePolicy.assignmentRequired"
+                                                     ],
+                        "currentBackendMismatch":  "The parked H1/H2 IdentityRoleDefinition response does not serialize applicationAccess or scopePolicy even though H1 ApprovedIdentityRoleCatalog owns that policy.",
+                        "frontendBehaviorUntilResolved":  "Reject the entire role response as malformed and disable assignment mutations. Never use the local presentation map as a fallback catalog.",
+                        "unknownRoleBehavior":  "Reject the role response as an unsupported contract version; do not offer assignment.",
+                        "presentationOnlyModule":  "src/approvedIdentityRoles.ts"
+                    },
+    "scopeRules":  {
+                       "source":  "scopePolicy returned by H1",
+                       "global":  "must be explicit and server-authorized; null never means Global",
+                       "executiveManagement":  "H1 policy is GLOBAL-only and H1 validates it; H3 renders the single backend-returned choice disabled",
+                       "mutationValidation":  "H3 offers only scope types present in the selected H1 role policy; H1 remains final authority"
+                   },
+    "createUser":  {
+                       "route":  "POST /v1/management-platform/identity/users",
+                       "currentH3Request":  [
+                                                "username",
+                                                "displayName",
+                                                "email",
+                                                "maskedMobileNumber",
+                                                "initialRoleReference",
+                                                "initialScopeType",
+                                                "initialSiteReference",
+                                                "initialSiteGroupReference",
+                                                "effectiveFrom",
+                                                "effectiveTo",
+                                                "reasonCode",
+                                                "idempotencyKey"
+                                            ],
+                       "currentBackendMismatch":  "The parked backend additionally requires userType and activationDeliveryMode, and its ADMIN_ISSUED flow carries adminIssuedHandoffAcknowledged. H3 must not infer userType or silently assert a handoff acknowledgement; H1/H2 must remove, derive, or authoritatively supply those values.",
+                       "implementedH2Response":  {
+                                                     "user":  "IdentityUserSummary",
+                                                     "invitation.invitationState":  "PASSWORD_CHANGE_REQUIRED",
+                                                     "oneTimeBootstrap":  [
+                                                                              "temporaryPassword",
+                                                                              "temporaryPasswordExpiresAt",
+                                                                              "totpSharedSecret",
+                                                                              "totpProvisioningUri"
+                                                                          ]
+                                                 },
+                       "temporaryPasswordExpiry":  "H2 generates expiresAt using TemporaryPasswordHours; H2 tests freeze the configured value at exactly 72 hours.",
+                       "atomicity":  "H2 CreateInvitedUserAsync generates and persists user, role, scope, temporary password, and TOTP bootstrap through the governed create operation"
+                   },
+    "authentication":  {
+                           "login":  {
+                                         "route":  "POST /v1/human-authentication/login",
+                                         "required":  [
+                                                          "username",
+                                                          "password",
+                                                          "audience",
+                                                          "totpCode"
+                                                      ]
+                                     },
+                           "firstPasswordChange":  {
+                                                       "route":  "POST /v1/human-authentication/password/change",
+                                                       "session":  "password-change-required restricted session cookie plus CSRF token",
+                                                       "required":  [
+                                                                        "currentPassword",
+                                                                        "newPassword",
+                                                                        "totpCode"
+                                                                    ]
+                                                   },
+                           "forgotPassword":  {
+                                                  "route":  "POST /v1/human-authentication/password-resets",
+                                                  "required":  [
+                                                                   "username",
+                                                                   "totpCode",
+                                                                   "newPassword"
+                                                               ]
+                                              },
+                           "expiredTemporaryPassword":  {
+                                                            "route":  "POST /v1/human-authentication/password-resets",
+                                                            "required":  [
+                                                                             "username",
+                                                                             "expiredTemporaryPassword",
+                                                                             "totpCode",
+                                                                             "newPassword"
+                                                                         ]
+                                                        },
+                           "mutationResult":  "H2 returns PASSWORD_CHANGED or PASSWORD_RESET_COMPLETED with no authenticated session; the credential version change invalidates existing sessions and H3 clears runtime state and returns to login",
+                           "prohibitedRecoveryChannels":  [
+                                                              "email reset",
+                                                              "email OTP",
+                                                              "SMS OTP"
+                                                          ]
+                       },
+    "developmentIsolation":  {
+                                 "identityScenarioResolver":  "requires import.meta.env.DEV and an explicit isolated test-harness enable flag",
+                                 "normalDevelopmentFallback":  false,
+                                 "productionFallback":  false,
+                                 "authenticationSyntheticClient":  false
+                             },
+    "secretHandling":  {
+                           "storage":  false,
+                           "url":  false,
+                           "logs":  false,
+                           "provisioningRedisplay":  false,
+                           "clearOnFlowExit":  true
+                       }
+}

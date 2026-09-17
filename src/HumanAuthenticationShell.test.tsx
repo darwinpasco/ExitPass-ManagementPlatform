@@ -12,76 +12,60 @@ describe("Management Platform I-020 session shell", () => {
     vi.unstubAllGlobals();
   });
 
-  it("starts unauthenticated, completes ordinary password login without TOTP, then reads the current session", async () => {
+  it("requires username, password, and TOTP for Management Platform login", async () => {
     const client = mockClient();
-    client.getCurrentSession
-      .mockRejectedValueOnce(sessionEnded())
-      .mockResolvedValueOnce(successResponse());
-    client.login.mockResolvedValue(successResponse());
-
+    const authenticated = successResponse(session({ assurance: "PASSWORD_TOTP", mfaRequired: true, mfaSatisfied: true }));
+    client.getCurrentSession.mockRejectedValueOnce(sessionEnded()).mockResolvedValueOnce(authenticated);
+    client.login.mockResolvedValue(authenticated);
     render(<HumanAuthenticationShell client={client} />);
-    await fillLogin("ordinary.user", "ordinary-password");
-
+    expect(await screen.findByLabelText("Authenticator code")).toBeRequired();
+    await fillLogin("ordinary.user", "ordinary-password", "123456");
     expect(await screen.findByRole("heading", { name: "Dashboard" })).toBeInTheDocument();
-    expect(client.login).toHaveBeenCalledWith("ordinary.user", "ordinary-password", undefined);
-    expect(client.getCurrentSession).toHaveBeenCalledTimes(2);
-    expect(screen.queryByLabelText("Verification code")).not.toBeInTheDocument();
-    expect(screen.getByText("Ordinary Management User")).toBeInTheDocument();
-    expect(screen.getByText(/0 Site access grants; 1 Site Group access grant/)).toBeInTheDocument();
+    expect(client.login).toHaveBeenCalledWith("ordinary.user", "ordinary-password", "123456");
   });
 
-  it("shows TOTP only after the server requires it and accepts a privileged TOTP login", async () => {
+  it("routes a forced password change and always submits TOTP", async () => {
     const client = mockClient();
-    const privileged = successResponse(session({
-      username: "privileged.admin",
-      displayName: "Privileged Administrator",
-      privilegedAccount: true,
-      mfaRequired: true,
-      mfaSatisfied: true,
-      assurance: "PASSWORD_TOTP"
-    }));
-    client.getCurrentSession.mockRejectedValueOnce(sessionEnded()).mockResolvedValueOnce(privileged);
-    client.login
-      .mockRejectedValueOnce(new HumanAuthenticationError("mfa-required", "TOTP_REQUIRED", "Enter the verification code from your authenticator app.", 401))
-      .mockResolvedValueOnce(privileged);
-
+    client.getCurrentSession.mockResolvedValueOnce(successResponse(session({ passwordChangeRequired: true, mfaRequired: true, mfaSatisfied: true })));
+    client.changeFirstPassword.mockResolvedValue({ ...successResponse(), outcome: "PASSWORD_CHANGED", authenticated: false, session: null });
     render(<HumanAuthenticationShell client={client} />);
-    await fillLogin("privileged.admin", "privileged-password");
-
-    const totp = await screen.findByLabelText("Verification code");
-    expect(totp).toHaveFocus();
-    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
-    await userEvent.type(totp, "123456");
-    await userEvent.click(screen.getByRole("button", { name: "Verify and sign in" }));
-
-    expect(await screen.findByText("Privileged Administrator")).toBeInTheDocument();
-    expect(client.login).toHaveBeenNthCalledWith(2, "privileged.admin", "privileged-password", "123456");
+    expect(await screen.findByRole("heading", { name: "Change temporary password" })).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Temporary or current password"), "temporary-password");
+    await userEvent.type(screen.getByLabelText("Authenticator code"), "123456");
+    await userEvent.type(screen.getByLabelText("New password"), "new-password");
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(client.changeFirstPassword).toHaveBeenCalledWith({ currentPassword: "temporary-password", totpCode: "123456", newPassword: "new-password" });
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
   });
 
-  it("keeps invalid credentials and invalid TOTP anti-enumerating and controlled", async () => {
+  it("supports active and expired-temporary password reset without email or SMS", async () => {
     const client = mockClient();
     client.getCurrentSession.mockRejectedValueOnce(sessionEnded());
-    client.login.mockRejectedValueOnce(new HumanAuthenticationError("invalid-credentials", "INVALID_CREDENTIALS", "The username or password was not accepted.", 401));
-
+    client.resetPassword.mockResolvedValue({ ...successResponse(), outcome: "PASSWORD_RESET_COMPLETED", authenticated: false, session: null });
+    client.login.mockResolvedValue(successResponse());
     const { unmount } = render(<HumanAuthenticationShell client={client} />);
-    await fillLogin("unknown.user", "wrong-password");
-    expect(await screen.findByRole("alert")).toHaveTextContent("username or password was not accepted");
-    expect(document.body).not.toHaveTextContent(/user does not exist|database|stack trace/i);
+    await userEvent.click(await screen.findByRole("button", { name: "Forgot password" }));
+    await userEvent.type(screen.getByLabelText("Username"), "active.user");
+    await userEvent.type(screen.getByLabelText("Authenticator code"), "654321");
+    await userEvent.type(screen.getByLabelText("New password"), "active-new-password");
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(client.resetPassword).toHaveBeenCalledWith({ username: "active.user", totpCode: "654321", newPassword: "active-new-password" });
+    expect(document.body.textContent).not.toMatch(/email|sms/i);
     unmount();
 
-    const totpClient = mockClient();
-    totpClient.getCurrentSession.mockRejectedValueOnce(sessionEnded());
-    totpClient.login
-      .mockRejectedValueOnce(new HumanAuthenticationError("mfa-required", "TOTP_REQUIRED", "Verification required", 401))
-      .mockRejectedValueOnce(new HumanAuthenticationError("invalid-totp", "TOTP_INVALID", "The verification code was not accepted. Try again.", 401));
-    render(<HumanAuthenticationShell client={totpClient} />);
-    await fillLogin("privileged.admin", "password");
-    await userEvent.type(await screen.findByLabelText("Verification code"), "000000");
-    await userEvent.click(screen.getByRole("button", { name: "Verify and sign in" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("verification code was not accepted");
-    expect(screen.getByLabelText("Verification code")).toHaveValue("");
+    const expiredClient = mockClient();
+    expiredClient.getCurrentSession.mockRejectedValueOnce(sessionEnded());
+    expiredClient.resetExpiredTemporaryPassword.mockResolvedValue({ ...successResponse(), outcome: "PASSWORD_RESET_COMPLETED", authenticated: false, session: null });
+    render(<HumanAuthenticationShell client={expiredClient} />);
+    await userEvent.click(await screen.findByRole("button", { name: "Forgot password" }));
+    await userEvent.click(screen.getByRole("button", { name: "My temporary password expired" }));
+    await userEvent.type(screen.getByLabelText("Username"), "expired.user");
+    await userEvent.type(screen.getByLabelText("Expired temporary password"), "expired-temporary");
+    await userEvent.type(screen.getByLabelText("Authenticator code"), "987654");
+    await userEvent.type(screen.getByLabelText("New password"), "expired-new-password");
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(expiredClient.resetExpiredTemporaryPassword).toHaveBeenCalledWith({ username: "expired.user", expiredTemporaryPassword: "expired-temporary", totpCode: "987654", newPassword: "expired-new-password" });
   });
-
   it("rediscoveries an existing server session without browser authority", async () => {
     const client = mockClient();
     client.getCurrentSession.mockResolvedValue(successResponse());
@@ -177,14 +161,15 @@ describe("Management Platform I-020 session shell", () => {
   it("provides keyboard focus for username and TOTP without persisting OTP input", async () => {
     const client = mockClient();
     client.getCurrentSession.mockRejectedValueOnce(sessionEnded());
-    client.login.mockRejectedValue(new HumanAuthenticationError("mfa-required", "TOTP_REQUIRED", "Verification required", 401));
+    client.login.mockRejectedValue(new HumanAuthenticationError("invalid-totp", "TOTP_INVALID", "Verification required", 401));
     const storageSet = vi.spyOn(Storage.prototype, "setItem");
 
     render(<HumanAuthenticationShell client={client} />);
     const username = await screen.findByLabelText("Username");
     await waitFor(() => expect(username).toHaveFocus());
-    await fillLogin("privileged.admin", "password");
-    expect(await screen.findByLabelText("Verification code")).toHaveFocus();
+    expect(screen.getByLabelText("Authenticator code")).toBeInTheDocument();
+    await fillLogin("privileged.admin", "password", "123456");
+    expect(screen.getByLabelText("Authenticator code")).toHaveValue("");
     expect(storageSet).not.toHaveBeenCalled();
     storageSet.mockRestore();
   });
@@ -197,6 +182,9 @@ type MockedClient = {
 function mockClient(): MockedClient {
   return {
     login: vi.fn<HumanAuthenticationClient["login"]>(),
+    changeFirstPassword: vi.fn<HumanAuthenticationClient["changeFirstPassword"]>(),
+    resetPassword: vi.fn<HumanAuthenticationClient["resetPassword"]>(),
+    resetExpiredTemporaryPassword: vi.fn<HumanAuthenticationClient["resetExpiredTemporaryPassword"]>(),
     getCurrentSession: vi.fn<HumanAuthenticationClient["getCurrentSession"]>(),
     continueSession: vi.fn<HumanAuthenticationClient["continueSession"]>(),
     logout: vi.fn<HumanAuthenticationClient["logout"]>(),
@@ -206,9 +194,10 @@ function mockClient(): MockedClient {
   };
 }
 
-async function fillLogin(username: string, password: string) {
+async function fillLogin(username: string, password: string, totpCode: string) {
   await userEvent.type(await screen.findByLabelText("Username"), username);
   await userEvent.type(screen.getByLabelText("Password"), password);
+  await userEvent.type(screen.getByLabelText("Authenticator code"), totpCode);
   await userEvent.click(screen.getByRole("button", { name: "Sign in" }));
 }
 
