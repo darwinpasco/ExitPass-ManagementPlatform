@@ -5,6 +5,8 @@ export const humanLoginRoute = `${humanAuthenticationBaseRoute}/login`;
 export const humanSessionRoute = `${humanAuthenticationBaseRoute}/session`;
 export const humanSessionContinueRoute = `${humanSessionRoute}/continue`;
 export const humanLogoutRoute = `${humanAuthenticationBaseRoute}/logout`;
+export const humanPasswordChangeRoute = `${humanAuthenticationBaseRoute}/password/change`;
+export const humanPasswordResetRoute = `${humanAuthenticationBaseRoute}/password-resets`;
 export const managementPlatformAudience = "MANAGEMENT_PLATFORM";
 export const csrfHeaderName = "X-CSRF-Token";
 
@@ -28,8 +30,12 @@ export interface HumanLoginRequest {
   username: string;
   password: string;
   audience: typeof managementPlatformAudience;
-  totpCode?: string;
+  totpCode: string;
 }
+
+export interface FirstPasswordChangeRequest { currentPassword: string; totpCode: string; newPassword: string; }
+export interface ForgotPasswordRequest { username: string; totpCode: string; newPassword: string; }
+export interface ExpiredTemporaryPasswordRequest { username: string; expiredTemporaryPassword: string; totpCode: string; newPassword: string; }
 
 export interface HumanSessionDto {
   sessionReference: string;
@@ -92,7 +98,10 @@ export class HumanAuthenticationError extends Error {
 }
 
 export interface HumanAuthenticationClient {
-  login(username: string, password: string, totpCode?: string, signal?: AbortSignal): Promise<HumanAuthenticationResponse>;
+  login(username: string, password: string, totpCode: string, signal?: AbortSignal): Promise<HumanAuthenticationResponse>;
+  changeFirstPassword(request: FirstPasswordChangeRequest, signal?: AbortSignal): Promise<HumanAuthenticationResponse>;
+  resetPassword(request: ForgotPasswordRequest, signal?: AbortSignal): Promise<HumanAuthenticationResponse>;
+  resetExpiredTemporaryPassword(request: ExpiredTemporaryPasswordRequest, signal?: AbortSignal): Promise<HumanAuthenticationResponse>;
   getCurrentSession(signal?: AbortSignal): Promise<HumanAuthenticationResponse>;
   continueSession(signal?: AbortSignal): Promise<HumanAuthenticationResponse>;
   logout(signal?: AbortSignal): Promise<void>;
@@ -169,9 +178,18 @@ export function createHumanAuthenticationClient(options: { fetchImpl?: typeof fe
         username,
         password,
         audience: managementPlatformAudience,
-        ...(totpCode ? { totpCode } : {})
+        totpCode
       };
       return request(humanLoginRoute, "POST", requestBody, false, signal);
+    },
+    changeFirstPassword(value, signal) {
+      return request(humanPasswordChangeRoute, "POST", value, true, signal);
+    },
+    resetPassword(value, signal) {
+      return request(humanPasswordResetRoute, "POST", value, false, signal);
+    },
+    resetExpiredTemporaryPassword(value, signal) {
+      return request(humanPasswordResetRoute, "POST", value, false, signal);
     },
     getCurrentSession(signal) {
       return request(humanSessionRoute, "GET", undefined, false, signal);

@@ -5,6 +5,8 @@ import {
   csrfHeaderName,
   humanLoginRoute,
   humanLogoutRoute,
+  humanPasswordChangeRoute,
+  humanPasswordResetRoute,
   humanSessionContinueRoute,
   humanSessionRoute,
   managementPlatformAudience,
@@ -30,18 +32,35 @@ describe("I-020 human authentication client", () => {
     expect(client.hasCsrfToken()).toBe(true);
   });
 
-  it("sends only username, password, fixed audience, and optional TOTP to login", async () => {
+  it("always sends username, password, fixed audience, and TOTP to Management Platform login", async () => {
     const fetchImpl = vi.fn<typeof fetch>(async () => jsonResponse(successResponse()));
     const client = createHumanAuthenticationClient({ fetchImpl });
 
-    await client.login("ordinary.user", "password-value");
+    await client.login("ordinary.user", "password-value", "654321");
     await client.login("privileged.admin", "password-value", "123456");
 
     expect(fetchImpl.mock.calls.map((call) => call[0])).toEqual([humanLoginRoute, humanLoginRoute]);
-    expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toEqual({ username: "ordinary.user", password: "password-value", audience: managementPlatformAudience });
+    expect(JSON.parse(String(fetchImpl.mock.calls[0][1]?.body))).toEqual({ username: "ordinary.user", password: "password-value", audience: managementPlatformAudience, totpCode: "654321" });
     expect(JSON.parse(String(fetchImpl.mock.calls[1][1]?.body))).toEqual({ username: "privileged.admin", password: "password-value", audience: managementPlatformAudience, totpCode: "123456" });
   });
 
+  it("uses the frozen H2 password mutation routes and exact payload shapes", async () => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(successResponse(), 200, { [csrfHeaderName]: "csrf-runtime" }))
+      .mockImplementation(async () => jsonResponse({ ...successResponse(), authenticated: false, session: null }));
+    const client = createHumanAuthenticationClient({ fetchImpl });
+
+    await client.getCurrentSession();
+    await client.changeFirstPassword({ currentPassword: "temporary-password", totpCode: "123456", newPassword: "changed-password" });
+    await client.resetPassword({ username: "active.user", totpCode: "654321", newPassword: "active-password" });
+    await client.resetExpiredTemporaryPassword({ username: "expired.user", expiredTemporaryPassword: "expired-temporary", totpCode: "987654", newPassword: "expired-password" });
+
+    expect(fetchImpl.mock.calls.slice(1).map((call) => call[0])).toEqual([humanPasswordChangeRoute, humanPasswordResetRoute, humanPasswordResetRoute]);
+    expect(JSON.parse(String(fetchImpl.mock.calls[1][1]?.body))).toEqual({ currentPassword: "temporary-password", totpCode: "123456", newPassword: "changed-password" });
+    expect(new Headers(fetchImpl.mock.calls[1][1]?.headers).get(csrfHeaderName)).toBe("csrf-runtime");
+    expect(JSON.parse(String(fetchImpl.mock.calls[2][1]?.body))).toEqual({ username: "active.user", totpCode: "654321", newPassword: "active-password" });
+    expect(JSON.parse(String(fetchImpl.mock.calls[3][1]?.body))).toEqual({ username: "expired.user", expiredTemporaryPassword: "expired-temporary", totpCode: "987654", newPassword: "expired-password" });
+  });
   it("keeps the antiforgery token in runtime memory and sends it only on state-changing session requests", async () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse(successResponse(), 200, { [csrfHeaderName]: "csrf-runtime" }))
@@ -96,9 +115,9 @@ describe("I-020 human authentication client", () => {
     const action = errorCode === "CSRF_VALIDATION_FAILED"
       ? async () => {
           await client.getCurrentSession().catch(() => undefined);
-          return client.login("user", "password");
+          return client.login("user", "password", "123456");
         }
-      : () => client.login("user", "password");
+      : () => client.login("user", "password", "123456");
 
     await expect(action()).rejects.toMatchObject({ kind: expectedKind, code: errorCode });
   });

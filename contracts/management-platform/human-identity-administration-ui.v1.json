@@ -1,68 +1,70 @@
 {
   "contract": "management-platform-human-identity-administration-ui:v1",
-  "authority": "Central PMS I-021",
+  "authority": "Central PMS H1/H2",
+  "reviewedAgainst": {
+    "integrationBranch": "integration/codex-h-identity-auth-v13",
+    "backendClosureCommit": "7667a9ce6bb5c3599bb883bd7eeb9904efb6f995"
+  },
   "route": "/management-platform/identity-administration",
   "backendBaseRoute": "/v1/management-platform/identity",
-  "authentication": "shared H-006 I-020 session",
-  "csrf": "shared H-006 runtime-memory X-CSRF-Token decorator",
-  "authoritativeUserTypes": [
-    "INTERNAL_ADMIN",
-    "OPERATIONS_USER",
-    "SITE_OPERATOR",
-    "SUPPORT_USER",
-    "FINANCE_USER",
-    "COMPLIANCE_USER",
-    "MERCHANT_USER",
-    "SECURITY_USER",
-    "OTHER"
-  ],
+  "roleCatalog": {
+    "productionSource": "GET /v1/management-platform/identity/roles",
+    "authority": "H1 ApprovedIdentityRoleCatalog",
+    "requiredForMutation": [
+      "applicationAccess",
+      "scopePolicy.allowedScopeTypes",
+      "scopePolicy.assignmentRequired"
+    ],
+    "optionalAuthoritativeMetadata": [
+      "scopePolicy.defaultScope"
+    ],
+    "defaultScopeBehavior": "Use the supplied value only when it is present and contained in allowedScopeTypes. Null or absent requires explicit selection when assignmentRequired is true.",
+    "failurePolicy": "Reject the complete catalog for malformed policy, an unknown role, or a defaultScope outside allowedScopeTypes."
+  },
+  "userType": "optional descriptive metadata only; H3 omits it on create and never derives role, access, or scope from it",
   "capabilities": [
-    "user list and detail",
-    "offset user-directory continuation with a page size of 50",
-    "Add User with an atomic initial role and Site or Site Group assignment, without credentials",
-    "profile, access dates, and Account Status",
-    "Roles & Permissions catalog and assignment",
-    "Site Access for Site and Site Group",
-    "Elevated Access requests, request-reference rediscovery, and decisions",
-    "Two-Factor Authentication status and authenticator reset or remove",
-    "Active Sessions and sign-out",
-    "Access Review",
-    "Activity Log"
+    "authoritative user list and detail",
+    "role and scope selection from H1 metadata",
+    "one-time H2 temporary-password and TOTP provisioning presentation",
+    "profile, lifecycle, sessions, MFA status, access review, and audit presentation"
   ],
   "globalScope": {
-    "enabled": false,
-    "returnedGrantPresentation": "visible and read-only with no mutation control",
-    "classification": "GLOBAL_SCOPE_POLICY_NOT_APPROVED",
+    "source": "H1 scopePolicy",
+    "executiveManagement": "H1 returns allowedScopeTypes GLOBAL and defaultScope GLOBAL and enforces the assignment",
     "nullScopeIsGlobal": false
   },
-  "privilegedAccess": {
-    "approvalIsEvidence": true,
-    "approvalImpliesActiveAuthority": false
+  "createUser": {
+    "route": "POST /v1/management-platform/identity/users",
+    "requestUserType": "omitted by H3; optional backend descriptive metadata defaults to OTHER",
+    "response": {
+      "user.status": "ACTIVE",
+      "invitation.invitationState": "PASSWORD_CHANGE_REQUIRED",
+      "invitation.activationDeliveryMode": null,
+      "invitation.deliveryClassification": "ONE_TIME_BOOTSTRAP",
+      "oneTimeActivation": null,
+      "oneTimeBootstrap": [
+        "temporaryPassword",
+        "temporaryPasswordExpiresAt",
+        "totpSharedSecret",
+        "totpProvisioningUri",
+        "passwordChangeRequired=true"
+      ]
+    },
+    "browserInterpretation": "The active account is still blocked from normal application access until the required password change completes."
   },
   "browserAuthority": {
     "authentication": false,
+    "roleAvailability": false,
+    "applicationEligibility": false,
     "permissions": false,
-    "siteScope": false,
-    "siteGroupScope": false,
-    "selectedSite": false
+    "scopePolicy": false,
+    "roleScopeValidation": false
   },
-  "prohibitedData": [
-    "password",
-    "TOTP seed or code",
-    "provisioning URI or QR payload",
-    "session secret or cookie",
-    "bearer or refresh token",
-    "client-authored actor, role, permission, Site, or Site Group authority"
-  ],
-  "safeErrors": [400, 401, 403, 404, 409, 429, 503, "network", "malformed response"],
-  "partialFailure": "secondary sections retain successful user detail and render independent loading, empty, denied, unavailable, and retry states",
-  "uncertainMutation": "retained information is visibly stale and all unsafe controls remain disabled until directory and selected-user authority reload successfully",
-  "authorizedLanding": "the root opens the first permitted module without weakening any destination guard; no available module produces an explicit authenticated state",
-  "siteGroupPresentation": "Site Group authority remains distinct from direct Site grants and is not expanded in the browser",
-  "responsiveMasterDetail": "desktop remains side by side; tablet and narrow selection moves and focuses the selected-user detail before the directory",
-  "authenticationFreshness": "I-021 uses the normal active H-006 session; privileged-account TOTP is enforced at login and no separate step-up flow is used",
-  "atomicUserCreation": "user, initial non-privileged role, and required Site or Site Group grant succeed or fail in one Central PMS transaction",
-  "assignableRoles": "known active Central PMS role codes use business labels; synthetic and test roles are excluded; user type filters compatible directly assignable roles and Central PMS validates the pair",
-  "webSession": "30-minute sliding idle timeout with an eight-hour fixed absolute limit; successful authenticated activity is rediscovered through H-006 current-session readback",
-  "sessionLoss": "H-006 removes the workspace and never replays a mutation"
+  "failurePolicy": "Missing, malformed, unavailable, or unknown H1 role metadata disables assignment and scope mutation; invalid provisioning invariants suppress provisioning success; production never substitutes the development fixture catalog.",
+  "developmentFixture": "DEV-only resolver plus explicit isolated test-harness enable flag",
+  "secretHandling": "oneTimeBootstrap is mapped to in-memory presentation and cleared when the provisioning panel closes",
+  "remainingExternalBoundaries": [
+    "Native Parking device and native application ownership are outside H3.",
+    "APT terminal and device-bound authorization ownership are outside H3."
+  ]
 }

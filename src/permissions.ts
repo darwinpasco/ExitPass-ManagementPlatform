@@ -37,7 +37,6 @@ export const identityAdministrationPresentationPermissions = [
   "identity.access-review.manage",
   "human-authentication.session.admin.view",
   "human-authentication.session.admin.revoke",
-  "human-authentication.credential.reset",
   "human-authentication.mfa.status.view",
   "human-authentication.mfa.reset",
   "human-authentication.mfa.remove"

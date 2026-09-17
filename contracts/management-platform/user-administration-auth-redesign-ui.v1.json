@@ -1,0 +1,145 @@
+{
+  "contract": "management-platform-user-administration-auth-redesign-ui:v1",
+  "reviewedAgainst": {
+    "integrationBranch": "integration/codex-h-identity-auth-v13",
+    "backendClosureCommit": "7667a9ce6bb5c3599bb883bd7eeb9904efb6f995",
+    "reviewDate": "2026-09-17"
+  },
+  "authority": {
+    "identityAndRbac": "Central PMS H1",
+    "authenticationAndPasswordLifecycle": "Central PMS H2",
+    "browser": "presentation, contract validation, and request composition only"
+  },
+  "roleCatalog": {
+    "productionSource": "GET /v1/management-platform/identity/roles",
+    "backendAuthority": "ApprovedIdentityRoleCatalog and H1 role/scope validation",
+    "requiredConsumerMetadata": [
+      "roleReference",
+      "code",
+      "name",
+      "description",
+      "type",
+      "status",
+      "isPrivileged",
+      "requiresElevatedApproval",
+      "effectiveFrom",
+      "effectiveTo",
+      "rowVersion",
+      "provenance",
+      "directAddUserEligible",
+      "humanAssignable",
+      "allowedUserTypes",
+      "applicationAccess",
+      "scopePolicy.allowedScopeTypes",
+      "scopePolicy.assignmentRequired"
+    ],
+    "optionalConsumerMetadata": [
+      "scopePolicy.defaultScope"
+    ],
+    "defaultScopeBehavior": "Use the backend value when present. Null or absent never implies the first allowed scope. A non-null default outside allowedScopeTypes rejects the catalog.",
+    "failureBehavior": "Missing, malformed, unavailable, or unknown role metadata disables role and scope mutation. Production never substitutes local fixture policy.",
+    "presentationOnlyModule": "src/approvedIdentityRoles.ts"
+  },
+  "scopeRules": {
+    "source": "scopePolicy returned by H1",
+    "global": "must be explicit and server-authorized; null never means Global",
+    "executiveManagement": "H1 returns GLOBAL as defaultScope and the only allowed scope, and H1 validates it",
+    "mutationValidation": "H3 offers only scope types present in the selected H1 policy; H1 remains final authority"
+  },
+  "createUser": {
+    "route": "POST /v1/management-platform/identity/users",
+    "request": [
+      "username",
+      "displayName",
+      "email",
+      "maskedMobileNumber",
+      "initialRoleReference",
+      "initialScopeType",
+      "initialSiteReference",
+      "initialSiteGroupReference",
+      "effectiveFrom",
+      "effectiveTo",
+      "reasonCode",
+      "idempotencyKey",
+      "userType (optional descriptive metadata; H3 omits it)"
+    ],
+    "responseInvariants": {
+      "user.status": "ACTIVE",
+      "invitation.invitationState": "PASSWORD_CHANGE_REQUIRED",
+      "invitation.activationDeliveryMode": null,
+      "invitation.deliveryClassification": "ONE_TIME_BOOTSTRAP",
+      "oneTimeActivation": null,
+      "oneTimeBootstrap.passwordChangeRequired": true
+    },
+    "oneTimeBootstrap": [
+      "temporaryPassword",
+      "temporaryPasswordExpiresAt",
+      "totpSharedSecret",
+      "totpProvisioningUri",
+      "passwordChangeRequired"
+    ],
+    "consumerFailureBehavior": "Any missing or invalid response invariant is rejected before provisioning success is displayed.",
+    "temporaryPasswordExpiry": "exactly 72 hours, owned and enforced by H2",
+    "semanticState": "ACTIVE is account state; PASSWORD_CHANGE_REQUIRED blocks normal application access until password mutation completes"
+  },
+  "authentication": {
+    "login": {
+      "route": "POST /v1/human-authentication/login",
+      "required": [
+        "username",
+        "password",
+        "audience",
+        "totpCode"
+      ]
+    },
+    "firstPasswordChange": {
+      "route": "POST /v1/human-authentication/password/change",
+      "session": "password-change-required restricted session cookie plus CSRF token",
+      "required": [
+        "currentPassword",
+        "newPassword",
+        "totpCode"
+      ]
+    },
+    "forgotPassword": {
+      "route": "POST /v1/human-authentication/password-resets",
+      "required": [
+        "username",
+        "totpCode",
+        "newPassword"
+      ]
+    },
+    "expiredTemporaryPassword": {
+      "route": "POST /v1/human-authentication/password-resets",
+      "required": [
+        "username",
+        "expiredTemporaryPassword",
+        "totpCode",
+        "newPassword"
+      ]
+    },
+    "mutationResult": "PASSWORD_CHANGED or PASSWORD_RESET_COMPLETED; H2 revokes sessions and H3 clears runtime state and returns to login",
+    "prohibitedRecoveryChannels": [
+      "email reset",
+      "email OTP",
+      "SMS OTP"
+    ]
+  },
+  "developmentIsolation": {
+    "identityScenarioResolver": "requires import.meta.env.DEV and an explicit isolated test-harness enable flag",
+    "normalDevelopmentFallback": false,
+    "productionFallback": false,
+    "authenticationSyntheticClient": false
+  },
+  "secretHandling": {
+    "storage": false,
+    "url": false,
+    "logs": false,
+    "provisioningRedisplay": false,
+    "clearOnFlowExit": true
+  },
+  "remainingExternalBoundaries": [
+    "Native Parking device ownership, device enrollment, and native application authorization remain outside the Management Platform consumer.",
+    "APT terminal ownership, terminal enrollment, and device-bound authorization remain outside the Management Platform consumer."
+  ]
+}

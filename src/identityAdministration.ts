@@ -1,4 +1,5 @@
 import { createUiError } from "./apiClient";
+import { approvedIdentityRoles, hasApprovedRolePresentation, type AssignableScopeType, type IdentityApplication } from "./approvedIdentityRoles";
 import type { CentralPmsApiClient } from "./types";
 
 export const identityAdministrationRoute = "/management-platform/identity-administration";
@@ -17,7 +18,6 @@ export const identityAdministrationPermissions = {
   accessReviewManage: "identity.access-review.manage",
   sessionView: "human-authentication.session.admin.view",
   sessionRevoke: "human-authentication.session.admin.revoke",
-  credentialReset: "human-authentication.credential.reset",
   mfaStatusView: "human-authentication.mfa.status.view",
   mfaReset: "human-authentication.mfa.reset",
   mfaRemove: "human-authentication.mfa.remove"
@@ -89,62 +89,10 @@ export interface DelegableScopeCatalog {
   sites: DelegableSite[];
 }
 
-export type ActivationDeliveryMode = "EMAIL" | "ADMIN_ISSUED";
-
-export interface IdentityInvitationStatus {
-  invitationState: string;
-  activationDeliveryMode: ActivationDeliveryMode | null;
-  latestChallengeState: string | null;
-  challengeReference: string | null;
-  issuedAt: string | null;
-  expiresAt: string | null;
-  deliveryClassification: string;
-}
-
-export interface OneTimeActivationMaterial {
-  challengeReference: string;
-  challengeSecret: string;
-  expiresAt: string;
-  activationUrl: string;
-  qrPayload: string;
-}
-
-export interface OneTimeCredentialMaterial {
-  challengeReference: string;
-  challengeSecret: string;
-  expiresAt: string;
-  lifecycleUrl: string;
-  qrPayload: string;
-}
-
-export interface CredentialResetChallengeResult {
-  challengeReference: string;
-  expiresAt: string;
-  deliveryMode: ActivationDeliveryMode;
-  deliveryClassification: string;
-  oneTimeActivation: OneTimeActivationMaterial | null;
-  oneTimeCredential: OneTimeCredentialMaterial | null;
-}
-
-export interface CreateIdentityUserResult {
-  user: IdentityUserSummary;
-  invitation: IdentityInvitationStatus;
-  oneTimeActivation: OneTimeActivationMaterial | null;
-}
-
-export interface InvitationReissueResult {
-  challengeReference: string;
-  expiresAt: string;
-  deliveryMode: ActivationDeliveryMode;
-  deliveryClassification: string;
-  oneTimeActivation: OneTimeActivationMaterial | null;
-}
-
 export interface IdentityUserDetail {
   user: IdentityUserSummary;
   roleAssignments: IdentityRoleAssignment[];
   scopeGrants: IdentityScopeGrant[];
-  invitation: IdentityInvitationStatus | null;
 }
 
 export interface IdentityRoleDefinition {
@@ -163,6 +111,27 @@ export interface IdentityRoleDefinition {
   directAddUserEligible: boolean;
   humanAssignable: boolean;
   allowedUserTypes: string[];
+  applicationAccess: IdentityApplication[];
+  scopePolicy: {
+    allowedScopeTypes: AssignableScopeType[];
+    assignmentRequired: boolean;
+    defaultScope?: AssignableScopeType | null;
+  };
+}
+
+export interface IdentityProvisioningMaterial {
+  temporaryPassword: string;
+  temporaryPasswordExpiresAt: string;
+  totpSecret: string;
+  totpProvisioningUri: string | null;
+  totpQrImageDataUri: string | null;
+  displayOnce: true;
+  passwordChangeRequired: true;
+}
+
+export interface IdentityCreateUserResult {
+  user: IdentityUserSummary;
+  provisioning: IdentityProvisioningMaterial;
 }
 
 export interface IdentityPermissionDefinition {
@@ -236,10 +205,7 @@ export interface IdentityPrivilegedAccessRequest {
 export interface IdentityAdministrationClient {
   listUsers(filters?: { query?: string; status?: string; offset?: number; limit?: number }, signal?: AbortSignal): Promise<IdentityUserSummary[]>;
   getUser(userReference: string, signal?: AbortSignal): Promise<IdentityUserDetail>;
-  createUser(body: Record<string, unknown>): Promise<CreateIdentityUserResult>;
-  reissueInvitation(userReference: string, body: Record<string, unknown>): Promise<InvitationReissueResult>;
-  cancelInvitation(userReference: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
-  issueCredentialResetChallenge(userReference: string, body: Record<string, unknown>): Promise<CredentialResetChallengeResult>;
+  createUser(body: Record<string, unknown>): Promise<IdentityCreateUserResult>;
   updateUser(userReference: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
   changeLifecycle(userReference: string, action: string, body: Record<string, unknown>): Promise<IdentityUserSummary>;
   listRoles(filters?: { userType?: string; directAddUserOnly?: boolean }, signal?: AbortSignal): Promise<IdentityRoleDefinition[]>;
@@ -260,21 +226,20 @@ export interface IdentityAdministrationClient {
   listAuditEvents(userReference: string, signal?: AbortSignal): Promise<IdentityAuditEntry[]>;
 }
 
-export type IdentityAdministrationScenarioName = "populated" | "empty" | "permission-denied" | "conflict" | "unavailable" | "partial-failure" | "global-readonly" | "paginated" | "elevated-rediscovery" | "mutation-uncertain" | "no-email-recovery";
+export type IdentityAdministrationScenarioName = "populated" | "empty" | "permission-denied" | "conflict" | "unavailable" | "partial-failure" | "global-readonly" | "paginated" | "elevated-rediscovery" | "mutation-uncertain";
 
 export function resolveIdentityAdministrationScenario(enabled: boolean, search: string): { name: IdentityAdministrationScenarioName; client: IdentityAdministrationClient } | undefined {
-  if (!enabled) return undefined;
+  if (!import.meta.env.DEV || !enabled) return undefined;
   const value = new URLSearchParams(search).get("mpIdentityScenario");
-  const supported: IdentityAdministrationScenarioName[] = ["populated", "empty", "permission-denied", "conflict", "unavailable", "partial-failure", "global-readonly", "paginated", "elevated-rediscovery", "mutation-uncertain", "no-email-recovery"];
+  const supported: IdentityAdministrationScenarioName[] = ["populated", "empty", "permission-denied", "conflict", "unavailable", "partial-failure", "global-readonly", "paginated", "elevated-rediscovery", "mutation-uncertain"];
   const name: IdentityAdministrationScenarioName = supported.includes(value as IdentityAdministrationScenarioName) ? value as IdentityAdministrationScenarioName : "populated";
   const error = name === "permission-denied"
     ? createUiError("permission-denied", "IDENTITY_ADMIN_FORBIDDEN", "You do not have permission for this Management Platform action.", "support-identity-denied")
     : name === "unavailable"
       ? createUiError("integration-unavailable", "IDENTITY_ADMIN_UNAVAILABLE", "User Administration is temporarily unavailable.", "support-identity-unavailable", 503, true)
       : undefined;
-  const user = name === "no-email-recovery" ? { ...syntheticUser(), maskedEmail: null } : syntheticUser();
-  const invitation = syntheticInvitation();
-  const detail: IdentityUserDetail = { user, invitation, roleAssignments: [syntheticAssignment()], scopeGrants: name === "global-readonly" ? [syntheticGrant(), { ...syntheticGrant(), grantReference: "81000000-0000-4000-8000-000000000013", scopeType: "GLOBAL", siteReference: null, siteGroupReference: null }] : [syntheticGrant()] };
+  const user = syntheticUser();
+  const detail: IdentityUserDetail = { user, roleAssignments: [syntheticAssignment()], scopeGrants: name === "global-readonly" ? [syntheticGrant(), { ...syntheticGrant(), grantReference: "81000000-0000-4000-8000-000000000013", scopeType: "GLOBAL", siteReference: null, siteGroupReference: null }] : [syntheticGrant()] };
   const fail = async <T>(): Promise<T> => { throw error; };
   const sectionDenied = async <T>(): Promise<T> => { throw createUiError("permission-denied", "IDENTITY_ADMIN_SECTION_FORBIDDEN", "This section is not available with your current access.", "support-identity-section-denied"); };
   const sectionUnavailable = async <T>(): Promise<T> => { throw createUiError("integration-unavailable", "IDENTITY_ADMIN_SECTION_UNAVAILABLE", "This section is temporarily unavailable.", "support-identity-section-unavailable", 503, true); };
@@ -283,28 +248,10 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
     getUser: async () => detail,
     createUser: name === "mutation-uncertain"
       ? async () => { throw createUiError("unknown", "IDENTITY_ADMIN_MUTATION_UNCERTAIN", "The request failed safely.", "support-identity-mutation-uncertain", 500, false, true); }
-      : async () => ({ user: { ...user, username: "invited.user", displayName: "Invited User", status: "INVITED", rowVersion: 1 }, invitation, oneTimeActivation: null }),
-    reissueInvitation: async () => ({ challengeReference: "invitation-reference", expiresAt: invitation.expiresAt!, deliveryMode: "EMAIL", deliveryClassification: "EMAIL_SENT", oneTimeActivation: null }),
-    cancelInvitation: async () => ({ ...user, status: "INACTIVE", rowVersion: user.rowVersion + 1 }),
-    issueCredentialResetChallenge: name === "no-email-recovery"
-      ? async () => ({
-          challengeReference: "recovery-reference",
-          expiresAt: "2030-03-01T08:30:00Z",
-          deliveryMode: "ADMIN_ISSUED",
-          deliveryClassification: "ADMIN_ISSUED",
-          oneTimeActivation: null,
-          oneTimeCredential: {
-            challengeReference: "recovery-reference",
-            challengeSecret: "task-owned-recovery-code",
-            expiresAt: "2030-03-01T08:30:00Z",
-            lifecycleUrl: "https://accounts.exitpass.test/account/reset-password?challengeReference=recovery-reference&challengeSecret=task-owned-recovery-code",
-            qrPayload: "https://accounts.exitpass.test/account/reset-password?challengeReference=recovery-reference&challengeSecret=task-owned-recovery-code"
-          }
-        })
-      : async () => { throw createUiError("permission-denied", "CREDENTIAL_RESET_NOT_AUTHORIZED", "Credential reset is not available in this scenario."); },
+      : async () => ({ user: { ...user, username: "provisioned.user", displayName: "Provisioned User", status: "ACTIVE", rowVersion: 1 }, provisioning: syntheticProvisioning() }),
     updateUser: name === "conflict" ? async () => { throw createUiError("conflict", "IDENTITY_ADMIN_VERSION_CONFLICT", "The authoritative user changed. Reload before retrying.", "support-identity-conflict", 409); } : async () => ({ ...user, rowVersion: user.rowVersion + 1 }),
     changeLifecycle: async (_reference, action) => ({ ...user, status: action.toUpperCase(), rowVersion: user.rowVersion + 1 }),
-    listRoles: name === "partial-failure" ? sectionUnavailable : async (filters = {}) => [...syntheticDirectRoles(), syntheticRole()].filter((role) =>
+    listRoles: name === "partial-failure" ? sectionUnavailable : async (filters = {}) => syntheticDirectRoles().filter((role) =>
       (!filters.userType || role.allowedUserTypes.includes(filters.userType)) &&
       (!filters.directAddUserOnly || (role.directAddUserEligible && !role.isPrivileged && !role.requiresElevatedApproval))), listPermissions: name === "partial-failure" ? sectionUnavailable : async () => [syntheticPermission()],
     getDelegableScopes: name === "unavailable" ? fail : async () => pitxDelegableScopes(),
@@ -335,10 +282,7 @@ export function createIdentityAdministrationClient(api: CentralPmsApiClient): Id
       return get<unknown>(`${identityAdministrationApiRoute}/users?${query}`, signal).then(asArray<IdentityUserSummary>);
     },
     getUser: (reference, signal) => get<unknown>(userPath(reference), signal).then(asObject<IdentityUserDetail>),
-    createUser: (body) => mutate<unknown>(`${identityAdministrationApiRoute}/users`, "POST", body).then(asObject<CreateIdentityUserResult>),
-    reissueInvitation: (reference, body) => mutate<unknown>(`${userPath(reference)}/invitation/reissue`, "POST", body).then(asObject<InvitationReissueResult>),
-    cancelInvitation: (reference, body) => mutate<unknown>(`${userPath(reference)}/invitation/cancel`, "POST", body).then(asObject<IdentityUserSummary>),
-    issueCredentialResetChallenge: (reference, body) => mutate<unknown>(`${userPath(reference)}/credential-reset-challenges`, "POST", body).then(asObject<CredentialResetChallengeResult>),
+    createUser: (body) => mutate<unknown>(`${identityAdministrationApiRoute}/users`, "POST", body).then(asCreateUserResult),
     updateUser: (reference, body) => mutate<unknown>(userPath(reference), "PATCH", body).then(asObject<IdentityUserSummary>),
     changeLifecycle: (reference, action, body) => mutate<unknown>(`${userPath(reference)}/${assertLifecycleAction(action)}`, "POST", body).then(asObject<IdentityUserSummary>),
     listRoles(filters = {}, signal) {
@@ -380,10 +324,45 @@ function asRoleCatalog(value: unknown): IdentityRoleDefinition[] {
     if (!isRecord(item) || !hasStrings(item, ["roleReference", "code", "name", "type", "status", "provenance"]) ||
         typeof item.isPrivileged !== "boolean" || typeof item.requiresElevatedApproval !== "boolean" ||
         typeof item.directAddUserEligible !== "boolean" || typeof item.humanAssignable !== "boolean" ||
-        !Array.isArray(item.allowedUserTypes) || !item.allowedUserTypes.every((entry) => typeof entry === "string")) malformed();
-    if (item.provenance !== "CANONICAL_ROLE" || item.humanAssignable !== true || item.code === "SERVICE_PRINCIPAL" || item.code === "SITE_ADMINISTRATOR") malformed();
+        !Array.isArray(item.allowedUserTypes) || !item.allowedUserTypes.every((entry) => typeof entry === "string") ||
+        !Array.isArray(item.applicationAccess) || !item.applicationAccess.every((entry) => ["MANAGEMENT_PLATFORM", "OPERATOR_CONSOLE", "NATIVE_PARKING_APP", "APT"].includes(String(entry))) ||
+        !isRecord(item.scopePolicy) || !Array.isArray(item.scopePolicy.allowedScopeTypes) ||
+        !item.scopePolicy.allowedScopeTypes.every((entry) => ["SITE", "SITE_GROUP", "GLOBAL"].includes(String(entry))) ||
+        typeof item.scopePolicy.assignmentRequired !== "boolean" ||
+        !(item.scopePolicy.defaultScope === undefined || item.scopePolicy.defaultScope === null || ["SITE", "SITE_GROUP", "GLOBAL"].includes(String(item.scopePolicy.defaultScope)))) malformed();
+    if (item.provenance !== "CANONICAL_ROLE" || item.humanAssignable !== true || !hasApprovedRolePresentation(item.code as string)) malformed();
+    const allowedScopeTypes = item.scopePolicy.allowedScopeTypes as unknown[];
+    if (new Set(allowedScopeTypes).size !== allowedScopeTypes.length ||
+        (item.scopePolicy.assignmentRequired === true && allowedScopeTypes.length === 0) ||
+        (item.scopePolicy.defaultScope !== undefined && item.scopePolicy.defaultScope !== null && !allowedScopeTypes.includes(item.scopePolicy.defaultScope)) ||
+        (item.code === "EXECUTIVE_MANAGEMENT" && (allowedScopeTypes.length !== 1 || allowedScopeTypes[0] !== "GLOBAL"))) malformed();
     return item as unknown as IdentityRoleDefinition;
   });
+}
+
+function asCreateUserResult(value: unknown): IdentityCreateUserResult {
+  if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.invitation) || !isRecord(value.oneTimeBootstrap)) malformed();
+  const bootstrap = value.oneTimeBootstrap;
+  if (!hasStrings(bootstrap, ["temporaryPassword", "temporaryPasswordExpiresAt", "totpSharedSecret", "totpProvisioningUri"]) ||
+      value.user.status !== "ACTIVE" ||
+      value.invitation.invitationState !== "PASSWORD_CHANGE_REQUIRED" ||
+      value.invitation.activationDeliveryMode !== null ||
+      value.invitation.deliveryClassification !== "ONE_TIME_BOOTSTRAP" ||
+      value.oneTimeActivation !== null ||
+      bootstrap.passwordChangeRequired !== true ||
+      !Number.isFinite(Date.parse(bootstrap.temporaryPasswordExpiresAt as string))) malformed();
+  return {
+    user: value.user as unknown as IdentityUserSummary,
+    provisioning: {
+      temporaryPassword: bootstrap.temporaryPassword as string,
+      temporaryPasswordExpiresAt: bootstrap.temporaryPasswordExpiresAt as string,
+      totpSecret: bootstrap.totpSharedSecret as string,
+      totpProvisioningUri: bootstrap.totpProvisioningUri as string,
+      totpQrImageDataUri: null,
+      displayOnce: true,
+      passwordChangeRequired: bootstrap.passwordChangeRequired
+    }
+  };
 }
 
 function asDelegableScopeCatalog(value: unknown): DelegableScopeCatalog {
@@ -411,22 +390,39 @@ function assertLifecycleAction(action: string): string {
 }
 
 function syntheticUser(): IdentityUserSummary { return { userReference: "81000000-0000-4000-8000-000000000001", username: "synthetic.admin", displayName: "Synthetic Administration User", maskedEmail: "s***@example.test", maskedMobileNumber: "***0101", userType: "INTERNAL_ADMIN", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-03-01T08:00:00Z", rowVersion: 7 }; }
-function syntheticInvitation(): IdentityInvitationStatus { return { invitationState: "INVITATION_PENDING", activationDeliveryMode: "EMAIL", latestChallengeState: "ISSUED", challengeReference: "81000000-0000-4000-8000-000000000019", issuedAt: "2030-03-01T08:00:00Z", expiresAt: "2030-03-01T08:30:00Z", deliveryClassification: "EMAIL_SENT" }; }
 function syntheticUserPage(offset: number, count: number): IdentityUserSummary[] { return Array.from({ length: count }, (_, index) => ({ ...syntheticUser(), userReference: `synthetic-user-${offset + index + 1}`, username: `synthetic.user.${offset + index + 1}`, displayName: `Synthetic User ${offset + index + 1}` })); }
-function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: syntheticRole().roleReference, roleCode: "SYSTEM_RBAC_ADMINISTRATOR", roleName: "System / RBAC Administrator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
+function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: "81000000-0000-4000-8000-000000000016", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
 function syntheticGrant(): IdentityScopeGrant { return { grantReference: "81000000-0000-4000-8000-000000000003", assignmentReference: syntheticAssignment().assignmentReference, scopeType: "SITE", siteReference: "71000000-0000-0000-0000-000000000101", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 2 }; }
-function syntheticRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_RBAC_ADMINISTRATOR", name: "System / RBAC Administrator", description: "Governed identity administration", type: "SYSTEM", status: "ACTIVE", isPrivileged: true, requiresElevatedApproval: true, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 2, provenance: "CANONICAL_ROLE", directAddUserEligible: false, humanAssignable: true, allowedUserTypes: ["INTERNAL_ADMIN"] }; }
-function syntheticOrdinaryRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000014", code: "SITE_OPERATOR", name: "Site Operator", description: "Ordinary Site operations access", type: "OPERATIONS", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: ["SITE_OPERATOR"] }; }
+function syntheticRole(): IdentityRoleDefinition { return { ...syntheticOrdinaryRole(), roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_ADMINISTRATOR", name: "System Administrator", description: "Governed Management Platform identity administration", type: "SYSTEM", isPrivileged: false, requiresElevatedApproval: false, allowedUserTypes: ["INTERNAL_ADMIN"], applicationAccess: ["MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" } }; }
+function syntheticOrdinaryRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000014", code: "SITE_OPERATOR", name: "Site Operator", description: "Site operations access", type: "OPERATIONS", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: [], applicationAccess: ["OPERATOR_CONSOLE"], scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" } }; }
 function syntheticDirectRoles(): IdentityRoleDefinition[] {
   const base = syntheticOrdinaryRole();
-  return [
-    base,
-    { ...base, roleReference: "81000000-0000-4000-8000-000000000015", code: "SUPPORT_AGENT", name: "Support Agent", type: "SUPPORT", allowedUserTypes: ["SUPPORT_USER"] },
-    { ...base, roleReference: "81000000-0000-4000-8000-000000000016", code: "FINANCE_RECONCILIATION_ANALYST", name: "Finance / Reconciliation Analyst", type: "FINANCE", allowedUserTypes: ["FINANCE_USER"] },
-    { ...base, roleReference: "81000000-0000-4000-8000-000000000017", code: "EXECUTIVE_MANAGEMENT", name: "Executive / Management", type: "OTHER", allowedUserTypes: ["OTHER"] },
-    { ...base, roleReference: "81000000-0000-4000-8000-000000000018", code: "MERCHANT_ADMIN", name: "Merchant Administrator", type: "MERCHANT", allowedUserTypes: ["MERCHANT_USER"] }
-  ];
+  return approvedIdentityRoles.map((presentation, index) => {
+    const applicationAccess: IdentityApplication[] = presentation.code === "OPERATIONS_SUPERVISOR" ? ["OPERATOR_CONSOLE", "MANAGEMENT_PLATFORM"]
+      : presentation.code === "SITE_OPERATOR" ? ["OPERATOR_CONSOLE"]
+        : presentation.code === "PARKING_ATTENDANT" ? ["NATIVE_PARKING_APP"]
+          : presentation.code === "APT_CASHIER_OPERATOR" ? ["APT"] : ["MANAGEMENT_PLATFORM"];
+    const allowedScopeTypes: AssignableScopeType[] = ["SYSTEM_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(presentation.code) ? ["GLOBAL"]
+      : ["FINANCE_RECONCILIATION_ANALYST", "COMPLIANCE_POLICY_ADMINISTRATOR"].includes(presentation.code) ? ["SITE", "SITE_GROUP", "GLOBAL"]
+        : ["SITE"];
+    return {
+      ...base,
+      roleReference: `81000000-0000-4000-8000-${String(index + 14).padStart(12, "0")}`,
+      code: presentation.code,
+      name: presentation.label,
+      description: presentation.summary,
+      applicationAccess,
+      scopePolicy: {
+        allowedScopeTypes,
+        assignmentRequired: allowedScopeTypes.length > 0,
+        defaultScope: presentation.code === "FINANCE_RECONCILIATION_ANALYST" ? null
+          : ["SYSTEM_ADMINISTRATOR", "COMPLIANCE_POLICY_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(presentation.code) ? "GLOBAL"
+            : "SITE"
+      }
+    };
+  });
 }
+function syntheticProvisioning(): IdentityProvisioningMaterial { return { temporaryPassword: "Temporary-Only-72h!", temporaryPasswordExpiresAt: "2030-03-04T08:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: "otpauth://totp/ExitPass:invited.user?secret=JBSWY3DPEHPK3PXP&issuer=ExitPass", totpQrImageDataUri: null, displayOnce: true, passwordChangeRequired: true }; }
 function syntheticPermission(): IdentityPermissionDefinition { return { permissionReference: "81000000-0000-4000-8000-000000000005", code: "user.view", name: "View users", domain: "Identity", action: "VIEW", status: "ACTIVE", isSensitive: false, requiresAudit: true, rowVersion: 1 }; }
 function syntheticMfa(): IdentityMfaStatus { return { requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-03-01T08:00:00Z", resetAt: null, revokedAt: null, rowVersion: 7 }; }
 function syntheticSession(): IdentitySessionSummary { return { sessionReference: "81000000-0000-4000-8000-000000000006", audience: "MANAGEMENT_PLATFORM", status: "ACTIVE", assurance: "PASSWORD_TOTP", mfaRequirementSatisfied: true, deviceServiceIdentityReference: null, authenticatedAt: "2030-03-01T08:00:00Z", lastSeenAt: "2030-03-01T08:10:00Z", idleExpiresAt: "2030-03-01T08:30:00Z", absoluteExpiresAt: "2030-03-01T16:00:00Z", revokedAt: null, rowVersion: 1 }; }

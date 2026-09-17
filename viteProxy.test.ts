@@ -4,9 +4,7 @@ import { describe, expect, it } from "vitest";
 import { humanSessionRoute } from "./src/humanAuthentication";
 import {
   createManagementPlatformViteConfig,
-  authenticatedAccountLifecycleRoutes,
   defaultApiProxyTarget,
-  publicAccountLifecycleRoutes,
   resolveApiProxyTarget
 } from "./vite.config";
 
@@ -51,17 +49,5 @@ describe("Management Platform Vite proxy configuration", () => {
     expect(humanSessionRoute.startsWith("/v1/")).toBe(true);
     expect(config.server?.proxy).toHaveProperty("/v1");
     expect(config.server?.proxy?.["/v1"]).not.toHaveProperty("headers");
-  });
-
-  it("serves all governed public account-lifecycle routes directly", () => {
-    expect(publicAccountLifecycleRoutes).toEqual([
-      "/account/activate",
-      "/account/forgot-password",
-      "/account/reset-password"
-    ]);
-  });
-
-  it("serves the session-gated authenticator enrollment route directly", () => {
-    expect(authenticatedAccountLifecycleRoutes).toEqual(["/account/mfa-enrollment"]);
   });
 });

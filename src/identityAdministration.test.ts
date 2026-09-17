@@ -12,36 +12,32 @@ describe("identity administration API client", () => {
       expect(headers.get("X-ExitPass-User-Id")).toBeNull();
       expect(headers.get("X-ExitPass-Permissions")).toBeNull();
       expect(headers.get("X-CSRF-Token")).toBe("bounded-runtime-token");
-      return json({ userReference: "user-1", username: "synthetic.user", displayName: "Synthetic User", maskedEmail: null, maskedMobileNumber: null, userType: "HUMAN", status: "INVITED", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: null, rowVersion: 1 });
+      return json(createUserResponse());
     });
     const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl, authorizeUnsafeRequest }));
 
-    await client.createUser({ username: "synthetic.user" });
+    const result = await client.createUser({ username: "synthetic.user" });
+    expect(result.user.status).toBe("ACTIVE");
+    expect(result.provisioning).toMatchObject({ temporaryPassword: "temporary", totpSecret: "secret", totpProvisioningUri: "otpauth://totp/ExitPass:synthetic.user", displayOnce: true, passwordChangeRequired: true });
 
     expect(authorizeUnsafeRequest).toHaveBeenCalledOnce();
   });
 
-  it("issues only a governed admin handoff challenge and leaves expiry to server policy", async () => {
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-      expect(String(input)).toBe(`${identityAdministrationApiRoute}/users/user-1/credential-reset-challenges`);
-      expect(init?.method).toBe("POST");
-      const body = JSON.parse(String(init?.body));
-      expect(body).toEqual({
-        purpose: "PASSWORD_RESET",
-        reasonCode: "NO_EMAIL_RECOVERY",
-        deliveryMode: "ADMIN_ISSUED",
-        adminIssuedHandoffAcknowledged: true
-      });
-      expect(JSON.stringify(body)).not.toMatch(/newPassword|temporaryPassword|expiresAt/i);
-      return json({ challengeReference: "reset-reference", expiresAt: "2030-01-01T00:30:00Z", deliveryMode: "ADMIN_ISSUED", deliveryClassification: "ADMIN_ISSUED", oneTimeActivation: null, oneTimeCredential: null });
-    });
-    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl, authorizeUnsafeRequest: () => undefined }));
+  it.each([
+    ["missing", undefined],
+    ["false", false]
+  ])("fails provisioning when oneTimeBootstrap.passwordChangeRequired is %s", async (_name, passwordChangeRequired) => {
+    const response = createUserResponse();
+    if (passwordChangeRequired === undefined) delete (response.oneTimeBootstrap as { passwordChangeRequired?: boolean }).passwordChangeRequired;
+    else response.oneTimeBootstrap.passwordChangeRequired = passwordChangeRequired;
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({
+      fetchImpl: vi.fn(async () => json(response)),
+      authorizeUnsafeRequest: () => undefined
+    }));
 
-    await client.issueCredentialResetChallenge("user-1", {
-      purpose: "PASSWORD_RESET",
-      reasonCode: "NO_EMAIL_RECOVERY",
-      deliveryMode: "ADMIN_ISSUED",
-      adminIssuedHandoffAcknowledged: true
+    await expect(client.createUser({ username: "synthetic.user" })).rejects.toMatchObject({
+      kind: "malformed-response",
+      code: "IDENTITY_ADMIN_MALFORMED_RESPONSE"
     });
   });
 
@@ -72,19 +68,28 @@ describe("identity administration API client", () => {
     await expect(client.getDelegableScopes()).resolves.toEqual(payload);
   });
 
-  it("requests server-owned compatible direct Add User roles and accepts canonical metadata", async () => {
+  it("requests the server-owned approved role policy and accepts canonical metadata", async () => {
     const payload = [{
       roleReference: "role-finance", code: "FINANCE_RECONCILIATION_ANALYST", name: "Finance / Reconciliation Analyst",
       description: "Read-only reconciliation", type: "SYSTEM", status: "ACTIVE", isPrivileged: false,
       requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1,
-      provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: ["FINANCE_USER"]
+      provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: ["FINANCE_USER"], applicationAccess: ["MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["SITE", "SITE_GROUP", "GLOBAL"], assignmentRequired: true, defaultScope: null }
     }];
     const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      expect(String(input)).toBe(`${identityAdministrationApiRoute}/roles?userType=FINANCE_USER&directAddUserOnly=true`);
+      expect(String(input)).toBe(`${identityAdministrationApiRoute}/roles`);
       return json(payload);
     });
     const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl }));
-    await expect(client.listRoles({ userType: "FINANCE_USER", directAddUserOnly: true })).resolves.toEqual(payload);
+    await expect(client.listRoles()).resolves.toEqual(payload);
+  });
+
+  it("preserves the authoritative defaultScope instead of inferring the first allowed scope", async () => {
+    const payload = [{ ...authoritativeRole(), scopePolicy: { allowedScopeTypes: ["SITE", "GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" } }];
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl: vi.fn(async () => json(payload)) }));
+    const roles = await client.listRoles();
+
+    expect(roles[0].scopePolicy.defaultScope).toBe("GLOBAL");
+    expect(roles[0].scopePolicy.allowedScopeTypes[0]).toBe("SITE");
   });
 
   it.each([
@@ -95,6 +100,18 @@ describe("identity administration API client", () => {
     await expect(client.listRoles()).rejects.toMatchObject({ kind: "malformed-response", code: "IDENTITY_ADMIN_MALFORMED_RESPONSE" });
   });
 
+  it.each([
+    ["missing applicationAccess", { ...authoritativeRole(), applicationAccess: undefined }],
+    ["missing scopePolicy", { ...authoritativeRole(), scopePolicy: undefined }],
+    ["unknown role", { ...authoritativeRole(), code: "UNKNOWN_ROLE" }],
+    ["invalid scope", { ...authoritativeRole(), scopePolicy: { allowedScopeTypes: ["REGION"], assignmentRequired: true, defaultScope: null } }],
+    ["required scope with no choices", { ...authoritativeRole(), scopePolicy: { allowedScopeTypes: [], assignmentRequired: true, defaultScope: null } }],
+    ["default scope outside allowed scopes", { ...authoritativeRole(), scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "GLOBAL" } }],
+    ["Executive scope outside Global", { ...authoritativeRole(), code: "EXECUTIVE_MANAGEMENT", scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" } }]
+  ])("fails closed for %s from the H1 role catalog", async (_name, role) => {
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl: vi.fn(async () => json([role])) }));
+    await expect(client.listRoles()).rejects.toMatchObject({ kind: "malformed-response", code: "IDENTITY_ADMIN_MALFORMED_RESPONSE" });
+  });
   it("rejects malformed delegable scope metadata instead of synthesizing labels", async () => {
     const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl: vi.fn(async () => json({ siteGroups: [{ siteGroupId: "unresolved" }], sites: [] })) }));
     await expect(client.getDelegableScopes()).rejects.toMatchObject({ kind: "malformed-response", code: "IDENTITY_ADMIN_MALFORMED_RESPONSE" });
@@ -125,4 +142,37 @@ describe("identity administration API client", () => {
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+function authoritativeRole() {
+  return {
+    roleReference: "role-operations", code: "OPERATIONS_SUPERVISOR", name: "Operations Supervisor",
+    description: "Server governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: false,
+    requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1,
+    provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: [],
+    applicationAccess: ["OPERATOR_CONSOLE", "MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" }
+  };
+}
+
+function createUserResponse() {
+  return {
+    user: {
+      userReference: "user-1", username: "synthetic.user", displayName: "Synthetic User",
+      maskedEmail: null, maskedMobileNumber: null, userType: "OTHER", status: "ACTIVE",
+      effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: null, rowVersion: 1
+    },
+    invitation: {
+      invitationState: "PASSWORD_CHANGE_REQUIRED",
+      activationDeliveryMode: null,
+      deliveryClassification: "ONE_TIME_BOOTSTRAP"
+    },
+    oneTimeActivation: null,
+    oneTimeBootstrap: {
+      temporaryPassword: "temporary",
+      temporaryPasswordExpiresAt: "2030-01-04T00:00:00Z",
+      totpSharedSecret: "secret",
+      totpProvisioningUri: "otpauth://totp/ExitPass:synthetic.user",
+      passwordChangeRequired: true as boolean
+    }
+  };
 }
