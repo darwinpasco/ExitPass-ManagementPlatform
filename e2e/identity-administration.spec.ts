@@ -36,6 +36,10 @@ test.describe("governed User Administration", () => {
     await expect(form.getByLabel("Initial role").locator("option")).toHaveText([
       "Select a role", "System Administrator", "Operations Supervisor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
     ]);
+    await form.getByLabel("Initial role").selectOption({ label: "Finance / Reconciliation Analyst" });
+    await expect(form.getByLabel("Access level")).toHaveValue("");
+    await expect(form.getByLabel("Access level")).toBeEnabled();
+
     await form.getByLabel("Initial role").selectOption({ label: "Executive / Management" });
     await expect(form.getByLabel("Access level")).toHaveValue("GLOBAL");
     await expect(form.getByLabel("Access level")).toBeDisabled();
@@ -48,9 +52,11 @@ test.describe("governed User Administration", () => {
     await form.getByLabel("Reason").fill("AUTHORIZED_PROVISIONING");
     await form.getByLabel("Assigned Site").selectOption({ index: 1 });
     await form.getByRole("button", { name: "Add User" }).click();
-    const provisioning = page.getByRole("region", { name: "Provision Invited User" });
+    const provisioning = page.getByRole("region", { name: "Provision Provisioned User" });
     await expect(provisioning).toContainText("Temporary password");
     await expect(provisioning).toContainText("Authenticator secret");
+    await expect(provisioning).toContainText("Account status: Active");
+    await expect(provisioning).toContainText("Normal application access remains blocked until the required password change is complete.");
     await provisioning.getByRole("button", { name: "I have completed provisioning" }).click();
     await expect(provisioning).toHaveCount(0);
   });

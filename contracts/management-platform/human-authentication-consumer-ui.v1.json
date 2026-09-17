@@ -1,69 +1,73 @@
 {
-    "contract":  "management-platform-human-authentication-consumer-ui:v1",
-    "status":  "aligned-to-parked-H2",
-    "authority":  "Central PMS H2",
-    "audience":  "MANAGEMENT_PLATFORM",
-    "routes":  {
-                   "login":  "POST /v1/human-authentication/login",
-                   "currentSession":  "GET /v1/human-authentication/session",
-                   "continueSession":  "POST /v1/human-authentication/session/continue",
-                   "logout":  "POST /v1/human-authentication/logout",
-                   "firstPasswordChange":  "POST /v1/human-authentication/password/change",
-                   "forgotPassword":  "POST /v1/human-authentication/password-resets",
-                   "expiredTemporaryPassword":  "POST /v1/human-authentication/password-resets"
-               },
-    "requestShapes":  {
-                          "login":  [
-                                        "username",
-                                        "password",
-                                        "audience",
-                                        "totpCode"
-                                    ],
-                          "firstPasswordChange":  [
-                                                      "currentPassword",
-                                                      "newPassword",
-                                                      "totpCode"
-                                                  ],
-                          "forgotPassword":  [
-                                                 "username",
-                                                 "totpCode",
-                                                 "newPassword"
-                                             ],
-                          "expiredTemporaryPassword":  [
-                                                           "username",
-                                                           "expiredTemporaryPassword",
-                                                           "totpCode",
-                                                           "newPassword"
-                                                       ]
-                      },
-    "sessionAuthority":  {
-                             "cookie":  "server-issued secure HttpOnly cookie",
-                             "browserReadableSecret":  false,
-                             "startupAuthority":  "GET /v1/human-authentication/session",
-                             "permissionAndScopeAuthority":  "Central PMS HumanSessionDto",
-                             "passwordChangeRequired":  "restricted H2 session",
-                             "postMutation":  "H2 returns PASSWORD_CHANGED or PASSWORD_RESET_COMPLETED without a session; credential-version change revokes prior session authority and H3 returns to login"
-                         },
-    "csrf":  {
-                 "responseHeader":  "X-CSRF-Token",
-                 "runtimeMemoryOnly":  true,
-                 "requiredFor":  [
-                                     "POST /v1/human-authentication/session/continue",
-                                     "POST /v1/human-authentication/logout",
-                                     "POST /v1/human-authentication/password/change"
-                                 ]
-             },
-    "browserSecurity":  {
-                            "sameOriginCredentials":  true,
-                            "cacheMode":  "no-store",
-                            "browserAuthStorage":  false,
-                            "totpPersistence":  false,
-                            "developmentPrincipalInProduction":  false,
-                            "syntheticAuthenticationFallback":  false
-                        },
-    "prohibitedRecoveryChannels":  [
-                                       "email reset",
-                                       "email OTP",
-                                       "SMS OTP"
-                                   ]
+  "contract": "management-platform-human-authentication-consumer-ui:v1",
+  "status": "aligned-to-integration-codex-h-identity-auth-v13",
+  "authority": "Central PMS H2",
+  "audience": "MANAGEMENT_PLATFORM",
+  "routes": {
+    "login": "POST /v1/human-authentication/login",
+    "currentSession": "GET /v1/human-authentication/session",
+    "continueSession": "POST /v1/human-authentication/session/continue",
+    "logout": "POST /v1/human-authentication/logout",
+    "firstPasswordChange": "POST /v1/human-authentication/password/change",
+    "forgotPassword": "POST /v1/human-authentication/password-resets",
+    "expiredTemporaryPassword": "POST /v1/human-authentication/password-resets"
+  },
+  "requestShapes": {
+    "login": [
+      "username",
+      "password",
+      "audience",
+      "totpCode"
+    ],
+    "firstPasswordChange": [
+      "currentPassword",
+      "newPassword",
+      "totpCode"
+    ],
+    "forgotPassword": [
+      "username",
+      "totpCode",
+      "newPassword"
+    ],
+    "expiredTemporaryPassword": [
+      "username",
+      "expiredTemporaryPassword",
+      "totpCode",
+      "newPassword"
+    ]
+  },
+  "sessionAuthority": {
+    "cookie": "server-issued secure HttpOnly cookie",
+    "browserReadableSecret": false,
+    "startupAuthority": "GET /v1/human-authentication/session",
+    "permissionAndScopeAuthority": "Central PMS HumanSessionDto",
+    "passwordChangeRequired": "restricted H2 session",
+    "postMutation": "H2 returns PASSWORD_CHANGED or PASSWORD_RESET_COMPLETED without a session; credential-version change revokes prior session authority and H3 returns to login"
+  },
+  "csrf": {
+    "responseHeader": "X-CSRF-Token",
+    "runtimeMemoryOnly": true,
+    "requiredFor": [
+      "POST /v1/human-authentication/session/continue",
+      "POST /v1/human-authentication/logout",
+      "POST /v1/human-authentication/password/change"
+    ]
+  },
+  "browserSecurity": {
+    "sameOriginCredentials": true,
+    "cacheMode": "no-store",
+    "browserAuthStorage": false,
+    "totpPersistence": false,
+    "developmentPrincipalInProduction": false,
+    "syntheticAuthenticationFallback": false
+  },
+  "prohibitedRecoveryChannels": [
+    "email reset",
+    "email OTP",
+    "SMS OTP"
+  ],
+  "reviewedAgainst": {
+    "integrationBranch": "integration/codex-h-identity-auth-v13",
+    "backendClosureCommit": "7667a9ce6bb5c3599bb883bd7eeb9904efb6f995"
+  }
 }

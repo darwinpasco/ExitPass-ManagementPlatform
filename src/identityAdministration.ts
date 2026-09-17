@@ -115,6 +115,7 @@ export interface IdentityRoleDefinition {
   scopePolicy: {
     allowedScopeTypes: AssignableScopeType[];
     assignmentRequired: boolean;
+    defaultScope?: AssignableScopeType | null;
   };
 }
 
@@ -247,7 +248,7 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
     getUser: async () => detail,
     createUser: name === "mutation-uncertain"
       ? async () => { throw createUiError("unknown", "IDENTITY_ADMIN_MUTATION_UNCERTAIN", "The request failed safely.", "support-identity-mutation-uncertain", 500, false, true); }
-      : async () => ({ user: { ...user, username: "invited.user", displayName: "Invited User", status: "INVITED", rowVersion: 1 }, provisioning: syntheticProvisioning() }),
+      : async () => ({ user: { ...user, username: "provisioned.user", displayName: "Provisioned User", status: "ACTIVE", rowVersion: 1 }, provisioning: syntheticProvisioning() }),
     updateUser: name === "conflict" ? async () => { throw createUiError("conflict", "IDENTITY_ADMIN_VERSION_CONFLICT", "The authoritative user changed. Reload before retrying.", "support-identity-conflict", 409); } : async () => ({ ...user, rowVersion: user.rowVersion + 1 }),
     changeLifecycle: async (_reference, action) => ({ ...user, status: action.toUpperCase(), rowVersion: user.rowVersion + 1 }),
     listRoles: name === "partial-failure" ? sectionUnavailable : async (filters = {}) => syntheticDirectRoles().filter((role) =>
@@ -327,10 +328,13 @@ function asRoleCatalog(value: unknown): IdentityRoleDefinition[] {
         !Array.isArray(item.applicationAccess) || !item.applicationAccess.every((entry) => ["MANAGEMENT_PLATFORM", "OPERATOR_CONSOLE", "NATIVE_PARKING_APP", "APT"].includes(String(entry))) ||
         !isRecord(item.scopePolicy) || !Array.isArray(item.scopePolicy.allowedScopeTypes) ||
         !item.scopePolicy.allowedScopeTypes.every((entry) => ["SITE", "SITE_GROUP", "GLOBAL"].includes(String(entry))) ||
-        typeof item.scopePolicy.assignmentRequired !== "boolean") malformed();
+        typeof item.scopePolicy.assignmentRequired !== "boolean" ||
+        !(item.scopePolicy.defaultScope === undefined || item.scopePolicy.defaultScope === null || ["SITE", "SITE_GROUP", "GLOBAL"].includes(String(item.scopePolicy.defaultScope)))) malformed();
     if (item.provenance !== "CANONICAL_ROLE" || item.humanAssignable !== true || !hasApprovedRolePresentation(item.code as string)) malformed();
     const allowedScopeTypes = item.scopePolicy.allowedScopeTypes as unknown[];
-    if (new Set(allowedScopeTypes).size !== allowedScopeTypes.length || (item.scopePolicy.assignmentRequired === true && allowedScopeTypes.length === 0)) malformed();
+    if (new Set(allowedScopeTypes).size !== allowedScopeTypes.length ||
+        (item.scopePolicy.assignmentRequired === true && allowedScopeTypes.length === 0) ||
+        (item.scopePolicy.defaultScope !== undefined && item.scopePolicy.defaultScope !== null && !allowedScopeTypes.includes(item.scopePolicy.defaultScope))) malformed();
     return item as unknown as IdentityRoleDefinition;
   });
 }
@@ -339,7 +343,12 @@ function asCreateUserResult(value: unknown): IdentityCreateUserResult {
   if (!isRecord(value) || !isRecord(value.user) || !isRecord(value.invitation) || !isRecord(value.oneTimeBootstrap)) malformed();
   const bootstrap = value.oneTimeBootstrap;
   if (!hasStrings(bootstrap, ["temporaryPassword", "temporaryPasswordExpiresAt", "totpSharedSecret", "totpProvisioningUri"]) ||
+      value.user.status !== "ACTIVE" ||
       value.invitation.invitationState !== "PASSWORD_CHANGE_REQUIRED" ||
+      value.invitation.activationDeliveryMode !== null ||
+      value.invitation.deliveryClassification !== "ONE_TIME_BOOTSTRAP" ||
+      value.oneTimeActivation !== null ||
+      bootstrap.passwordChangeRequired !== true ||
       !Number.isFinite(Date.parse(bootstrap.temporaryPasswordExpiresAt as string))) malformed();
   return {
     user: value.user as unknown as IdentityUserSummary,
@@ -350,7 +359,7 @@ function asCreateUserResult(value: unknown): IdentityCreateUserResult {
       totpProvisioningUri: bootstrap.totpProvisioningUri as string,
       totpQrImageDataUri: null,
       displayOnce: true,
-      passwordChangeRequired: true
+      passwordChangeRequired: bootstrap.passwordChangeRequired
     }
   };
 }
@@ -383,8 +392,8 @@ function syntheticUser(): IdentityUserSummary { return { userReference: "8100000
 function syntheticUserPage(offset: number, count: number): IdentityUserSummary[] { return Array.from({ length: count }, (_, index) => ({ ...syntheticUser(), userReference: `synthetic-user-${offset + index + 1}`, username: `synthetic.user.${offset + index + 1}`, displayName: `Synthetic User ${offset + index + 1}` })); }
 function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: "81000000-0000-4000-8000-000000000016", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
 function syntheticGrant(): IdentityScopeGrant { return { grantReference: "81000000-0000-4000-8000-000000000003", assignmentReference: syntheticAssignment().assignmentReference, scopeType: "SITE", siteReference: "71000000-0000-0000-0000-000000000101", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 2 }; }
-function syntheticRole(): IdentityRoleDefinition { return { ...syntheticOrdinaryRole(), roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_ADMINISTRATOR", name: "System Administrator", description: "Governed Management Platform identity administration", type: "SYSTEM", isPrivileged: false, requiresElevatedApproval: false, allowedUserTypes: ["INTERNAL_ADMIN"], applicationAccess: ["MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true } }; }
-function syntheticOrdinaryRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000014", code: "SITE_OPERATOR", name: "Site Operator", description: "Site operations access", type: "OPERATIONS", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: [], applicationAccess: ["OPERATOR_CONSOLE"], scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true } }; }
+function syntheticRole(): IdentityRoleDefinition { return { ...syntheticOrdinaryRole(), roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_ADMINISTRATOR", name: "System Administrator", description: "Governed Management Platform identity administration", type: "SYSTEM", isPrivileged: false, requiresElevatedApproval: false, allowedUserTypes: ["INTERNAL_ADMIN"], applicationAccess: ["MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" } }; }
+function syntheticOrdinaryRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000014", code: "SITE_OPERATOR", name: "Site Operator", description: "Site operations access", type: "OPERATIONS", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: [], applicationAccess: ["OPERATOR_CONSOLE"], scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" } }; }
 function syntheticDirectRoles(): IdentityRoleDefinition[] {
   const base = syntheticOrdinaryRole();
   return approvedIdentityRoles.map((presentation, index) => {
@@ -402,7 +411,13 @@ function syntheticDirectRoles(): IdentityRoleDefinition[] {
       name: presentation.label,
       description: presentation.summary,
       applicationAccess,
-      scopePolicy: { allowedScopeTypes, assignmentRequired: allowedScopeTypes.length > 0 }
+      scopePolicy: {
+        allowedScopeTypes,
+        assignmentRequired: allowedScopeTypes.length > 0,
+        defaultScope: presentation.code === "FINANCE_RECONCILIATION_ANALYST" ? null
+          : ["SYSTEM_ADMINISTRATOR", "COMPLIANCE_POLICY_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(presentation.code) ? "GLOBAL"
+            : "SITE"
+      }
     };
   });
 }

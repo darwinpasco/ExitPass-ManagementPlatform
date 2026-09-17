@@ -371,7 +371,7 @@ function CreateUserPanel({ busy, roleCatalogState, scopeCatalogState, onRetryRol
     setInitialRoleReference(reference);
     setInitialScopeReference("");
     const role = roles.find((candidate) => candidate.roleReference === reference);
-    setScopeType(role?.scopePolicy.allowedScopeTypes[0] ?? "");
+    setScopeType(role?.scopePolicy.defaultScope ?? "");
   }
 
   return <form className="administrationForm" aria-labelledby="create-user-title" onSubmit={(event) => {
@@ -392,7 +392,7 @@ function CreateUserPanel({ busy, roleCatalogState, scopeCatalogState, onRetryRol
     {rolePresentation && <div className="rolePolicySummary" role="note" aria-label={rolePresentation.label + " access"}><strong>{rolePresentation.label}</strong><p>{rolePresentation.summary}</p><p>Applications from Central PMS: {selectedRole?.applicationAccess.map(applicationLabel).join(", ")}</p></div>}
     {selectedRole && allowedScopeTypes.length === 0 && <div className="inlineState">This role does not require a Site assignment in this flow. Central PMS still validates the final assignment.</div>}
     {selectedRole && allowedScopeTypes.length > 0 && <>
-      <label>Access level<select aria-label="Access level" value={effectiveScopeType} disabled={allowedScopeTypes.length === 1} onChange={(event) => { setScopeType(event.target.value as AssignableScopeType); setInitialScopeReference(""); }}>{allowedScopeTypes.map((value) => <option key={value} value={value}>{value === "SITE_GROUP" ? "Site Group" : value === "SITE" ? "Site" : "Global"}</option>)}</select></label>
+      <label>Access level<select aria-label="Access level" value={effectiveScopeType} disabled={allowedScopeTypes.length === 1 && Boolean(selectedRole.scopePolicy.defaultScope)} onChange={(event) => { setScopeType(event.target.value as AssignableScopeType | ""); setInitialScopeReference(""); }}>{!selectedRole.scopePolicy.defaultScope && <option value="">Select an access level</option>}{allowedScopeTypes.map((value) => <option key={value} value={value}>{value === "SITE_GROUP" ? "Site Group" : value === "SITE" ? "Site" : "Global"}</option>)}</select></label>
       {effectiveScopeType === "GLOBAL" ? <div className="governanceBoundary" role="note"><strong>Global scope required by Central PMS.</strong> {rolePresentation?.label ?? selectedRole?.name} is submitted with explicit Global scope and the server validates the assignment.</div> : <>
         {scopeCatalogState.status === "loading" && <div className="inlineState" role="status">Loading authorized scope choices</div>}
         {scopeCatalogState.status === "error" && <SectionFailure label="Authoritative scope choices" error={scopeCatalogState.error} onRetry={scopeCatalogState.error.retryable ? () => void onRetryScopes() : undefined} />}
@@ -413,6 +413,7 @@ function ProvisioningPanel({ result, onClose }: { result: IdentityCreateUserResu
     <p>Give these values to the user through the approved administrative handoff. They are removed from this screen when you close it and cannot be shown again.</p>
     <dl className="factGrid"><Fact label="Username" value={user.username} /><Fact label="Temporary password" value={provisioning.temporaryPassword} /><Fact label="Temporary password expires" value={formatDate(provisioning.temporaryPasswordExpiresAt)} /><Fact label="Authenticator secret" value={provisioning.totpSecret} /></dl>
     {provisioning.totpQrImageDataUri && <img className="totpQr" src={provisioning.totpQrImageDataUri} alt={"Authenticator QR code for " + user.username} />}
+    <p><strong>Account status:</strong> Active. Normal application access remains blocked until the required password change is complete.</p>
     <p><strong>First sign-in:</strong> the user must enter the temporary password and TOTP, then change the password before accessing permitted functions.</p>
     <button type="button" onClick={onClose}>I have completed provisioning</button>
   </section>;
@@ -468,10 +469,11 @@ function AccessView({ detail, roleCatalogState, permissionCatalogState, sites, s
       const data = new FormData(event.currentTarget);
       const role = roles.find((candidate) => candidate.roleReference === data.get("roleReference"));
       if (!role) return;
-      const soleRequiredScope = role.scopePolicy.assignmentRequired && role.scopePolicy.allowedScopeTypes.length === 1 ? role.scopePolicy.allowedScopeTypes[0] : null;
+      const authoritativeDefaultScope = role.scopePolicy.defaultScope ?? null;
       if (role.isPrivileged || role.requiresElevatedApproval) {
+        if (role.scopePolicy.assignmentRequired && !authoritativeDefaultScope) return;
         void runMutation(async () => {
-          const value = await client.createPrivilegedAccessRequest({ targetUserReference: user.userReference, roleReference: role.roleReference, scopeType: soleRequiredScope, siteReference: null, siteGroupReference: null, effectiveFrom: new Date().toISOString(), effectiveTo: null, expiresAt: null, reasonCode: data.get("reasonCode") });
+          const value = await client.createPrivilegedAccessRequest({ targetUserReference: user.userReference, roleReference: role.roleReference, scopeType: authoritativeDefaultScope, siteReference: null, siteGroupReference: null, effectiveFrom: new Date().toISOString(), effectiveTo: null, expiresAt: null, reasonCode: data.get("reasonCode") });
           onPrivilegedRequest(value);
           return value;
         }, "Elevated access requested. Independent approval and controlled provisioning are required.");
@@ -479,7 +481,7 @@ function AccessView({ detail, roleCatalogState, permissionCatalogState, sites, s
         void runMutation(() => client.assignRole(user.userReference, { roleReference: role.roleReference, effectiveFrom: new Date().toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() }), "Role assigned.");
       }
     }}><h4>Add Role</h4><label>Role<select name="roleReference" required><option value="">Select a role</option>{businessRoles.map((role) => {
-      const globalOnly = role.scopePolicy.allowedScopeTypes.length === 1 && role.scopePolicy.allowedScopeTypes[0] === "GLOBAL";
+      const globalOnly = role.scopePolicy.allowedScopeTypes.length === 1 && role.scopePolicy.allowedScopeTypes.every((scope) => scope === "GLOBAL");
       return <option key={role.roleReference} value={role.roleReference}>{approvedRolePresentation(role.code)?.label ?? role.name}{globalOnly ? " (Global scope)" : role.isPrivileged || role.requiresElevatedApproval ? " (requires elevated access approval)" : ""}</option>;
     })}</select></label><label>Reason<input name="reasonCode" required /></label><button disabled={busy}>Add Role or Request Access</button></form>}
 
@@ -524,7 +526,9 @@ function ScopeGrantForm({ detail, roleCatalogState, sites, siteGroups, busy, onG
   const selected = governedAssignments.find((item) => item.assignment.assignmentReference === assignmentReference) ?? governedAssignments[0];
   const [requestedType, setRequestedType] = useState<AssignableScopeType | "">("");
   const allowedScopeTypes = selected?.role.scopePolicy.allowedScopeTypes ?? [];
-  const effectiveType = allowedScopeTypes.includes(requestedType as AssignableScopeType) ? requestedType as AssignableScopeType : allowedScopeTypes[0] ?? "";
+  const effectiveType = allowedScopeTypes.includes(requestedType as AssignableScopeType)
+    ? requestedType as AssignableScopeType
+    : requestedType === "" ? selected?.role.scopePolicy.defaultScope ?? "" : "";
   const targets = effectiveType === "SITE" ? sites.map((site) => ({ reference: site.siteId, name: site.displayName })) : effectiveType === "SITE_GROUP" ? siteGroups : [];
 
   if (roleCatalogState.status !== "loaded" || governedAssignments.length === 0) {
@@ -538,7 +542,7 @@ function ScopeGrantForm({ detail, roleCatalogState, sites, siteGroups, busy, onG
     const target = String(data.get("targetReference") ?? "");
     if (effectiveType !== "GLOBAL" && !target) return;
     onGrant(selected.assignment.assignmentReference, { scopeType: effectiveType, siteReference: effectiveType === "SITE" ? target : null, siteGroupReference: effectiveType === "SITE_GROUP" ? target : null, effectiveFrom: new Date().toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() });
-  }}><h4>Add Scope Access</h4><label>Role<select value={selected.assignment.assignmentReference} onChange={(event) => { setAssignmentReference(event.target.value); setRequestedType(""); }}>{governedAssignments.map((item) => <option key={item.assignment.assignmentReference} value={item.assignment.assignmentReference}>{approvedRolePresentation(item.assignment.roleCode)?.label ?? item.assignment.roleName}</option>)}</select></label><label>Access level<select aria-label="Scope access level" value={effectiveType} disabled={allowedScopeTypes.length === 1} onChange={(event) => setRequestedType(event.target.value as AssignableScopeType)}>{allowedScopeTypes.map((scope) => <option key={scope} value={scope}>{scope === "SITE_GROUP" ? "Site Group" : scope === "SITE" ? "Site" : "Global"}</option>)}</select></label>{effectiveType === "GLOBAL" ? <div className="governanceBoundary" role="note">Central PMS role policy requires or permits explicit Global scope for this assignment.</div> : <><label>{effectiveType === "SITE" ? "Site" : "Site Group"}<select name="targetReference" required disabled={targets.length === 0}><option value="">Select {effectiveType === "SITE" ? "a Site" : "a Site Group"}</option>{targets.map((target) => <option key={target.reference} value={target.reference}>{target.name}</option>)}</select></label>{targets.length === 0 && <div className="inlineState">No authorized {effectiveType === "SITE" ? "Sites" : "Site Groups"} are available</div>}</>}<label>Reason<input name="reasonCode" required /></label><button disabled={busy || (effectiveType !== "GLOBAL" && targets.length === 0)}>Add Access</button></form>;
+  }}><h4>Add Scope Access</h4><label>Role<select value={selected.assignment.assignmentReference} onChange={(event) => { const next = governedAssignments.find((item) => item.assignment.assignmentReference === event.target.value); setAssignmentReference(event.target.value); setRequestedType(next?.role.scopePolicy.defaultScope ?? ""); }}>{governedAssignments.map((item) => <option key={item.assignment.assignmentReference} value={item.assignment.assignmentReference}>{approvedRolePresentation(item.assignment.roleCode)?.label ?? item.assignment.roleName}</option>)}</select></label><label>Access level<select aria-label="Scope access level" value={effectiveType} disabled={allowedScopeTypes.length === 1 && Boolean(selected.role.scopePolicy.defaultScope)} onChange={(event) => setRequestedType(event.target.value as AssignableScopeType | "")}>{!selected.role.scopePolicy.defaultScope && <option value="">Select an access level</option>}{allowedScopeTypes.map((scope) => <option key={scope} value={scope}>{scope === "SITE_GROUP" ? "Site Group" : scope === "SITE" ? "Site" : "Global"}</option>)}</select></label>{effectiveType === "GLOBAL" ? <div className="governanceBoundary" role="note">Central PMS role policy requires or permits explicit Global scope for this assignment.</div> : effectiveType ? <><label>{effectiveType === "SITE" ? "Site" : "Site Group"}<select name="targetReference" required disabled={targets.length === 0}><option value="">Select {effectiveType === "SITE" ? "a Site" : "a Site Group"}</option>{targets.map((target) => <option key={target.reference} value={target.reference}>{target.name}</option>)}</select></label>{targets.length === 0 && <div className="inlineState">No authorized {effectiveType === "SITE" ? "Sites" : "Site Groups"} are available</div>}</> : <div className="inlineState">Select an access level from the Central PMS role policy.</div>}<label>Reason<input name="reasonCode" required /></label><button disabled={busy || !effectiveType || (effectiveType !== "GLOBAL" && targets.length === 0)}>Add Access</button></form>;
 }
 function SecurityView({ detail, mfaState, sessionState, canResetMfa, canRemoveMfa, canRevokeSessions, busy, onRetryMfa, onRetrySessions, runMutation, client }: { detail: IdentityUserDetail; mfaState: SectionLoadState<IdentityMfaStatus>; sessionState: SectionLoadState<IdentitySessionSummary[]>; canResetMfa: boolean; canRemoveMfa: boolean; canRevokeSessions: boolean; busy: boolean; onRetryMfa: () => void; onRetrySessions: () => void; runMutation: (action: () => Promise<unknown>, success: string) => Promise<boolean>; client: IdentityAdministrationClient }) {
   const user = detail.user;

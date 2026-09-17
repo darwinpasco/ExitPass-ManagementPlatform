@@ -29,22 +29,19 @@ This assessment was completed before the H3 implementation changes. Central PMS 
 - The browser keeps passwords, TOTP values, and provisioning material in component memory only and clears them when the flow exits.
 - A System Administrator description is limited to Management Platform identity administration. It must not imply operational, cashier, statutory-discount approval, or business-workflow authority.
 
-## Contract gaps to hand off
+## Integrated contract closure
 
-The implementation contract is recorded in `contracts/management-platform/user-administration-auth-redesign-ui.v1.json`. Until H1/H2 implement it, only the existing development scenario adapter may return synthetic provisioning material. Production requests use the documented routes and fail closed on absent or malformed fields.
+The consumer contract is recorded in `contracts/management-platform/user-administration-auth-redesign-ui.v1.json` and is aligned to `integration/codex-h-identity-auth-v13` at backend closure commit `7667a9ce6bb5c3599bb883bd7eeb9904efb6f995`. Production uses only the documented Central PMS routes and rejects absent or malformed policy or provisioning fields.
 
 ## Final authority-boundary verification
 
-Reviewed on 2026-09-17 against the parked H1 worktree `feature/management-platform-role-model-redesign` and H2 worktree `feature/human-authentication-policy-redesign`, both based at `b39d07f9` with their scoped work still present as working-tree changes.
+Reviewed on 2026-09-17 against the completed Central PMS integration contract on `integration/codex-h-identity-auth-v13`, closure commit `7667a9ce6bb5c3599bb883bd7eeb9904efb6f995`.
 
 - `src/approvedIdentityRoles.ts` is presentation-only. It contains supported display codes, labels, descriptions, and application label formatting. It contains no application eligibility, allowed-scope, default-scope, permission, or role-to-permission rules.
-- Production role options originate at `GET /v1/management-platform/identity/roles`. H3 validates the response contract and then uses its `applicationAccess`, `scopePolicy`, lifecycle, human-assignability, and direct-add fields. Missing metadata, an unsupported role code, or an invalid scope value rejects the complete catalog and disables mutation.
-- The synthetic catalog is reachable only through the identity scenario resolver, which requires both `import.meta.env.DEV` and the separately enabled isolated test harness. Normal development and production use the Central PMS client.
-
-### H1 parked-contract mismatch
-
-H1 owns the correct policy in `ApprovedIdentityRoleCatalog` and enforces role/scope combinations in the repository, including Executive / Management Global-only behavior. The current `IdentityRoleDefinition` returned by `/v1/management-platform/identity/roles` does not serialize `AllowedApplicationAudiences` or `AllowedAssignmentScopes`; therefore it cannot satisfy H3's fail-closed consumer contract yet. The create-user request also still requires `UserType` and `ActivationDeliveryMode`, and its admin-issued flow carries `AdminIssuedHandoffAcknowledged`. H3 does not derive user type or silently assert a handoff acknowledgement, so H1/H2 must remove, derive, or authoritatively supply those values before production user creation can integrate.
-
-### H2 parked-contract alignment
-
-H3 now uses H2's implemented routes and shapes: `/login`, restricted-session `/password/change`, and the single `/password-resets` route with optional `expiredTemporaryPassword`. H3 maps `oneTimeBootstrap.temporaryPassword`, `temporaryPasswordExpiresAt`, `totpSharedSecret`, and `totpProvisioningUri` from atomic provisioning. Password mutations accept only H2's `PASSWORD_CHANGED` or `PASSWORD_RESET_COMPLETED` outcomes, clear runtime session state, and return to login because credential-version changes invalidate prior sessions.
+- Production role options originate at `GET /v1/management-platform/identity/roles`. H3 validates and consumes `applicationAccess`, `scopePolicy.allowedScopeTypes`, `scopePolicy.assignmentRequired`, and optional `scopePolicy.defaultScope`. A non-null default outside the allowed set rejects the catalog.
+- Null or absent `defaultScope` never selects the first allowed scope. An administrator must select explicitly when an assignment is required.
+- Create User accepts only the closed response state: ACTIVE account, PASSWORD_CHANGE_REQUIRED invitation, null activation delivery mode, ONE_TIME_BOOTSTRAP classification, null one-time activation, and `oneTimeBootstrap.passwordChangeRequired=true`.
+- ACTIVE describes account state. Normal application access remains blocked until H2 completes the required password change.
+- H3 uses H2's `/login`, restricted-session `/password/change`, and `/password-resets` routes. Every password mutation includes TOTP. Credential mutation revokes prior session authority, and H3 clears runtime state and returns to login.
+- The synthetic catalog and provisioning adapter are reachable only when both `import.meta.env.DEV` and the isolated test harness are enabled. Production has no synthetic identity or authentication fallback.
+- Native Parking device ownership and native application authorization remain outside H3. APT terminal ownership, enrollment, and device-bound authorization also remain outside H3.

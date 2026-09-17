@@ -1,44 +1,70 @@
 {
-    "contract":  "management-platform-human-identity-administration-ui:v1",
-    "authority":  "Central PMS H1/H2",
-    "route":  "/management-platform/identity-administration",
-    "backendBaseRoute":  "/v1/management-platform/identity",
-    "roleCatalog":  {
-                        "productionSource":  "GET /v1/management-platform/identity/roles",
-                        "authority":  "H1 ApprovedIdentityRoleCatalog",
-                        "requiredForMutation":  [
-                                                    "applicationAccess",
-                                                    "scopePolicy.allowedScopeTypes",
-                                                    "scopePolicy.assignmentRequired"
-                                                ],
-                        "parkedBackendMismatch":  "IdentityRoleDefinition currently omits applicationAccess and scopePolicy. H3 rejects that response and disables role/scope mutation instead of using local fallback policy."
-                    },
-    "userType":  "legacy backend field only; H3 does not derive it from role or use it to filter roles",
-    "capabilities":  [
-                         "authoritative user list and detail",
-                         "role and scope selection from valid H1 metadata",
-                         "one-time H2 temporary-password and TOTP provisioning presentation",
-                         "profile, lifecycle, sessions, MFA status, access review, and audit presentation"
-                     ],
-    "globalScope":  {
-                        "source":  "H1 scopePolicy",
-                        "executiveManagement":  "H1 returns GLOBAL as the only allowed scope and enforces it",
-                        "nullScopeIsGlobal":  false
-                    },
-    "createUser":  {
-                       "route":  "POST /v1/management-platform/identity/users",
-                       "response":  "user + invitation + oneTimeBootstrap",
-                       "parkedRequestMismatch":  "Backend requires userType and activationDeliveryMode, and the ADMIN_ISSUED flow carries adminIssuedHandoffAcknowledged. H3 does not derive userType or silently assert handoff acknowledgement. Backend alignment is required before production creation can integrate."
-                   },
-    "browserAuthority":  {
-                             "authentication":  false,
-                             "roleAvailability":  false,
-                             "applicationEligibility":  false,
-                             "permissions":  false,
-                             "scopePolicy":  false,
-                             "roleScopeValidation":  false
-                         },
-    "failurePolicy":  "Missing, malformed, unavailable, or unknown H1 role metadata disables assignment and scope mutation; production never substitutes the development fixture catalog.",
-    "developmentFixture":  "DEV-only resolver plus explicit isolated test-harness enable flag",
-    "secretHandling":  "oneTimeBootstrap is mapped to in-memory presentation and cleared when the provisioning panel closes"
+  "contract": "management-platform-human-identity-administration-ui:v1",
+  "authority": "Central PMS H1/H2",
+  "reviewedAgainst": {
+    "integrationBranch": "integration/codex-h-identity-auth-v13",
+    "backendClosureCommit": "7667a9ce6bb5c3599bb883bd7eeb9904efb6f995"
+  },
+  "route": "/management-platform/identity-administration",
+  "backendBaseRoute": "/v1/management-platform/identity",
+  "roleCatalog": {
+    "productionSource": "GET /v1/management-platform/identity/roles",
+    "authority": "H1 ApprovedIdentityRoleCatalog",
+    "requiredForMutation": [
+      "applicationAccess",
+      "scopePolicy.allowedScopeTypes",
+      "scopePolicy.assignmentRequired"
+    ],
+    "optionalAuthoritativeMetadata": [
+      "scopePolicy.defaultScope"
+    ],
+    "defaultScopeBehavior": "Use the supplied value only when it is present and contained in allowedScopeTypes. Null or absent requires explicit selection when assignmentRequired is true.",
+    "failurePolicy": "Reject the complete catalog for malformed policy, an unknown role, or a defaultScope outside allowedScopeTypes."
+  },
+  "userType": "optional descriptive metadata only; H3 omits it on create and never derives role, access, or scope from it",
+  "capabilities": [
+    "authoritative user list and detail",
+    "role and scope selection from H1 metadata",
+    "one-time H2 temporary-password and TOTP provisioning presentation",
+    "profile, lifecycle, sessions, MFA status, access review, and audit presentation"
+  ],
+  "globalScope": {
+    "source": "H1 scopePolicy",
+    "executiveManagement": "H1 returns allowedScopeTypes GLOBAL and defaultScope GLOBAL and enforces the assignment",
+    "nullScopeIsGlobal": false
+  },
+  "createUser": {
+    "route": "POST /v1/management-platform/identity/users",
+    "requestUserType": "omitted by H3; optional backend descriptive metadata defaults to OTHER",
+    "response": {
+      "user.status": "ACTIVE",
+      "invitation.invitationState": "PASSWORD_CHANGE_REQUIRED",
+      "invitation.activationDeliveryMode": null,
+      "invitation.deliveryClassification": "ONE_TIME_BOOTSTRAP",
+      "oneTimeActivation": null,
+      "oneTimeBootstrap": [
+        "temporaryPassword",
+        "temporaryPasswordExpiresAt",
+        "totpSharedSecret",
+        "totpProvisioningUri",
+        "passwordChangeRequired=true"
+      ]
+    },
+    "browserInterpretation": "The active account is still blocked from normal application access until the required password change completes."
+  },
+  "browserAuthority": {
+    "authentication": false,
+    "roleAvailability": false,
+    "applicationEligibility": false,
+    "permissions": false,
+    "scopePolicy": false,
+    "roleScopeValidation": false
+  },
+  "failurePolicy": "Missing, malformed, unavailable, or unknown H1 role metadata disables assignment and scope mutation; invalid provisioning invariants suppress provisioning success; production never substitutes the development fixture catalog.",
+  "developmentFixture": "DEV-only resolver plus explicit isolated test-harness enable flag",
+  "secretHandling": "oneTimeBootstrap is mapped to in-memory presentation and cleared when the provisioning panel closes",
+  "remainingExternalBoundaries": [
+    "Native Parking device and native application ownership are outside H3.",
+    "APT terminal and device-bound authorization ownership are outside H3."
+  ]
 }

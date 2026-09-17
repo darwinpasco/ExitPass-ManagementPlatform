@@ -38,7 +38,7 @@ describe("IdentityAdministrationPage", () => {
     const client = mockClient();
     const serverRole = role("OPERATIONS_SUPERVISOR", "Operations Supervisor", "role-operations");
     serverRole.applicationAccess = ["APT"];
-    serverRole.scopePolicy = { allowedScopeTypes: ["SITE_GROUP"], assignmentRequired: true };
+    serverRole.scopePolicy = { allowedScopeTypes: ["SITE_GROUP"], assignmentRequired: true, defaultScope: "SITE_GROUP" };
     client.listRoles.mockResolvedValue([serverRole]);
     renderPage(client);
 
@@ -50,6 +50,35 @@ describe("IdentityAdministrationPage", () => {
     expect(within(form).getByLabelText("Access level")).toHaveValue("SITE_GROUP");
     expect(within(form).getByLabelText("Access level")).toBeDisabled();
   });
+  it("uses backend defaultScope even when it is not the first allowed scope", async () => {
+    const client = mockClient();
+    const serverRole = role("FINANCE_RECONCILIATION_ANALYST", "Finance / Reconciliation Analyst", "role-finance");
+    serverRole.scopePolicy = { allowedScopeTypes: ["SITE", "GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" };
+    client.listRoles.mockResolvedValue([serverRole]);
+    renderPage(client);
+
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-finance");
+
+    expect(within(form).getByLabelText("Access level")).toHaveValue("GLOBAL");
+  });
+
+  it("requires explicit scope selection when Finance defaultScope is null", async () => {
+    const client = mockClient();
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-finance");
+
+    const accessLevel = within(form).getByLabelText("Access level");
+    expect(accessLevel).toHaveValue("");
+    expect(accessLevel).toBeEnabled();
+    expect(within(form).queryByLabelText("Assigned Site")).not.toBeInTheDocument();
+    await userEvent.selectOptions(accessLevel, "SITE");
+    expect(within(form).getByLabelText("Assigned Site")).toBeInTheDocument();
+  });
+
   it("does not offer a backend role that is ineligible for direct user creation", async () => {
     const client = mockClient();
     client.listRoles.mockResolvedValue([{ ...role("SITE_OPERATOR", "Site Operator", "role-site-operator"), directAddUserEligible: false }]);
@@ -92,6 +121,9 @@ describe("IdentityAdministrationPage", () => {
     const provisioning = await screen.findByRole("region", { name: "Provision Alex Rivera" });
     expect(provisioning).toHaveTextContent("Temporary-Only-72h!");
     expect(provisioning).toHaveTextContent("JBSWY3DPEHPK3PXP");
+    expect(provisioning).toHaveTextContent("Account status: Active");
+    expect(provisioning).toHaveTextContent("Normal application access remains blocked until the required password change is complete.");
+    expect(provisioning).not.toHaveTextContent(/business functions.*ready|ready for use/i);
     expect(localStorage).toHaveLength(0);
     await userEvent.click(within(provisioning).getByRole("button", { name: "I have completed provisioning" }));
     expect(screen.queryByText("Temporary-Only-72h!")).not.toBeInTheDocument();
@@ -453,7 +485,12 @@ function mockClient() {
 function role(code: string, name: string, reference: string, allowedUserTypes: string[] = [], privileged = false): IdentityRoleDefinition {
   const siteScoped = ["OPERATIONS_SUPERVISOR", "SITE_OPERATOR", "PARKING_ATTENDANT", "APT_CASHIER_OPERATOR"].includes(code);
   const applicationAccess: IdentityRoleDefinition["applicationAccess"] = code === "OPERATIONS_SUPERVISOR" ? ["OPERATOR_CONSOLE", "MANAGEMENT_PLATFORM"] : code === "SITE_OPERATOR" ? ["OPERATOR_CONSOLE"] : code === "PARKING_ATTENDANT" ? ["NATIVE_PARKING_APP"] : code === "APT_CASHIER_OPERATOR" ? ["APT"] : ["MANAGEMENT_PLATFORM"];
-  return { roleReference: reference, code, name, description: "Governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: privileged, requiresElevatedApproval: privileged, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes, applicationAccess, scopePolicy: code === "EXECUTIVE_MANAGEMENT" ? { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true } : siteScoped ? { allowedScopeTypes: ["SITE"], assignmentRequired: true } : { allowedScopeTypes: [], assignmentRequired: false } } as const;
+  const scopePolicy: IdentityRoleDefinition["scopePolicy"] = ["SYSTEM_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(code)
+    ? { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" }
+    : siteScoped
+      ? { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" }
+      : { allowedScopeTypes: ["SITE", "SITE_GROUP", "GLOBAL"], assignmentRequired: true, defaultScope: code === "FINANCE_RECONCILIATION_ANALYST" ? null : "GLOBAL" };
+  return { roleReference: reference, code, name, description: "Governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: privileged, requiresElevatedApproval: privileged, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes, applicationAccess, scopePolicy };
 }
 function provisioningMaterial() { return { temporaryPassword: "Temporary-Only-72h!", temporaryPasswordExpiresAt: "2030-01-04T00:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: "otpauth://totp/ExitPass:new.operator", totpQrImageDataUri: null, displayOnce: true as const, passwordChangeRequired: true as const }; }
 
