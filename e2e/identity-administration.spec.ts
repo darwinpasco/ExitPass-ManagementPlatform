@@ -36,6 +36,10 @@ test.describe("governed User Administration", () => {
     await expect(form.getByLabel("Initial role").locator("option")).toHaveText([
       "Select a role", "System Administrator", "Operations Supervisor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
     ]);
+    for (const label of ["System Administrator", "Operations Supervisor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"]) {
+      await form.getByLabel("Initial role").selectOption({ label });
+      await expect(form.getByLabel("Initial role")).toHaveValue(/.+/);
+    }
     await form.getByLabel("Initial role").selectOption({ label: "Finance / Reconciliation Analyst" });
     await expect(form.getByLabel("Access level")).toHaveValue("");
     await expect(form.getByLabel("Access level")).toBeEnabled();

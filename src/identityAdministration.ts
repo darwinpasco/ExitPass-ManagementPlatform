@@ -253,7 +253,7 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
     changeLifecycle: async (_reference, action) => ({ ...user, status: action.toUpperCase(), rowVersion: user.rowVersion + 1 }),
     listRoles: name === "partial-failure" ? sectionUnavailable : async (filters = {}) => syntheticDirectRoles().filter((role) =>
       (!filters.userType || role.allowedUserTypes.includes(filters.userType)) &&
-      (!filters.directAddUserOnly || (role.directAddUserEligible && !role.isPrivileged && !role.requiresElevatedApproval))), listPermissions: name === "partial-failure" ? sectionUnavailable : async () => [syntheticPermission()],
+      (!filters.directAddUserOnly || role.directAddUserEligible)), listPermissions: name === "partial-failure" ? sectionUnavailable : async () => [syntheticPermission()],
     getDelegableScopes: name === "unavailable" ? fail : async () => pitxDelegableScopes(),
     assignRole: async () => syntheticAssignment(), revokeRole: async () => ({ ...syntheticAssignment(), status: "REVOKED" }),
     grantScope: async (_user, assignment, body) => ({ ...syntheticGrant(), assignmentReference: assignment, scopeType: String(body.scopeType), siteReference: body.siteReference ? String(body.siteReference) : null, siteGroupReference: body.siteGroupReference ? String(body.siteGroupReference) : null }),
@@ -393,7 +393,7 @@ function syntheticUser(): IdentityUserSummary { return { userReference: "8100000
 function syntheticUserPage(offset: number, count: number): IdentityUserSummary[] { return Array.from({ length: count }, (_, index) => ({ ...syntheticUser(), userReference: `synthetic-user-${offset + index + 1}`, username: `synthetic.user.${offset + index + 1}`, displayName: `Synthetic User ${offset + index + 1}` })); }
 function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: "81000000-0000-4000-8000-000000000016", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
 function syntheticGrant(): IdentityScopeGrant { return { grantReference: "81000000-0000-4000-8000-000000000003", assignmentReference: syntheticAssignment().assignmentReference, scopeType: "SITE", siteReference: "71000000-0000-0000-0000-000000000101", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 2 }; }
-function syntheticRole(): IdentityRoleDefinition { return { ...syntheticOrdinaryRole(), roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_ADMINISTRATOR", name: "System Administrator", description: "Governed Management Platform identity administration", type: "SYSTEM", isPrivileged: false, requiresElevatedApproval: false, allowedUserTypes: ["INTERNAL_ADMIN"], applicationAccess: ["MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" } }; }
+function syntheticRole(): IdentityRoleDefinition { return { ...syntheticOrdinaryRole(), roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_ADMINISTRATOR", name: "System Administrator", description: "Governed Management Platform identity administration", type: "SYSTEM", isPrivileged: true, requiresElevatedApproval: true, allowedUserTypes: ["INTERNAL_ADMIN"], applicationAccess: ["MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" } }; }
 function syntheticOrdinaryRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000014", code: "SITE_OPERATOR", name: "Site Operator", description: "Site operations access", type: "OPERATIONS", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: [], applicationAccess: ["OPERATOR_CONSOLE"], scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" } }; }
 function syntheticDirectRoles(): IdentityRoleDefinition[] {
   const base = syntheticOrdinaryRole();
@@ -411,6 +411,8 @@ function syntheticDirectRoles(): IdentityRoleDefinition[] {
       code: presentation.code,
       name: presentation.label,
       description: presentation.summary,
+      isPrivileged: ["SYSTEM_ADMINISTRATOR", "OPERATIONS_SUPERVISOR", "COMPLIANCE_POLICY_ADMINISTRATOR"].includes(presentation.code),
+      requiresElevatedApproval: ["SYSTEM_ADMINISTRATOR", "OPERATIONS_SUPERVISOR", "COMPLIANCE_POLICY_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(presentation.code),
       applicationAccess,
       scopePolicy: {
         allowedScopeTypes,
