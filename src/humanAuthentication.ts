@@ -9,6 +9,9 @@ export const humanPasswordChangeRoute = `${humanAuthenticationBaseRoute}/passwor
 export const humanPasswordResetRoute = `${humanAuthenticationBaseRoute}/password-resets`;
 export const managementPlatformAudience = "MANAGEMENT_PLATFORM";
 export const csrfHeaderName = "X-CSRF-Token";
+export const humanPasswordMinimumLength = 8;
+export const humanPasswordMinimumMessage = "Password must be at least 8 characters.";
+export const humanPasswordPolicyMessage = "The password does not meet the password policy.";
 
 const forbiddenBrowserHeaderNames = new Set([
   "authorization",
@@ -82,6 +85,7 @@ export type HumanAuthenticationErrorKind =
   | "csrf"
   | "unavailable"
   | "malformed-response"
+  | "password-policy"
   | "unknown";
 
 export class HumanAuthenticationError extends Error {
@@ -167,7 +171,10 @@ export function createHumanAuthenticationClient(options: { fetchImpl?: typeof fe
       if (response.status === 401) {
         csrfToken = undefined;
       }
-      throw mapAuthenticationError(response.status, parsed);
+      const submittedNewPasswordLength = isRecord(body) && typeof body.newPassword === "string"
+        ? body.newPassword.length
+        : undefined;
+      throw mapAuthenticationError(response.status, parsed, submittedNewPasswordLength);
     }
     return parsed;
   }
@@ -300,8 +307,14 @@ function isHumanSession(value: unknown): value is HumanSessionDto {
     && (value.deviceServiceIdentityReference === null || typeof value.deviceServiceIdentityReference === "string");
 }
 
-function mapAuthenticationError(status: number, response: HumanAuthenticationResponse): HumanAuthenticationError {
+function mapAuthenticationError(status: number, response: HumanAuthenticationResponse, submittedNewPasswordLength?: number): HumanAuthenticationError {
   const code = response.errorCode ?? response.outcome ?? `HTTP_${status}`;
+  if (code === "PASSWORD_POLICY_FAILED") {
+    const message = submittedNewPasswordLength !== undefined && submittedNewPasswordLength < humanPasswordMinimumLength
+      ? humanPasswordMinimumMessage
+      : humanPasswordPolicyMessage;
+    return new HumanAuthenticationError("password-policy", code, message, status);
+  }
   if (code === "TOTP_REQUIRED") {
     return new HumanAuthenticationError("mfa-required", code, "Enter the verification code from your authenticator app.", status);
   }

@@ -61,6 +61,32 @@ describe("I-020 human authentication client", () => {
     expect(JSON.parse(String(fetchImpl.mock.calls[2][1]?.body))).toEqual({ username: "active.user", totpCode: "654321", newPassword: "active-password" });
     expect(JSON.parse(String(fetchImpl.mock.calls[3][1]?.body))).toEqual({ username: "expired.user", expiredTemporaryPassword: "expired-temporary", totpCode: "987654", newPassword: "expired-password" });
   });
+  it.each([
+    ["first change", "changeFirstPassword"],
+    ["voluntary change", "changeFirstPassword"],
+    ["active reset", "resetPassword"],
+    ["expired reset", "resetExpiredTemporaryPassword"]
+  ] as const)("maps password policy rejection for %s using submitted length", async (_name, method) => {
+    const fetchImpl = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(jsonResponse(successResponse(), 200, { [csrfHeaderName]: "csrf-runtime" }))
+      .mockImplementation(async () => jsonResponse(errorResponse("PASSWORD_POLICY_FAILED"), 400));
+    const client = createHumanAuthenticationClient({ fetchImpl });
+    await client.getCurrentSession();
+    const submit = (newPassword: string) => method === "changeFirstPassword"
+      ? client.changeFirstPassword({ currentPassword: "temporary-password", totpCode: "123456", newPassword })
+      : method === "resetPassword"
+        ? client.resetPassword({ username: "active.user", totpCode: "123456", newPassword })
+        : client.resetExpiredTemporaryPassword({ username: "expired.user", expiredTemporaryPassword: "expired-temporary", totpCode: "123456", newPassword });
+
+    await expect(submit("1234567")).rejects.toMatchObject({
+      code: "PASSWORD_POLICY_FAILED",
+      message: "Password must be at least 8 characters."
+    });
+    await expect(submit("12345678")).rejects.toMatchObject({
+      code: "PASSWORD_POLICY_FAILED",
+      message: "The password does not meet the password policy."
+    });
+  });
   it("keeps the antiforgery token in runtime memory and sends it only on state-changing session requests", async () => {
     const fetchImpl = vi.fn<typeof fetch>()
       .mockResolvedValueOnce(jsonResponse(successResponse(), 200, { [csrfHeaderName]: "csrf-runtime" }))
