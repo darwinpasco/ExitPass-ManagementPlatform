@@ -9,6 +9,7 @@
     "continueSession": "POST /v1/human-authentication/session/continue",
     "logout": "POST /v1/human-authentication/logout",
     "firstPasswordChange": "POST /v1/human-authentication/password/change",
+    "voluntaryPasswordChange": "POST /v1/human-authentication/password/change",
     "forgotPassword": "POST /v1/human-authentication/password-resets",
     "expiredTemporaryPassword": "POST /v1/human-authentication/password-resets"
   },
@@ -24,6 +25,11 @@
       "newPassword",
       "totpCode"
     ],
+    "voluntaryPasswordChange": [
+      "currentPassword",
+      "newPassword",
+      "totpCode"
+    ],
     "forgotPassword": [
       "username",
       "totpCode",
@@ -35,6 +41,18 @@
       "totpCode",
       "newPassword"
     ]
+  },
+  "passwordPolicyUi": {
+    "newPasswordMinimumLength": 8,
+    "appliesTo": [
+      "firstPasswordChange",
+      "voluntaryPasswordChange",
+      "forgotPassword",
+      "expiredTemporaryPassword"
+    ],
+    "backendErrorCode": "PASSWORD_POLICY_FAILED",
+    "shortPasswordMessage": "Password must be at least 8 characters.",
+    "otherPolicyFailureMessage": "The password does not meet the password policy."
   },
   "sessionAuthority": {
     "cookie": "server-issued secure HttpOnly cookie",

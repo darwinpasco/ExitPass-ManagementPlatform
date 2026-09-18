@@ -66,6 +66,61 @@ describe("Management Platform I-020 session shell", () => {
     await userEvent.click(screen.getByRole("button", { name: "Change password" }));
     expect(expiredClient.resetExpiredTemporaryPassword).toHaveBeenCalledWith({ username: "expired.user", expiredTemporaryPassword: "expired-temporary", totpCode: "987654", newPassword: "expired-new-password" });
   });
+
+  it.each(["first", "change", "forgot", "expired"] as const)("enforces the eight-character minimum in %s password form while keeping TOTP required", async (mode) => {
+    const client = mockClient();
+    if (mode === "first") {
+      client.getCurrentSession.mockResolvedValueOnce(successResponse(session({ passwordChangeRequired: true })));
+    } else if (mode === "change") {
+      client.getCurrentSession.mockResolvedValueOnce(successResponse());
+    } else {
+      client.getCurrentSession.mockRejectedValueOnce(sessionEnded());
+    }
+    const completed = { ...successResponse(), outcome: "PASSWORD_CHANGED", authenticated: false, session: null };
+    client.changeFirstPassword.mockResolvedValue(completed);
+    client.resetPassword.mockResolvedValue({ ...completed, outcome: "PASSWORD_RESET_COMPLETED" });
+    client.resetExpiredTemporaryPassword.mockResolvedValue({ ...completed, outcome: "PASSWORD_RESET_COMPLETED" });
+    render(<HumanAuthenticationShell client={client} />);
+
+    if (mode === "change") {
+      await userEvent.click(await screen.findByRole("button", { name: "Change password" }));
+    } else if (mode === "forgot" || mode === "expired") {
+      await userEvent.click(await screen.findByRole("button", { name: "Forgot password" }));
+      if (mode === "expired") await userEvent.click(screen.getByRole("button", { name: "My temporary password expired" }));
+    } else {
+      await screen.findByRole("heading", { name: "Change temporary password" });
+    }
+
+    if (mode === "first" || mode === "change") {
+      await userEvent.type(screen.getByLabelText(mode === "first" ? "Temporary or current password" : "Current password"), "current-password");
+    } else {
+      await userEvent.type(screen.getByLabelText("Username"), "recovery.user");
+      if (mode === "expired") await userEvent.type(screen.getByLabelText("Expired temporary password"), "expired-temporary");
+    }
+    const totp = screen.getByLabelText("Authenticator code");
+    expect(totp).toBeRequired();
+    await userEvent.type(totp, "123456");
+    const newPassword = screen.getByLabelText("New password") as HTMLInputElement;
+    expect(newPassword.minLength).toBe(8);
+    await userEvent.type(newPassword, "1234567");
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Password must be at least 8 characters.");
+    expect(client.changeFirstPassword).not.toHaveBeenCalled();
+    expect(client.resetPassword).not.toHaveBeenCalled();
+    expect(client.resetExpiredTemporaryPassword).not.toHaveBeenCalled();
+
+    await userEvent.clear(newPassword);
+    await userEvent.type(newPassword, "12345678");
+    await userEvent.click(screen.getByRole("button", { name: "Change password" }));
+    expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
+    if (mode === "first" || mode === "change") {
+      expect(client.changeFirstPassword).toHaveBeenCalledWith({ currentPassword: "current-password", totpCode: "123456", newPassword: "12345678" });
+    } else if (mode === "expired") {
+      expect(client.resetExpiredTemporaryPassword).toHaveBeenCalledWith({ username: "recovery.user", expiredTemporaryPassword: "expired-temporary", totpCode: "123456", newPassword: "12345678" });
+    } else {
+      expect(client.resetPassword).toHaveBeenCalledWith({ username: "recovery.user", totpCode: "123456", newPassword: "12345678" });
+    }
+  });
   it("rediscoveries an existing server session without browser authority", async () => {
     const client = mockClient();
     client.getCurrentSession.mockResolvedValue(successResponse());

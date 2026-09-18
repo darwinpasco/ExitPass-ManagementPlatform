@@ -3,6 +3,8 @@ import { App } from "./App";
 import {
   HumanAuthenticationError,
   createHumanAuthenticationClient,
+  humanPasswordMinimumLength,
+  humanPasswordMinimumMessage,
   isRestrictedSession,
   toManagementPlatformAuthState,
   type HumanAuthenticationClient,
@@ -14,7 +16,7 @@ import type { ManagementPlatformAuthState } from "./types";
 type SessionView =
   | { status: "loading" }
   | { status: "login"; message?: string; retryable?: boolean }
-  | { status: "password"; mode: "first" | "forgot" | "expired"; message?: string; session?: HumanSessionDto }
+  | { status: "password"; mode: "first" | "change" | "forgot" | "expired"; message?: string; session?: HumanSessionDto }
   | { status: "restricted"; session: HumanSessionDto; message: string }
   | { status: "authenticated"; authState: ManagementPlatformAuthState }
   | { status: "unavailable"; message: string };
@@ -141,10 +143,14 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
 
   async function submitPasswordMutation(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (view.status !== "password") return;
+    if (newPassword.length < humanPasswordMinimumLength) {
+      setView({ ...view, message: humanPasswordMinimumMessage });
+      return;
+    }
     const mode = view.mode; setSubmitting(true); setView({ ...view, message: undefined });
     try {
       const normalizedUsername = username.trim();
-      const response = mode === "first"
+      const response = mode === "first" || mode === "change"
         ? await client.changeFirstPassword({ currentPassword: password, totpCode: totpCode.trim(), newPassword })
         : mode === "expired"
           ? await client.resetExpiredTemporaryPassword({ username: normalizedUsername, expiredTemporaryPassword, totpCode: totpCode.trim(), newPassword })
@@ -227,20 +233,33 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
 
   if (view.status === "password") {
     const first = view.mode === "first";
+    const changing = view.mode === "change";
     const expired = view.mode === "expired";
-    const title = first ? "Change temporary password" : expired ? "Reset an expired temporary password" : "Reset password";
+    const title = first ? "Change temporary password" : changing ? "Change password" : expired ? "Reset an expired temporary password" : "Reset password";
     return (
       <AuthenticationFrame>
         <form className="loginForm" aria-labelledby="password-title" onSubmit={submitPasswordMutation}>
-          <div><p className="eyebrow">Password security</p><h2 id="password-title">{title}</h2><p>{first ? "Change your temporary or current password before accessing permitted functions." : expired ? "Use the expired temporary password and your authenticator code to set a new password." : "Use your authenticator code to set a new password for an active account."}</p></div>
+          <div><p className="eyebrow">Password security</p><h2 id="password-title">{title}</h2><p>{first ? "Change your temporary or current password before accessing permitted functions." : changing ? "Enter your current password and authenticator code to set a new password." : expired ? "Use the expired temporary password and your authenticator code to set a new password." : "Use your authenticator code to set a new password for an active account."}</p></div>
           {view.message && <div className="authInlineError" role="alert">{view.message}</div>}
-          <label htmlFor="password-username">Username</label><input id="password-username" autoComplete="username" required readOnly={first} value={username} onChange={(event) => setUsername(event.target.value)} />
-          {first && <><label htmlFor="current-password">Temporary or current password</label><input id="current-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></>}
+          <label htmlFor="password-username">Username</label><input id="password-username" autoComplete="username" required readOnly={first || changing} value={username} onChange={(event) => setUsername(event.target.value)} />
+          {(first || changing) && <><label htmlFor="current-password">{first ? "Temporary or current password" : "Current password"}</label><input id="current-password" type="password" autoComplete="current-password" required value={password} onChange={(event) => setPassword(event.target.value)} /></>}
           {expired && <><label htmlFor="expired-temporary-password">Expired temporary password</label><input id="expired-temporary-password" type="password" autoComplete="current-password" required value={expiredTemporaryPassword} onChange={(event) => setExpiredTemporaryPassword(event.target.value)} /></>}
           <label htmlFor="password-totp">Authenticator code</label><input ref={totpRef} id="password-totp" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={8} required value={totpCode} onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, ""))} />
-          <label htmlFor="new-password">New password</label><input id="new-password" type="password" autoComplete="new-password" required value={newPassword} onChange={(event) => setNewPassword(event.target.value)} />
-          <div className="authActions"><button type="submit" disabled={submitting}>{submitting ? "Changing password" : "Change password"}</button>{!first && <button className="secondaryButton" type="button" disabled={submitting} onClick={() => enterLogin()}>Back to sign in</button>}</div>
-          {!first && <button className="linkButton" type="button" disabled={submitting} onClick={() => { setExpiredTemporaryPassword(""); setNewPassword(""); setTotpCode(""); setView({ status: "password", mode: expired ? "forgot" : "expired" }); }}>{expired ? "Reset an active account instead" : "My temporary password expired"}</button>}
+          <label htmlFor="new-password">New password</label><input id="new-password" type="password" autoComplete="new-password" minLength={humanPasswordMinimumLength} required value={newPassword} onChange={(event) => {
+            const value = event.target.value;
+            setNewPassword(value);
+            if (value.length >= humanPasswordMinimumLength && view.message === humanPasswordMinimumMessage) setView({ ...view, message: undefined });
+          }} onInvalid={() => {
+            if (newPassword.length < humanPasswordMinimumLength) setView({ ...view, message: humanPasswordMinimumMessage });
+          }} />
+          <div className="authActions"><button type="submit" disabled={submitting}>{submitting ? "Changing password" : "Change password"}</button>{!first && <button className="secondaryButton" type="button" disabled={submitting} onClick={() => {
+            if (changing) {
+              clearCredentials();
+              setView({ status: "loading" });
+              void readCurrentSession().catch(handleSessionReadError);
+            } else enterLogin();
+          }}>{changing ? "Back to workspace" : "Back to sign in"}</button>}</div>
+          {!first && !changing && <button className="linkButton" type="button" disabled={submitting} onClick={() => { setExpiredTemporaryPassword(""); setNewPassword(""); setTotpCode(""); setView({ status: "password", mode: expired ? "forgot" : "expired" }); }}>{expired ? "Reset an active account instead" : "My temporary password expired"}</button>}
         </form>
       </AuthenticationFrame>
     );
@@ -278,6 +297,11 @@ export function HumanAuthenticationShell({ client: injectedClient }: HumanAuthen
         onAuthenticatedActivity={authenticatedActivity}
         authorizeUnsafeRequest={client.authorizeUnsafeRequest}
         onLogout={() => void logout()}
+        onChangePassword={() => {
+          clearCredentials();
+          setUsername(view.authState.principal?.username ?? "");
+          setView({ status: "password", mode: "change" });
+        }}
         logoutPending={logoutPending}
       />
     </>

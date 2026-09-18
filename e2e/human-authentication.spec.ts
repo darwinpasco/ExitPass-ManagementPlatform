@@ -4,6 +4,56 @@ const appRoute = "/management-platform/";
 const csrfHeader = "x-csrf-token";
 
 test.describe("Management Platform I-020 human authentication consumer", () => {
+  for (const mode of ["first", "change", "forgot", "expired"] as const) {
+    test(`${mode} password form rejects seven characters and submits eight with TOTP`, async ({ page }) => {
+      const fixture = await installAuthenticationFixture(page, mode === "first"
+        ? { initialSession: session(false, { passwordChangeRequired: true }) }
+        : undefined);
+      await page.goto(appRoute);
+      await openPasswordForm(page, mode);
+      await fillPasswordMutationCredentials(page, mode);
+      const newPassword = page.getByLabel("New password");
+      await expect(newPassword).toHaveAttribute("minlength", "8");
+      await expect(page.getByLabel("Authenticator code")).toHaveAttribute("required", "");
+
+      await newPassword.fill("1234567");
+      await page.getByRole("button", { name: "Change password" }).click();
+      await expect(page.getByRole("alert")).toHaveText("Password must be at least 8 characters.");
+      expect(fixture.passwordMutations).toHaveLength(0);
+
+      await newPassword.fill("12345678");
+      await page.getByRole("button", { name: "Change password" }).click();
+      await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+      expect(fixture.passwordMutations).toEqual([{
+        route: mode === "first" || mode === "change" ? "/v1/human-authentication/password/change" : "/v1/human-authentication/password-resets",
+        newPasswordLength: 8,
+        hasTotp: true,
+        hasCurrentPassword: mode === "first" || mode === "change",
+        hasExpiredTemporaryPassword: mode === "expired",
+        hasCsrf: mode === "first" || mode === "change"
+      }]);
+      await page.reload();
+      await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+      await assertStorageHasNoAuthenticationAuthority(page);
+    });
+
+    test(`${mode} password form shows policy feedback for another backend rejection`, async ({ page }) => {
+      const fixture = await installAuthenticationFixture(page, mode === "first"
+        ? { initialSession: session(false, { passwordChangeRequired: true }) }
+        : undefined);
+      fixture.rejectPasswordPolicy = true;
+      await page.goto(appRoute);
+      await openPasswordForm(page, mode);
+      await fillPasswordMutationCredentials(page, mode);
+      await page.getByLabel("New password").fill("12345678");
+      await page.getByRole("button", { name: "Change password" }).click();
+
+      await expect(page.getByRole("alert")).toHaveText("The password does not meet the password policy.");
+      await expect(page.getByRole("alert")).not.toContainText("The authentication request failed safely.");
+      expect(fixture.passwordMutations).toHaveLength(1);
+    });
+  }
+
   test("Management Platform login requires TOTP, rediscovers the session on refresh, and logs out through CSRF", async ({ page }) => {
     const fixture = await installAuthenticationFixture(page);
     const requests: Request[] = [];
@@ -170,11 +220,13 @@ interface AuthenticationFixture {
   protectedStatus: 401 | 403;
   dashboardCatalogStatus: 200 | 401 | 403;
   sessionMode: "normal" | "unavailable" | "malformed" | "expired" | "revoked";
+  passwordMutations: Array<{ route: string; newPasswordLength: number; hasTotp: boolean; hasCurrentPassword: boolean; hasExpiredTemporaryPassword: boolean; hasCsrf: boolean }>;
+  rejectPasswordPolicy: boolean;
 }
 
-async function installAuthenticationFixture(page: Page): Promise<AuthenticationFixture> {
-  const fixture: AuthenticationFixture = { sessionReads: 0, protectedStatus: 403, dashboardCatalogStatus: 200, sessionMode: "normal" };
-  let currentSession: Record<string, unknown> | undefined;
+async function installAuthenticationFixture(page: Page, options: { initialSession?: Record<string, unknown> } = {}): Promise<AuthenticationFixture> {
+  const fixture: AuthenticationFixture = { sessionReads: 0, protectedStatus: 403, dashboardCatalogStatus: 200, sessionMode: "normal", passwordMutations: [], rejectPasswordPolicy: false };
+  let currentSession: Record<string, unknown> | undefined = options.initialSession;
 
   await page.route("**/v1/management-platform/dashboard/catalog", async (route) => {
     if (fixture.dashboardCatalogStatus !== 200) {
@@ -253,6 +305,29 @@ async function installAuthenticationFixture(page: Page): Promise<AuthenticationF
       return;
     }
 
+    if ((path.endsWith("/password/change") || path.endsWith("/password-resets")) && request.method() === "POST") {
+      const body = request.postDataJSON() as { newPassword?: string; currentPassword?: string; expiredTemporaryPassword?: string; totpCode?: string };
+      fixture.passwordMutations.push({
+        route: path,
+        newPasswordLength: body.newPassword?.length ?? 0,
+        hasTotp: Boolean(body.totpCode),
+        hasCurrentPassword: Boolean(body.currentPassword),
+        hasExpiredTemporaryPassword: Boolean(body.expiredTemporaryPassword),
+        hasCsrf: request.headers()[csrfHeader] === "csrf-browser-runtime"
+      });
+      if (!body.totpCode) {
+        await safeJson(route, 401, authError("TOTP_REQUIRED"));
+        return;
+      }
+      if (fixture.rejectPasswordPolicy) {
+        await safeJson(route, 400, authError("PASSWORD_POLICY_FAILED"));
+        return;
+      }
+      currentSession = undefined;
+      await safeJson(route, 200, { ...authError(""), outcome: path.endsWith("/password/change") ? "PASSWORD_CHANGED" : "PASSWORD_RESET_COMPLETED", errorCode: null });
+      return;
+    }
+
     await safeJson(route, 404, authError("NOT_FOUND"));
   });
   return fixture;
@@ -285,7 +360,7 @@ function dashboardOverview(scopeType: string, scopeReference: string) {
   };
 }
 
-function session(privileged: boolean): Record<string, unknown> {
+function session(privileged: boolean, overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     sessionReference: "10000000-0000-0000-0000-000000000001",
     userReference: "10000000-0000-0000-0000-000000000002",
@@ -306,7 +381,8 @@ function session(privileged: boolean): Record<string, unknown> {
     siteGroupReferences: ["71000000-0000-0000-0000-000000000900"],
     hasGlobalScope: false,
     deviceServiceIdentityReference: null,
-    correlationId: "10000000-0000-0000-0000-000000000003"
+    correlationId: "10000000-0000-0000-0000-000000000003",
+    ...overrides
   };
 }
 
@@ -327,6 +403,27 @@ async function signIn(page: Page, username: string, password: string) {
   await page.getByLabel("Password").fill(password);
   await page.getByLabel("Authenticator code").fill("123456");
   await page.getByRole("button", { name: "Sign in" }).click();
+}
+
+async function openPasswordForm(page: Page, mode: "first" | "change" | "forgot" | "expired") {
+  if (mode === "change") {
+    await signIn(page, "ordinary.user", "ordinary-password");
+    await page.getByRole("button", { name: "Change password" }).click();
+  } else if (mode === "forgot" || mode === "expired") {
+    await page.getByRole("button", { name: "Forgot password" }).click();
+    if (mode === "expired") await page.getByRole("button", { name: "My temporary password expired" }).click();
+  }
+  await expect(page.getByLabel("New password")).toBeVisible();
+}
+
+async function fillPasswordMutationCredentials(page: Page, mode: "first" | "change" | "forgot" | "expired") {
+  if (mode === "first" || mode === "change") {
+    await page.getByLabel(mode === "first" ? "Temporary or current password" : "Current password").fill("current-password");
+  } else {
+    await page.getByLabel("Username").fill("recovery.user");
+    if (mode === "expired") await page.getByLabel("Expired temporary password", { exact: true }).fill("expired-temporary");
+  }
+  await page.getByLabel("Authenticator code").fill("123456");
 }
 
 function assertNoPrivilegedIdentityHeaders(requests: Request[]) {

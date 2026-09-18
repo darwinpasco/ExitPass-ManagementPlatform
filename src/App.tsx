@@ -54,6 +54,7 @@ interface AppProps {
   onAuthenticatedActivity?: () => void;
   authorizeUnsafeRequest?: (headers: Headers) => void;
   onLogout?: () => void;
+  onChangePassword?: () => void;
   logoutPending?: boolean;
   developmentScenariosEnabled?: boolean;
   profileScenariosEnabled?: boolean;
@@ -83,6 +84,7 @@ export function App({
   onAuthenticatedActivity,
   authorizeUnsafeRequest,
   onLogout,
+  onChangePassword,
   logoutPending = false,
   developmentScenariosEnabled = false,
   profileScenariosEnabled = false,
@@ -250,6 +252,7 @@ export function App({
     salesInvoiceFormState,
     environmentName: resolvedConfig.environmentName,
     onLogout,
+    onChangePassword,
     logoutPending,
     scenarioIndicator
   };
@@ -409,7 +412,7 @@ export function App({
   );
 }
 
-function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewDashboard, canViewPaymentReconciliation, canViewFiscalExceptions, canViewStatutoryBenefitReview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, salesInvoiceFormState, environmentName, onLogout, logoutPending, scenarioIndicator, children }: {
+function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewDashboard, canViewPaymentReconciliation, canViewFiscalExceptions, canViewStatutoryBenefitReview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, salesInvoiceFormState, environmentName, onLogout, onChangePassword, logoutPending, scenarioIndicator, children }: {
   principalName?: string;
   username?: string;
   sessionExpiresAt?: string;
@@ -430,6 +433,7 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
   salesInvoiceFormState: { hasUnsavedChanges: boolean; mutationPending: boolean };
   environmentName: string;
   onLogout?: () => void;
+  onChangePassword?: () => void;
   logoutPending: boolean;
   scenarioIndicator?: React.ReactNode;
   children: React.ReactNode;
@@ -449,6 +453,7 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
           <small>{scopeSummary(hasGlobalScope, siteSelection.sites.length, siteGroupScopeCount)}</small>
           {sessionExpiresAt && <small>Session expires {formatSessionExpiry(sessionExpiresAt)}</small>}
           <small>{environmentName}</small>
+          {onChangePassword && <button className="secondaryButton identityLogout" type="button" disabled={logoutPending} onClick={onChangePassword}>Change password</button>}
           {onLogout && <button className="secondaryButton identityLogout" type="button" disabled={logoutPending} onClick={onLogout}>{logoutPending ? "Signing out" : "Sign out"}</button>}
         </div>
       </header>
