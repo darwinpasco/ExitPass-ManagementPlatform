@@ -32,6 +32,20 @@ describe("IdentityAdministrationPage", () => {
     ]);
     await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-system");
     expect(within(form).getByRole("note", { name: "System Administrator access" })).toHaveTextContent("does not grant operational, cashier, statutory-discount approval, or business-workflow authority");
+    expect(within(form).getByLabelText("Access level")).toHaveValue("GLOBAL");
+    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-compliance");
+    expect(within(form).getByLabelText("Access level")).toHaveValue("GLOBAL");
+  });
+
+  it("offers backend direct-add roles even when privileged or marked for elevated approval", async () => {
+    const client = mockClient();
+    client.listRoles.mockResolvedValue([role("SYSTEM_ADMINISTRATOR", "System Administrator", "role-system", [], true)]);
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    expect(within(form).getByRole("option", { name: "System Administrator" })).toBeInTheDocument();
+    await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-system");
+    expect(within(form).getByLabelText("Access level")).toHaveValue("GLOBAL");
   });
 
   it("renders application and scope choices from authoritative backend role metadata", async () => {
