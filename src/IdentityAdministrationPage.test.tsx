@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { IdentityAdministrationPage } from "./IdentityAdministrationPage";
-import { identityAdministrationPermissions, type IdentityAdministrationClient, type IdentityUserDetail, type IdentityUserSummary, type IdentityRoleDefinition } from "./identityAdministration";
+import { identityAdministrationPermissions, type IdentityAdministrationClient, type IdentityUserDetail, type IdentityUserSummary, type IdentityRoleDefinition, type IdentityMfaStatus } from "./identityAdministration";
 
 describe("IdentityAdministrationPage", () => {
   it("renders a populated governed user list and coherent detail without raw identifiers", async () => {
@@ -135,6 +135,7 @@ describe("IdentityAdministrationPage", () => {
     const provisioning = await screen.findByRole("region", { name: "Provision Alex Rivera" });
     expect(provisioning).toHaveTextContent("Temporary-Only-72h!");
     expect(provisioning).toHaveTextContent("JBSWY3DPEHPK3PXP");
+    expect(await within(provisioning).findByAltText("Authenticator QR code for alex.rivera")).toHaveAttribute("src", expect.stringMatching(/^data:image\/svg\+xml/));
     expect(provisioning).toHaveTextContent("Account status: Active");
     expect(provisioning).toHaveTextContent("Normal application access remains blocked until the required password change is complete.");
     expect(provisioning).not.toHaveTextContent(/business functions.*ready|ready for use/i);
@@ -391,6 +392,63 @@ describe("IdentityAdministrationPage", () => {
     confirm.mockRestore();
   });
 
+  it("resets an active authenticator and destroys one-time provisioning material when closed", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const client = mockClient();
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Security" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Reset Authenticator App" }));
+
+    const panel = await screen.findByRole("region", { name: "Set up authenticator" });
+    expect(panel).toHaveTextContent("Alex Rivera");
+    expect(panel).toHaveTextContent("alex.rivera");
+    expect(panel).toHaveTextContent("KRSXG5DSNFXGOIDB");
+    expect(panel).toHaveTextContent("This information is shown only once.");
+    expect(await within(panel).findByAltText("Authenticator QR code for alex.rivera")).toHaveAttribute("src", expect.stringMatching(/^data:image\/svg\+xml/));
+    expect(client.resetMfa).toHaveBeenCalledWith(userDetail().user.userReference, { expectedRowVersion: 1, reasonCode: "GOVERNED_MFA_RESET" });
+
+    await userEvent.click(within(panel).getByRole("button", { name: "I have completed provisioning" }));
+    expect(screen.queryByText("KRSXG5DSNFXGOIDB")).not.toBeInTheDocument();
+    expect(screen.queryByAltText("Authenticator QR code for alex.rivera")).not.toBeInTheDocument();
+    await waitFor(() => expect(client.getMfaStatus).toHaveBeenCalledTimes(2));
+    confirm.mockRestore();
+  });
+
+  it("offers setup for a missing authenticator and remove never displays provisioning material", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const client = mockClient();
+    client.getMfaStatus.mockResolvedValue({ ...mfaStatus(), enrolled: false, status: "REVOKED", activatedAt: null, revokedAt: "2030-01-01T00:00:00Z", rowVersion: 4 });
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Security" }));
+    expect(await screen.findByText("Not set up")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set Up Authenticator App" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Reset Authenticator App" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Remove Authenticator App" })).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Set Up Authenticator App" }));
+    expect(await screen.findByText("KRSXG5DSNFXGOIDB")).toBeInTheDocument();
+    expect(client.setupMfa).toHaveBeenCalledWith(userDetail().user.userReference, { expectedRowVersion: 4, reasonCode: "GOVERNED_MFA_SETUP" });
+    confirm.mockRestore();
+  });
+
+  it("removes an active authenticator without exposing a secret or QR", async () => {
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+    const client = mockClient();
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: /Alex Rivera/ }));
+    await userEvent.click(await screen.findByRole("tab", { name: "Security" }));
+    await userEvent.click(await screen.findByRole("button", { name: "Remove Authenticator App" }));
+
+    await waitFor(() => expect(client.removeMfa).toHaveBeenCalledOnce());
+    expect(await screen.findByText("Not set up")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Set Up Authenticator App" })).toBeInTheDocument();
+    expect(screen.queryByText("KRSXG5DSNFXGOIDB")).not.toBeInTheDocument();
+    expect(screen.queryByAltText(/Authenticator QR code/)).not.toBeInTheDocument();
+    confirm.mockRestore();
+  });
+
   it("renders safe 403, anti-enumerating 404, conflict, and unavailable errors", async () => {
     for (const [kind, expected] of [["permission-denied", "User directory: Access denied"], ["not-found", "User directory: Not found"], ["conflict", "User directory: Current information changed"], ["integration-unavailable", "User directory: Unavailable"]] as const) {
       const client = mockClient();
@@ -456,7 +514,10 @@ function mockClient() {
     assignRole: vi.fn(async () => user.roleAssignments[0]), revokeRole: vi.fn(async () => user.roleAssignments[0]), grantScope: vi.fn(async () => user.scopeGrants[0]), revokeScope: vi.fn(async (_userReference: string, _assignmentReference: string, _grantReference: string, _body: Record<string, unknown>) => user.scopeGrants[0]),
     reviewAccess: vi.fn(async () => true),
     listSessions: vi.fn(async () => [{ sessionReference: "session-1", audience: "MANAGEMENT_PLATFORM", status: "ACTIVE", assurance: "PASSWORD_TOTP", mfaRequirementSatisfied: true, deviceServiceIdentityReference: null, authenticatedAt: "2030-01-01T00:00:00Z", lastSeenAt: "2030-01-01T00:10:00Z", idleExpiresAt: "2030-01-01T00:30:00Z", absoluteExpiresAt: "2030-01-01T08:00:00Z", revokedAt: null, rowVersion: 1 }]),
-    revokeSession: vi.fn(async () => undefined), getMfaStatus: vi.fn(async () => ({ requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-01-01T00:00:00Z", resetAt: null, revokedAt: null, rowVersion: 1 })), changeMfa: vi.fn(async () => ({ requiredForPrivilegedManagementPlatform: true, enrolled: false, status: "RESET_REQUIRED", enrollmentStartedAt: null, activatedAt: null, lastSuccessfullyUsedAt: null, resetAt: "2030-01-01T00:00:00Z", revokedAt: null, rowVersion: 2 })),
+    revokeSession: vi.fn(async () => undefined), getMfaStatus: vi.fn(async () => mfaStatus()),
+    setupMfa: vi.fn(async () => mfaProvisioning()),
+    resetMfa: vi.fn(async () => mfaProvisioning()),
+    removeMfa: vi.fn(async () => ({ ...mfaStatus(), enrolled: false, status: "REVOKED", activatedAt: null, revokedAt: "2030-01-01T01:00:00Z", rowVersion: 2 })),
     listAuditEvents: vi.fn(async () => [{ auditReference: "audit-1", eventType: "ROLE_ASSIGNED", result: "SUCCESS", reasonCode: "AUTHORIZED", actorUserReference: null, summary: "Role assignment recorded.", occurredAt: "2030-01-01T00:00:00Z", correlationReference: "support-ref-1" }])
   } satisfies { [K in keyof IdentityAdministrationClient]: ReturnType<typeof vi.fn> };
 }
@@ -471,6 +532,8 @@ function role(code: string, name: string, reference: string, allowedUserTypes: s
       : { allowedScopeTypes: ["SITE", "SITE_GROUP", "GLOBAL"], assignmentRequired: true, defaultScope: code === "FINANCE_RECONCILIATION_ANALYST" ? null : "GLOBAL" };
   return { roleReference: reference, code, name, description: "Governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: privileged, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes, applicationAccess, scopePolicy };
 }
-function provisioningMaterial() { return { temporaryPassword: "Temporary-Only-72h!", temporaryPasswordExpiresAt: "2030-01-04T00:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: "otpauth://totp/ExitPass:new.operator", totpQrImageDataUri: null, displayOnce: true as const, passwordChangeRequired: true as const }; }
+function provisioningMaterial() { return { temporaryPassword: "Temporary-Only-72h!", temporaryPasswordExpiresAt: "2030-01-04T00:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: "otpauth://totp/ExitPass:new.operator?secret=JBSWY3DPEHPK3PXP&issuer=ExitPass", displayOnce: true as const, passwordChangeRequired: true as const }; }
+function mfaStatus(): IdentityMfaStatus { return { requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-01-01T00:00:00Z", resetAt: null, revokedAt: null, rowVersion: 1 }; }
+function mfaProvisioning() { return { mfaStatus: { ...mfaStatus(), rowVersion: 2 }, provisioning: { totpSharedSecret: "KRSXG5DSNFXGOIDB", totpProvisioningUri: "otpauth://totp/ExitPass:alex.rivera?secret=KRSXG5DSNFXGOIDB&issuer=ExitPass", displayOnce: true as const } }; }
 
 function userDetail(): IdentityUserDetail { return { user: { userReference: "11111111-1111-4111-8111-111111111111", username: "alex.rivera", displayName: "Alex Rivera", maskedEmail: "a***@example.test", maskedMobileNumber: "***1234", userType: "SITE_OPERATOR", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-01-01T00:00:00Z", rowVersion: 4 }, roleAssignments: [{ assignmentReference: "assignment-1", userReference: "11111111-1111-4111-8111-111111111111", roleReference: "role-site-operator", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }], scopeGrants: [{ grantReference: "grant-1", assignmentReference: "assignment-1", scopeType: "SITE", siteReference: "site-1", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: null, rowVersion: 2 }] }; }

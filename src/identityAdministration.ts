@@ -123,9 +123,19 @@ export interface IdentityProvisioningMaterial {
   temporaryPasswordExpiresAt: string;
   totpSecret: string;
   totpProvisioningUri: string | null;
-  totpQrImageDataUri: string | null;
   displayOnce: true;
   passwordChangeRequired: true;
+}
+
+export interface IdentityTotpProvisioningMaterial {
+  totpSharedSecret: string;
+  totpProvisioningUri: string;
+  displayOnce: true;
+}
+
+export interface IdentityMfaProvisioningResult {
+  mfaStatus: IdentityMfaStatus;
+  provisioning: IdentityTotpProvisioningMaterial;
 }
 
 export interface IdentityCreateUserResult {
@@ -200,7 +210,9 @@ export interface IdentityAdministrationClient {
   listSessions(userReference: string, signal?: AbortSignal): Promise<IdentitySessionSummary[]>;
   revokeSession(userReference: string, sessionReference: string | null, reasonCode: string): Promise<void>;
   getMfaStatus(userReference: string, signal?: AbortSignal): Promise<IdentityMfaStatus>;
-  changeMfa(userReference: string, action: "reset" | "remove", body: Record<string, unknown>): Promise<IdentityMfaStatus>;
+  setupMfa(userReference: string, body: Record<string, unknown>): Promise<IdentityMfaProvisioningResult>;
+  resetMfa(userReference: string, body: Record<string, unknown>): Promise<IdentityMfaProvisioningResult>;
+  removeMfa(userReference: string, body: Record<string, unknown>): Promise<IdentityMfaStatus>;
   listAuditEvents(userReference: string, signal?: AbortSignal): Promise<IdentityAuditEntry[]>;
 }
 
@@ -238,7 +250,10 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
     revokeScope: async () => ({ ...syntheticGrant(), status: "REVOKED" }),
     reviewAccess: async () => true,
     listSessions: name === "partial-failure" ? sectionUnavailable : async () => [syntheticSession()], revokeSession: async () => undefined,
-    getMfaStatus: name === "partial-failure" ? sectionDenied : async () => syntheticMfa(), changeMfa: async (_reference, action) => ({ ...syntheticMfa(), enrolled: false, status: action === "reset" ? "RESET_REQUIRED" : "REMOVED", rowVersion: 8 }),
+    getMfaStatus: name === "partial-failure" ? sectionDenied : async () => syntheticMfa(),
+    setupMfa: async () => syntheticMfaProvisioning(),
+    resetMfa: async () => syntheticMfaProvisioning(),
+    removeMfa: async () => ({ ...syntheticMfa(), enrolled: false, status: "REVOKED", rowVersion: 8 }),
     listAuditEvents: name === "partial-failure" ? sectionUnavailable : async () => [syntheticAudit()]
   };
   return { name, client };
@@ -282,7 +297,9 @@ export function createIdentityAdministrationClient(api: CentralPmsApiClient): Id
       await mutate(`${userPath(reference)}/sessions/${suffix}`, "POST", { reasonCode });
     },
     getMfaStatus: (reference, signal) => get<unknown>(`${userPath(reference)}/mfa-status`, signal).then(asObject<IdentityMfaStatus>),
-    changeMfa: (reference, action, body) => mutate<unknown>(`${userPath(reference)}/mfa-authenticators/${action}`, "POST", body).then(asObject<IdentityMfaStatus>),
+    setupMfa: (reference, body) => mutate<unknown>(`${userPath(reference)}/mfa-authenticators/setup`, "POST", body).then(asMfaProvisioningResult),
+    resetMfa: (reference, body) => mutate<unknown>(`${userPath(reference)}/mfa-authenticators/reset`, "POST", body).then(asMfaProvisioningResult),
+    removeMfa: (reference, body) => mutate<unknown>(`${userPath(reference)}/mfa-authenticators/remove`, "POST", body).then(asObject<IdentityMfaStatus>),
     listAuditEvents: (reference, signal) => get<unknown>(`${userPath(reference)}/audit-events?limit=100`, signal).then(asArray<IdentityAuditEntry>)
   };
 }
@@ -332,9 +349,23 @@ function asCreateUserResult(value: unknown): IdentityCreateUserResult {
       temporaryPasswordExpiresAt: bootstrap.temporaryPasswordExpiresAt as string,
       totpSecret: bootstrap.totpSharedSecret as string,
       totpProvisioningUri: bootstrap.totpProvisioningUri as string,
-      totpQrImageDataUri: null,
       displayOnce: true,
       passwordChangeRequired: bootstrap.passwordChangeRequired
+    }
+  };
+}
+
+function asMfaProvisioningResult(value: unknown): IdentityMfaProvisioningResult {
+  if (!isRecord(value) || !isRecord(value.mfaStatus) || !isRecord(value.provisioning)) malformed();
+  if (!hasStrings(value.provisioning, ["totpSharedSecret", "totpProvisioningUri"]) ||
+      value.provisioning.displayOnce !== true ||
+      !String(value.provisioning.totpProvisioningUri).startsWith("otpauth://")) malformed();
+  return {
+    mfaStatus: value.mfaStatus as unknown as IdentityMfaStatus,
+    provisioning: {
+      totpSharedSecret: value.provisioning.totpSharedSecret as string,
+      totpProvisioningUri: value.provisioning.totpProvisioningUri as string,
+      displayOnce: true
     }
   };
 }
@@ -398,7 +429,8 @@ function syntheticDirectRoles(): IdentityRoleDefinition[] {
     };
   });
 }
-function syntheticProvisioning(): IdentityProvisioningMaterial { return { temporaryPassword: "Temporary-Only-72h!", temporaryPasswordExpiresAt: "2030-03-04T08:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: "otpauth://totp/ExitPass:invited.user?secret=JBSWY3DPEHPK3PXP&issuer=ExitPass", totpQrImageDataUri: null, displayOnce: true, passwordChangeRequired: true }; }
+function syntheticProvisioning(): IdentityProvisioningMaterial { return { temporaryPassword: "Temporary-Only-72h!", temporaryPasswordExpiresAt: "2030-03-04T08:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: "otpauth://totp/ExitPass:invited.user?secret=JBSWY3DPEHPK3PXP&issuer=ExitPass", displayOnce: true, passwordChangeRequired: true }; }
+function syntheticMfaProvisioning(): IdentityMfaProvisioningResult { return { mfaStatus: syntheticMfa(), provisioning: { totpSharedSecret: "KRSXG5DSNFXGOIDB", totpProvisioningUri: "otpauth://totp/ExitPass:alex.rivera?secret=KRSXG5DSNFXGOIDB&issuer=ExitPass", displayOnce: true } }; }
 function syntheticPermission(): IdentityPermissionDefinition { return { permissionReference: "81000000-0000-4000-8000-000000000005", code: "user.view", name: "View users", domain: "Identity", action: "VIEW", status: "ACTIVE", isSensitive: false, requiresAudit: true, rowVersion: 1 }; }
 function syntheticMfa(): IdentityMfaStatus { return { requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-03-01T08:00:00Z", resetAt: null, revokedAt: null, rowVersion: 7 }; }
 function syntheticSession(): IdentitySessionSummary { return { sessionReference: "81000000-0000-4000-8000-000000000006", audience: "MANAGEMENT_PLATFORM", status: "ACTIVE", assurance: "PASSWORD_TOTP", mfaRequirementSatisfied: true, deviceServiceIdentityReference: null, authenticatedAt: "2030-03-01T08:00:00Z", lastSeenAt: "2030-03-01T08:10:00Z", idleExpiresAt: "2030-03-01T08:30:00Z", absoluteExpiresAt: "2030-03-01T16:00:00Z", revokedAt: null, rowVersion: 1 }; }

@@ -1666,3 +1666,4 @@ code {
 .provisioningPanel { border-left: 4px solid #b56b00; }
 .provisioningPanel .factGrid { margin-block: 14px; }
 .totpQr { background: #fff; border: 1px solid #cbd5dc; display: block; height: min(240px, 70vw); margin-block: 12px; padding: 8px; width: min(240px, 70vw); }
+.totpManualKey { display: inline-block; font-size: 1rem; overflow-wrap: anywhere; padding: 8px 10px; user-select: all; }

@@ -134,6 +134,48 @@ describe("identity administration API client", () => {
     expect(() => client.changeLifecycle("user-1", "delete", {})).toThrowError(/Account Status action is unavailable/i);
   });
 
+  it("uses distinct administrator MFA setup reset and remove routes", async () => {
+    const calls: string[] = [];
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      calls.push(path);
+      if (path.endsWith("/remove")) return json(mfaStatus(false));
+      return json({
+        mfaStatus: mfaStatus(true),
+        provisioning: {
+          totpSharedSecret: "KRSXG5DSNFXGOIDB",
+          totpProvisioningUri: "otpauth://totp/ExitPass:target.user?secret=KRSXG5DSNFXGOIDB&issuer=ExitPass",
+          displayOnce: true
+        }
+      });
+    });
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl, authorizeUnsafeRequest: () => undefined }));
+
+    const setup = await client.setupMfa("user-1", { expectedRowVersion: null, reasonCode: "SETUP" });
+    const reset = await client.resetMfa("user-1", { expectedRowVersion: 1, reasonCode: "RESET" });
+    const removed = await client.removeMfa("user-1", { expectedRowVersion: 1, reasonCode: "REMOVE" });
+
+    expect(calls).toEqual([
+      `${identityAdministrationApiRoute}/users/user-1/mfa-authenticators/setup`,
+      `${identityAdministrationApiRoute}/users/user-1/mfa-authenticators/reset`,
+      `${identityAdministrationApiRoute}/users/user-1/mfa-authenticators/remove`
+    ]);
+    expect(setup.provisioning.displayOnce).toBe(true);
+    expect(reset.provisioning.totpProvisioningUri).toContain(reset.provisioning.totpSharedSecret);
+    expect(removed.enrolled).toBe(false);
+    expect(removed).not.toHaveProperty("provisioning");
+  });
+
+  it("rejects an administrator MFA provisioning response without an otpauth URI", async () => {
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({
+      fetchImpl: vi.fn(async () => json({ mfaStatus: mfaStatus(true), provisioning: { totpSharedSecret: "SECRET", totpProvisioningUri: "https://example.test/qr", displayOnce: true } })),
+      authorizeUnsafeRequest: () => undefined
+    }));
+
+    await expect(client.resetMfa("user-1", { expectedRowVersion: 1, reasonCode: "RESET" }))
+      .rejects.toMatchObject({ kind: "malformed-response", code: "IDENTITY_ADMIN_MALFORMED_RESPONSE" });
+  });
+
   it("rejects malformed successful list payloads before they reach the workspace", async () => {
     const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl: vi.fn(async () => json({ unexpected: true })) }));
     await expect(client.listUsers()).rejects.toMatchObject({ kind: "malformed-response", code: "IDENTITY_ADMIN_MALFORMED_RESPONSE" });
@@ -174,5 +216,19 @@ function createUserResponse() {
       totpProvisioningUri: "otpauth://totp/ExitPass:synthetic.user",
       passwordChangeRequired: true as boolean
     }
+  };
+}
+
+function mfaStatus(enrolled: boolean) {
+  return {
+    requiredForPrivilegedManagementPlatform: true,
+    enrolled,
+    status: enrolled ? "ACTIVE" : "REVOKED",
+    enrollmentStartedAt: null,
+    activatedAt: enrolled ? "2030-01-01T00:00:00Z" : null,
+    lastSuccessfullyUsedAt: null,
+    resetAt: null,
+    revokedAt: enrolled ? null : "2030-01-01T00:00:00Z",
+    rowVersion: 1
   };
 }
