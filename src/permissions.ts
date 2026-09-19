@@ -33,7 +33,6 @@ export const identityAdministrationPresentationPermissions = [
   "permission.view",
   "identity.role-assignment.manage",
   "identity.scope-assignment.manage",
-  "identity.privileged-access.decide",
   "identity.access-review.manage",
   "human-authentication.session.admin.view",
   "human-authentication.session.admin.revoke",
