@@ -61,11 +61,42 @@ test.describe("governed User Administration", () => {
     await form.getByRole("button", { name: "Add User" }).click();
     const provisioning = page.getByRole("region", { name: "Provision Provisioned User" });
     await expect(provisioning).toContainText("Temporary password");
-    await expect(provisioning).toContainText("Authenticator secret");
+    await expect(provisioning).toContainText("Manual setup key");
+    await expect(provisioning.getByAltText("Authenticator QR code for provisioned.user")).toHaveAttribute("src", /^data:image\/svg\+xml/);
     await expect(provisioning).toContainText("Account status: Active");
     await expect(provisioning).toContainText("Normal application access remains blocked until the required password change is complete.");
     await provisioning.getByRole("button", { name: "I have completed provisioning" }).click();
     await expect(provisioning).toHaveCount(0);
+  });
+
+  test("reset provisions a replacement once and remove transitions to setup", async ({ page }) => {
+    page.on("dialog", (dialog) => void dialog.accept());
+    const externalQrRequests: string[] = [];
+    page.on("request", (request) => {
+      if (/qr|chart/i.test(request.url()) && !request.url().startsWith("http://127.0.0.1")) externalQrRequests.push(request.url());
+    });
+    await page.goto(route);
+    await page.getByRole("button", { name: /Synthetic Administration User/ }).click();
+    await page.getByRole("tab", { name: "Security" }).click();
+    await page.getByRole("button", { name: "Reset Authenticator App" }).click();
+
+    const panel = page.getByRole("region", { name: "Set up authenticator" });
+    await expect(panel).toContainText("Synthetic Administration User");
+    await expect(panel).toContainText("KRSXG5DSNFXGOIDB");
+    await expect(panel).toContainText("This information is shown only once.");
+    await expect(panel.getByAltText("Authenticator QR code for synthetic.admin")).toHaveAttribute("src", /^data:image\/svg\+xml/);
+    expect(externalQrRequests).toEqual([]);
+    expect(page.url()).not.toContain("KRSXG5DSNFXGOIDB");
+    const storageWhileOpen = await page.evaluate(() => JSON.stringify({ local: { ...localStorage }, session: { ...sessionStorage } }));
+    expect(storageWhileOpen).not.toContain("KRSXG5DSNFXGOIDB");
+
+    await panel.getByRole("button", { name: "I have completed provisioning" }).click();
+    await expect(page.getByText("KRSXG5DSNFXGOIDB")).toHaveCount(0);
+    await expect(page.getByAltText("Authenticator QR code for synthetic.admin")).toHaveCount(0);
+    await page.getByRole("button", { name: "Remove Authenticator App" }).click();
+    await expect(page.getByText("Not set up")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Set Up Authenticator App" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Set up authenticator" })).toHaveCount(0);
   });
   test("production runtime cannot activate synthetic identity or authentication fixtures", async ({ browser }) => {
     const productionPort = Number(process.env.MANAGEMENT_PLATFORM_E2E_PRODUCTION_PORT ?? 5180);

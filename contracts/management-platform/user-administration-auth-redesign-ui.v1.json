@@ -125,6 +125,14 @@
       "SMS OTP"
     ]
   },
+  "administratorMfa": {
+    "status": "GET /v1/management-platform/identity/users/{userReference}/mfa-status never returns provisioning material",
+    "setup": "POST /v1/management-platform/identity/users/{userReference}/mfa-authenticators/setup returns one-time shared secret and otpauth URI",
+    "reset": "POST /v1/management-platform/identity/users/{userReference}/mfa-authenticators/reset returns replacement one-time shared secret and otpauth URI",
+    "remove": "POST /v1/management-platform/identity/users/{userReference}/mfa-authenticators/remove returns safe status only",
+    "qrRendering": "local qrcode library; exact Central PMS otpauth URI; no external QR service",
+    "panelClose": "destroy secret, URI, and generated QR from component state and DOM, then refresh status"
+  },
   "developmentIsolation": {
     "identityScenarioResolver": "requires import.meta.env.DEV and an explicit isolated test-harness enable flag",
     "normalDevelopmentFallback": false,

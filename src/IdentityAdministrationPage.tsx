@@ -10,10 +10,12 @@ import {
   type IdentitySessionSummary,
   type IdentityUserDetail,
   type IdentityUserSummary,
-  type IdentityCreateUserResult
+  type IdentityCreateUserResult,
+  type IdentityMfaProvisioningResult
 } from "./identityAdministration";
 import { applicationLabel, approvedRolePresentation, type AssignableScopeType } from "./approvedIdentityRoles";
 import { hasAnyPermission, hasPermission } from "./permissions";
+import { TotpQrCode } from "./TotpQrCode";
 import type { ManagementPlatformSite, ManagementPlatformUiError } from "./types";
 
 type DetailView = "profile" | "access" | "security" | "audit";
@@ -61,6 +63,7 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
   const [notice, setNotice] = useState<string>();
   const [showCreate, setShowCreate] = useState(false);
   const [provisioningResult, setProvisioningResult] = useState<IdentityCreateUserResult>();
+  const [mfaProvisioningResult, setMfaProvisioningResult] = useState<{ user: IdentityUserSummary; result: IdentityMfaProvisioningResult }>();
   const searchRef = useRef<HTMLInputElement>(null);
   const detailRef = useRef<HTMLElement>(null);
   const usersRequestSequence = useRef(0);
@@ -265,6 +268,11 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
       </div>
       {notice && <div className="operationNotice" role="status">{notice}</div>}
       {provisioningResult && <ProvisioningPanel result={provisioningResult} onClose={() => setProvisioningResult(undefined)} />}
+      {mfaProvisioningResult && <MfaProvisioningPanel user={mfaProvisioningResult.user} result={mfaProvisioningResult.result} onClose={() => {
+        const userReference = mfaProvisioningResult.user.userReference;
+        setMfaProvisioningResult(undefined);
+        void loadMfa(userReference);
+      }} />}
       {error && <IdentityError error={error} onRetry={error.retryable ? () => void refreshAuthoritativeState() : undefined} />}
       {authoritativeStateStale && <div className="identityStaleState" role="alert"><strong>Information may be out of date.</strong><p>Previously loaded information is retained for reference. Changes are disabled until a successful authoritative refresh completes.</p><button className="secondaryButton" type="button" disabled={loading || busy} onClick={() => void refreshAuthoritativeState()}>Refresh authoritative state</button></div>}
 
@@ -301,7 +309,7 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
           {loading ? <div className="inlineState" role="status">Loading users</div> : directoryError ? <SectionFailure label="User directory" error={directoryError} onRetry={directoryError.retryable ? () => void loadUsers(offset, query.trim(), statusFilter) : undefined} /> : users.length === 0 ? <div className="inlineState">No users match the current search.</div> : (
             <ul>
               {users.map((user) => <li key={user.userReference}>
-                <button className={selectedReference === user.userReference ? "selectedUser" : ""} type="button" onClick={() => { setSelectedReference(user.userReference); setView("profile"); }}>
+                <button className={selectedReference === user.userReference ? "selectedUser" : ""} type="button" onClick={() => { setMfaProvisioningResult(undefined); setSelectedReference(user.userReference); setView("profile"); }}>
                   <strong>{user.displayName}</strong><span>{user.username}</span><StatusLabel value={user.status} />
                 </button>
               </li>)}
@@ -325,7 +333,36 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
               </div>
               {view === "profile" && <ProfileView detail={detail} canManage={canManageUsers} busy={mutationsDisabled} onUpdate={(body) => void runMutation(() => client.updateUser(detail.user.userReference, body), "Profile updated.")} onLifecycle={(action, body) => void runMutation(() => client.changeLifecycle(detail.user.userReference, action, body), `Account status changed to ${humanize(action)}.`)} />}
               {view === "access" && <AccessView detail={detail} roleCatalogState={roleCatalogState} permissionCatalogState={permissionCatalogState} sites={sites} siteGroups={siteGroups} canManageRoles={canManageRoles} canManageScopes={canManageScopes} canReviewAccess={canReviewAccess} busy={mutationsDisabled} onRetryRoles={loadRoleCatalog} onRetryPermissions={loadPermissionCatalog} runMutation={runMutation} client={client} />}
-              {view === "security" && <SecurityView detail={detail} mfaState={mfaState} sessionState={sessionState} canResetMfa={canResetMfa} canRemoveMfa={canRemoveMfa} canRevokeSessions={canRevokeSessions} busy={mutationsDisabled} onRetryMfa={() => void loadMfa(detail.user.userReference)} onRetrySessions={() => void loadSessions(detail.user.userReference)} runMutation={runMutation} client={client} />}
+              {view === "security" && <SecurityView detail={detail} mfaState={mfaState} sessionState={sessionState} canResetMfa={canResetMfa} canRemoveMfa={canRemoveMfa} canRevokeSessions={canRevokeSessions} busy={mutationsDisabled} onRetryMfa={() => void loadMfa(detail.user.userReference)} onRetrySessions={() => void loadSessions(detail.user.userReference)} onProvision={async (action, expectedRowVersion) => {
+                let provisioned: IdentityMfaProvisioningResult | undefined;
+                const completed = await runMutation(
+                  async () => {
+                    const body = { expectedRowVersion, reasonCode: action === "setup" ? "GOVERNED_MFA_SETUP" : "GOVERNED_MFA_RESET" };
+                    provisioned = action === "setup"
+                      ? await client.setupMfa(detail.user.userReference, body)
+                      : await client.resetMfa(detail.user.userReference, body);
+                    return provisioned;
+                  },
+                  action === "setup" ? "Authenticator app set up." : "Authenticator app reset.",
+                  async (result) => {
+                    setMfaState({ status: "loaded", value: (result as IdentityMfaProvisioningResult).mfaStatus });
+                    await loadSessions(detail.user.userReference);
+                    return true;
+                  }
+                );
+                if (completed && provisioned) setMfaProvisioningResult({ user: detail.user, result: provisioned });
+              }} onRemove={async (expectedRowVersion) => {
+                setMfaProvisioningResult(undefined);
+                await runMutation(
+                  () => client.removeMfa(detail.user.userReference, { expectedRowVersion, reasonCode: "GOVERNED_MFA_REMOVE" }),
+                  "Authenticator app removed.",
+                  async (result) => {
+                    setMfaState({ status: "loaded", value: result as IdentityMfaStatus });
+                    await loadSessions(detail.user.userReference);
+                    return true;
+                  }
+                );
+              }} runMutation={runMutation} client={client} />}
               {view === "audit" && <AuditView state={auditState} onRetry={() => void loadAudit(detail.user.userReference)} />}
             </>
           ) : <div className="inlineState">The requested user is unavailable within your authorized scope.</div>}
@@ -392,12 +429,32 @@ function ProvisioningPanel({ result, onClose }: { result: IdentityCreateUserResu
     <p className="eyebrow">Display once</p>
     <h3 id="provisioning-title">Provision {user.displayName}</h3>
     <p>Give these values to the user through the approved administrative handoff. They are removed from this screen when you close it and cannot be shown again.</p>
-    <dl className="factGrid"><Fact label="Username" value={user.username} /><Fact label="Temporary password" value={provisioning.temporaryPassword} /><Fact label="Temporary password expires" value={formatDate(provisioning.temporaryPasswordExpiresAt)} /><Fact label="Authenticator secret" value={provisioning.totpSecret} /></dl>
-    {provisioning.totpQrImageDataUri && <img className="totpQr" src={provisioning.totpQrImageDataUri} alt={"Authenticator QR code for " + user.username} />}
+    <dl className="factGrid"><Fact label="Username" value={user.username} /><Fact label="Temporary password" value={provisioning.temporaryPassword} /><Fact label="Temporary password expires" value={formatDate(provisioning.temporaryPasswordExpiresAt)} /></dl>
+    <TotpProvisioningDetails username={user.username} sharedSecret={provisioning.totpSecret} provisioningUri={provisioning.totpProvisioningUri} />
     <p><strong>Account status:</strong> Active. Normal application access remains blocked until the required password change is complete.</p>
     <p><strong>First sign-in:</strong> the user must enter the temporary password and TOTP, then change the password before accessing permitted functions.</p>
     <button type="button" onClick={onClose}>I have completed provisioning</button>
   </section>;
+}
+
+function MfaProvisioningPanel({ user, result, onClose }: { user: IdentityUserSummary; result: IdentityMfaProvisioningResult; onClose: () => void }) {
+  return <section className="provisioningPanel" role="region" aria-labelledby="mfa-provisioning-title">
+    <p className="eyebrow">Display once</p>
+    <h3 id="mfa-provisioning-title">Set up authenticator</h3>
+    <p>Target user: <strong>{user.displayName}</strong> ({user.username})</p>
+    <p>Scan this QR code with the user's authenticator app.</p>
+    <TotpProvisioningDetails username={user.username} sharedSecret={result.provisioning.totpSharedSecret} provisioningUri={result.provisioning.totpProvisioningUri} />
+    <p><strong>This information is shown only once.</strong></p>
+    <button type="button" onClick={onClose}>I have completed provisioning</button>
+  </section>;
+}
+
+function TotpProvisioningDetails({ username, sharedSecret, provisioningUri }: { username: string; sharedSecret: string; provisioningUri: string | null }) {
+  return <div className="totpProvisioningDetails">
+    {provisioningUri && <TotpQrCode provisioningUri={provisioningUri} username={username} />}
+    <p>Manual setup key:</p>
+    <code className="totpManualKey">{sharedSecret}</code>
+  </div>;
 }
 function ProfileView({ detail, canManage, busy, onUpdate, onLifecycle }: { detail: IdentityUserDetail; canManage: boolean; busy: boolean; onUpdate: (body: Record<string, unknown>) => void; onLifecycle: (action: string, body: Record<string, unknown>) => void }) {
   const user = detail.user;
@@ -497,7 +554,7 @@ function ScopeGrantForm({ detail, roleCatalogState, sites, siteGroups, busy, onG
     onGrant(selected.assignment.assignmentReference, { scopeType: effectiveType, siteReference: effectiveType === "SITE" ? target : null, siteGroupReference: effectiveType === "SITE_GROUP" ? target : null, effectiveFrom: new Date().toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() });
   }}><h4>Add Scope Access</h4><label>Role<select value={selected.assignment.assignmentReference} onChange={(event) => { const next = governedAssignments.find((item) => item.assignment.assignmentReference === event.target.value); setAssignmentReference(event.target.value); setRequestedType(next?.role.scopePolicy.defaultScope ?? ""); }}>{governedAssignments.map((item) => <option key={item.assignment.assignmentReference} value={item.assignment.assignmentReference}>{approvedRolePresentation(item.assignment.roleCode)?.label ?? item.assignment.roleName}</option>)}</select></label><label>Access level<select aria-label="Scope access level" value={effectiveType} disabled={allowedScopeTypes.length === 1 && Boolean(selected.role.scopePolicy.defaultScope)} onChange={(event) => setRequestedType(event.target.value as AssignableScopeType | "")}>{!selected.role.scopePolicy.defaultScope && <option value="">Select an access level</option>}{allowedScopeTypes.map((scope) => <option key={scope} value={scope}>{scope === "SITE_GROUP" ? "Site Group" : scope === "SITE" ? "Site" : "Global"}</option>)}</select></label>{effectiveType === "GLOBAL" ? <div className="governanceBoundary" role="note">Central PMS role policy requires or permits explicit Global scope for this assignment.</div> : effectiveType ? <><label>{effectiveType === "SITE" ? "Site" : "Site Group"}<select name="targetReference" required disabled={targets.length === 0}><option value="">Select {effectiveType === "SITE" ? "a Site" : "a Site Group"}</option>{targets.map((target) => <option key={target.reference} value={target.reference}>{target.name}</option>)}</select></label>{targets.length === 0 && <div className="inlineState">No authorized {effectiveType === "SITE" ? "Sites" : "Site Groups"} are available</div>}</> : <div className="inlineState">Select an access level from the Central PMS role policy.</div>}<label>Reason<input name="reasonCode" required /></label><button disabled={busy || !effectiveType || (effectiveType !== "GLOBAL" && targets.length === 0)}>Add Access</button></form>;
 }
-function SecurityView({ detail, mfaState, sessionState, canResetMfa, canRemoveMfa, canRevokeSessions, busy, onRetryMfa, onRetrySessions, runMutation, client }: { detail: IdentityUserDetail; mfaState: SectionLoadState<IdentityMfaStatus>; sessionState: SectionLoadState<IdentitySessionSummary[]>; canResetMfa: boolean; canRemoveMfa: boolean; canRevokeSessions: boolean; busy: boolean; onRetryMfa: () => void; onRetrySessions: () => void; runMutation: (action: () => Promise<unknown>, success: string) => Promise<boolean>; client: IdentityAdministrationClient }) {
+function SecurityView({ detail, mfaState, sessionState, canResetMfa, canRemoveMfa, canRevokeSessions, busy, onRetryMfa, onRetrySessions, onProvision, onRemove, runMutation, client }: { detail: IdentityUserDetail; mfaState: SectionLoadState<IdentityMfaStatus>; sessionState: SectionLoadState<IdentitySessionSummary[]>; canResetMfa: boolean; canRemoveMfa: boolean; canRevokeSessions: boolean; busy: boolean; onRetryMfa: () => void; onRetrySessions: () => void; onProvision: (action: "setup" | "reset", expectedRowVersion: number | null) => Promise<void>; onRemove: (expectedRowVersion: number) => Promise<void>; runMutation: (action: () => Promise<unknown>, success: string) => Promise<boolean>; client: IdentityAdministrationClient }) {
   const user = detail.user;
   const mfa = mfaState.status === "loaded" ? mfaState.value : undefined;
   const sessions = sessionState.status === "loaded" ? sessionState.value : [];
@@ -508,8 +565,8 @@ function SecurityView({ detail, mfaState, sessionState, canResetMfa, canRemoveMf
       {mfaState.status === "loading" && <div className="inlineState" role="status">Loading two-factor authentication details</div>}
       {mfaState.status === "not-authorized" && <p>Two-factor authentication details are not available with your current access.</p>}
       {mfaState.status === "error" && <SectionFailure label="Two-Factor Authentication" error={mfaState.error} onRetry={mfaState.error.retryable ? onRetryMfa : undefined} />}
-      {mfa && <><dl className="factGrid"><Fact label="Management Platform TOTP" value={mfa.enrolled ? "Required for sign-in" : "Authenticator is not provisioned"} /><Fact label="Authenticator app" value={mfa.enrolled ? "Set up" : "Not set up"} /><Fact label="Status" value={humanize(mfa.status)} /><Fact label="Last used" value={formatDate(mfa.lastSuccessfullyUsedAt)} /></dl><div className="formActions">{canResetMfa && <button disabled={busy || mfa.rowVersion === null} onClick={() => confirmSecurityAction(`Reset the authenticator app for ${user.displayName}?`, () => void runMutation(() => client.changeMfa(user.userReference, "reset", { expectedRowVersion: mfa.rowVersion, reasonCode: "GOVERNED_MFA_RESET" }), "Authenticator app reset recorded."))}>Reset Authenticator App</button>}{canRemoveMfa && <button className="dangerButton" disabled={busy || mfa.rowVersion === null} onClick={() => confirmSecurityAction(`Remove the authenticator app for ${user.displayName}?`, () => void runMutation(() => client.changeMfa(user.userReference, "remove", { expectedRowVersion: mfa.rowVersion, reasonCode: "GOVERNED_MFA_REMOVE" }), "Authenticator app removed."))}>Remove Authenticator App</button>}</div></>}
-      <p className="privacyNote">Setup secrets, one-time codes, and recovery information are never displayed.</p>
+      {mfa && <><dl className="factGrid"><Fact label="Management Platform TOTP" value={mfa.enrolled ? "Required for sign-in" : "Authenticator is not provisioned"} /><Fact label="Authenticator app" value={mfa.enrolled ? "Set up" : "Not set up"} />{mfa.enrolled && <Fact label="Status" value={humanize(mfa.status)} />}<Fact label="Last used" value={formatDate(mfa.lastSuccessfullyUsedAt)} /></dl><div className="formActions">{canResetMfa && (mfa.enrolled ? <button disabled={busy || mfa.rowVersion === null} onClick={() => confirmSecurityAction(`Reset the authenticator app for ${user.displayName}?`, () => void onProvision("reset", mfa.rowVersion))}>Reset Authenticator App</button> : <button disabled={busy} onClick={() => confirmSecurityAction(`Set up the authenticator app for ${user.displayName}?`, () => void onProvision("setup", mfa.rowVersion))}>Set Up Authenticator App</button>)}{canRemoveMfa && mfa.enrolled && <button className="dangerButton" disabled={busy || mfa.rowVersion === null} onClick={() => confirmSecurityAction(`Remove the authenticator app for ${user.displayName}?`, () => void onRemove(mfa.rowVersion!))}>Remove Authenticator App</button>}</div></>}
+      <p className="privacyNote">Provisioning details appear only in the successful setup or reset response and disappear when its panel is closed.</p>
     </section>
     <section>
       <h4>Active Sessions</h4>

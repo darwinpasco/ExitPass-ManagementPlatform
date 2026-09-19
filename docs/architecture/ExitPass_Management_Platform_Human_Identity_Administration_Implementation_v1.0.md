@@ -22,7 +22,7 @@ The User Administration workspace presents:
 - Roles & Permissions catalog and assignment controls;
 - role-bound Site Access for a Site or Site Group;
 - Elevated Access requests, request-reference rediscovery, and decisions;
-- Two-Factor Authentication status and authenticator reset/remove;
+- Two-Factor Authentication status and administrator setup/reset/remove, with one-time replacement provisioning;
 - privacy-safe Active Sessions and sign-out controls;
 - Access Review and a privacy-safe Activity Log.
 
@@ -40,11 +40,11 @@ At desktop width the directory and detail remain side by side. At tablet and nar
 
 ## Security and privacy
 
-Requests are same-origin and cookie-backed. The browser does not send actor, permission, Site, Site Group, service-identity, or authorization authority headers. Passwords, OTP values, TOTP seeds, provisioning payloads, session secrets, cookies, hashes, and refresh tokens are neither requested nor rendered. Administration payloads and permissions are not written to localStorage, sessionStorage, IndexedDB, or Cache Storage.
+Requests are same-origin and cookie-backed. The browser does not send actor, permission, Site, Site Group, service-identity, or authorization authority headers. Ordinary MFA status, user detail, and session reads never request or render TOTP provisioning material. Successful Add User bootstrap and administrator TOTP setup/reset responses are the only one-time views of a shared secret and provisioning URI. A local `qrcode` renderer converts the exact URI to an SVG data URI; no external QR service is contacted. The secret, URI, and QR exist only in component state and the current DOM, are removed when the panel closes, and are never written to localStorage, sessionStorage, IndexedDB, Cache Storage, URL/history state, logs, or analytics.
 
 ## Validation
 
-Focused Vitest coverage verifies route composition, shared CSRF decoration, user states, Add User role compatibility and business labels, section-level partial failures and retries, pagination request ordering, read-only GLOBAL grants, Elevated Access rediscovery, sliding-session presentation, two-factor/session privacy, safe errors, and storage non-authority. Playwright covers the integrated workspace, state variants, keyboard operation, compact layout, and browser storage.
+Focused Vitest coverage verifies route composition, shared CSRF decoration, user states, Add User QR rendering, active and absent authenticator controls, one-time setup/reset display and destruction, remove without provisioning, section-level failures, two-factor/session privacy, safe errors, and storage non-authority. Playwright covers the integrated workspace, local QR rendering, one-time reset cleanup, remove-to-setup transition, state variants, keyboard operation, compact layout, and browser storage.
 
 The deterministic browser fixture is development-only: ?mpScenario=authenticated&mpIdentityScenario=populated. Other states are empty, permission-denied, conflict, unavailable, partial-failure, global-readonly, paginated, elevated-rediscovery, and mutation-uncertain.
 
