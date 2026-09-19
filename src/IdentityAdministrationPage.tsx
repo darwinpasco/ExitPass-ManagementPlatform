@@ -373,6 +373,8 @@ export function IdentityAdministrationPage({ client, permissions }: Props) {
 }
 
 function CreateUserPanel({ busy, roleCatalogState, scopeCatalogState, onRetryRoles, onRetryScopes, onCancel, onCreate }: { busy: boolean; roleCatalogState: SectionLoadState<IdentityRoleDefinition[]>; scopeCatalogState: SectionLoadState<DelegableScopeCatalog>; onRetryRoles: () => Promise<void>; onRetryScopes: () => Promise<void>; onCancel: () => void; onCreate: (body: Record<string, unknown>) => Promise<void> }) {
+  const [username, setUsername] = useState("");
+  const [usernameError, setUsernameError] = useState<string>();
   const [initialRoleReference, setInitialRoleReference] = useState("");
   const [scopeType, setScopeType] = useState<AssignableScopeType | "">("");
   const [initialScopeReference, setInitialScopeReference] = useState("");
@@ -396,11 +398,18 @@ function CreateUserPanel({ busy, roleCatalogState, scopeCatalogState, onRetryRol
     event.preventDefault();
     if (!selectedRole) return;
     const data = new FormData(event.currentTarget);
+    const normalizedUsername = String(data.get("username") ?? "").trim();
+    if (normalizedUsername.length < 8) {
+      setUsernameError("Username must be at least 8 characters because it is used as the temporary password.");
+      return;
+    }
+    setUsernameError(undefined);
     const targetReference = String(data.get("initialScopeReference") ?? "");
-    void onCreate({ username: data.get("username"), displayName: data.get("displayName"), email: data.get("email") || null, maskedMobileNumber: data.get("mobile") || null, initialRoleReference: selectedRole.roleReference, initialScopeType: effectiveScopeType || null, initialSiteReference: effectiveScopeType === "SITE" ? targetReference : null, initialSiteGroupReference: effectiveScopeType === "SITE_GROUP" ? targetReference : null, effectiveFrom: new Date(String(data.get("effectiveFrom"))).toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() });
+    void onCreate({ username: normalizedUsername, displayName: data.get("displayName"), email: data.get("email") || null, maskedMobileNumber: data.get("mobile") || null, initialRoleReference: selectedRole.roleReference, initialScopeType: effectiveScopeType || null, initialSiteReference: effectiveScopeType === "SITE" ? targetReference : null, initialSiteGroupReference: effectiveScopeType === "SITE_GROUP" ? targetReference : null, effectiveFrom: new Date(String(data.get("effectiveFrom"))).toISOString(), effectiveTo: null, reasonCode: data.get("reasonCode"), idempotencyKey: crypto.randomUUID() });
   }}>
-    <div><h3 id="create-user-title">Add User</h3><p>Central PMS generates a temporary password valid for 72 hours and one-time authenticator provisioning material after the governed user, role, and scope operation succeeds.</p></div>
-    <label>Username<input name="username" required autoComplete="off" /></label>
+    <div><h3 id="create-user-title">Add User</h3><p>The stored username is used as the temporary password for 72 hours. Central PMS returns it with one-time authenticator provisioning material after the governed user, role, and scope operation succeeds.</p></div>
+    <label>Username<input name="username" required minLength={8} autoComplete="off" value={username} aria-invalid={Boolean(usernameError)} aria-describedby={usernameError ? "create-user-username-error" : undefined} onChange={(event) => { setUsername(event.target.value); if (usernameError) setUsernameError(undefined); }} onInvalid={(event) => { event.preventDefault(); setUsernameError("Username must be at least 8 characters because it is used as the temporary password."); }} /></label>
+    {usernameError && <p id="create-user-username-error" className="authenticationError" role="alert">{usernameError}</p>}
     <label>Display name<input name="displayName" required /></label>
     <label>Email (optional)<input name="email" type="email" /></label>
     <label>Masked mobile (optional)<input name="mobile" /></label>
@@ -432,7 +441,7 @@ function ProvisioningPanel({ result, onClose }: { result: IdentityCreateUserResu
     <dl className="factGrid"><Fact label="Username" value={user.username} /><Fact label="Temporary password" value={provisioning.temporaryPassword} /><Fact label="Temporary password expires" value={formatDate(provisioning.temporaryPasswordExpiresAt)} /></dl>
     <TotpProvisioningDetails username={user.username} sharedSecret={provisioning.totpSecret} provisioningUri={provisioning.totpProvisioningUri} />
     <p><strong>Account status:</strong> Active. Normal application access remains blocked until the required password change is complete.</p>
-    <p><strong>First sign-in:</strong> the user must enter the temporary password and TOTP, then change the password before accessing permitted functions.</p>
+    <p><strong>First sign-in:</strong> the user signs in with the temporary password, then uses the authenticator code to change it before accessing permitted functions.</p>
     <button type="button" onClick={onClose}>I have completed provisioning</button>
   </section>;
 }

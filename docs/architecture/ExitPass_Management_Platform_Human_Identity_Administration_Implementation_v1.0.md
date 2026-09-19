@@ -16,7 +16,7 @@ The User Administration workspace presents:
 
 - server-driven user search and authorized detail;
 - offset-based user-directory continuation in bounded pages of 50, with stale-response protection;
-- Add User without password or invented delivery behavior, with one required initial role and one required Site or Site Group assignment;
+- Add User with an eight-character minimum username, no client-generated password, one required initial role, and its required authoritative scope assignment;
 - profile and access-date updates with row-version checks;
 - server-validated Account Status changes;
 - Roles & Permissions catalog and assignment controls;
@@ -30,7 +30,7 @@ Organization-wide access controls are absent. The technical backend classificati
 
 Successful empty role, permission, session, MFA, and Activity Log responses remain distinct from request failure. Secondary-section denial or unavailability is shown within the affected section, preserves successfully loaded user detail, and offers only a bounded retry of that request. A server-returned GLOBAL grant is visible for transparency but is read-only and cannot invoke scope revocation. Elevated Access request references remain in runtime memory only; an administrator can re-enter a reference after refresh and load the authoritative request through the existing I-021 read operation.
 
-Add User submits only I-021 `identity.user_type_enum` values. It shows a user type only when the current role catalog contains a compatible, active, directly assignable role. Known Central PMS role codes receive business labels, and H-007, denied-user, synthetic-target, and negative-test roles are not presented as assignable choices. Changing user type clears an incompatible role. Central PMS independently validates the user-type/role pair and the existing privilege and delegation ceilings before persistence. The administrator must also select an authorized Site or Site Group. Central PMS commits the user, role assignment, scope grant, and audit events together; a failure creates nothing. After success the directory returns to page one, reloads, and opens the new user.
+Add User requires a username of at least eight characters because Central PMS uses the exact stored, case-sensitive username as the temporary password. The browser never generates or submits a password. It submits the approved role and authoritative scope selection, and Central PMS independently validates the role, scope, privilege, and delegation ceilings before persistence. Central PMS commits the user, credential verifier, TOTP authenticator, role assignment, scope grant, and audit evidence together; a failure creates nothing. The one-time panel displays the returned username, temporary password, 72-hour expiry, TOTP secret, and locally rendered QR code exactly as returned, then destroys them when closed.
 
 An unsafe transport or 5xx result is treated as uncertain. Previously loaded information remains visible but is marked stale, and Add User plus profile, Account Status, role, scope, MFA, session, and access-review mutations remain disabled until the directory and selected-user authority reload successfully. The browser never replays the failed command.
 

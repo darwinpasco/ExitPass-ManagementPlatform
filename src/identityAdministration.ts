@@ -238,7 +238,13 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
     getUser: async () => detail,
     createUser: name === "mutation-uncertain"
       ? async () => { throw createUiError("unknown", "IDENTITY_ADMIN_MUTATION_UNCERTAIN", "The request failed safely.", "support-identity-mutation-uncertain", 500, false, true); }
-      : async () => ({ user: { ...user, username: "provisioned.user", displayName: "Provisioned User", status: "ACTIVE", rowVersion: 1 }, provisioning: syntheticProvisioning() }),
+      : async (body) => {
+          const username = String(body.username);
+          return {
+            user: { ...user, username, displayName: String(body.displayName), status: "ACTIVE", rowVersion: 1 },
+            provisioning: syntheticProvisioning(username)
+          };
+        },
     updateUser: name === "conflict" ? async () => { throw createUiError("conflict", "IDENTITY_ADMIN_VERSION_CONFLICT", "The authoritative user changed. Reload before retrying.", "support-identity-conflict", 409); } : async () => ({ ...user, rowVersion: user.rowVersion + 1 }),
     changeLifecycle: async (_reference, action) => ({ ...user, status: action.toUpperCase(), rowVersion: user.rowVersion + 1 }),
     listRoles: name === "partial-failure" ? sectionUnavailable : async (filters = {}) => syntheticDirectRoles().filter((role) =>
@@ -429,7 +435,7 @@ function syntheticDirectRoles(): IdentityRoleDefinition[] {
     };
   });
 }
-function syntheticProvisioning(): IdentityProvisioningMaterial { return { temporaryPassword: "Temporary-Only-72h!", temporaryPasswordExpiresAt: "2030-03-04T08:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: "otpauth://totp/ExitPass:invited.user?secret=JBSWY3DPEHPK3PXP&issuer=ExitPass", displayOnce: true, passwordChangeRequired: true }; }
+function syntheticProvisioning(username: string): IdentityProvisioningMaterial { return { temporaryPassword: username, temporaryPasswordExpiresAt: "2030-03-04T08:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: `otpauth://totp/ExitPass:${username}?secret=JBSWY3DPEHPK3PXP&issuer=ExitPass`, displayOnce: true, passwordChangeRequired: true }; }
 function syntheticMfaProvisioning(): IdentityMfaProvisioningResult { return { mfaStatus: syntheticMfa(), provisioning: { totpSharedSecret: "KRSXG5DSNFXGOIDB", totpProvisioningUri: "otpauth://totp/ExitPass:alex.rivera?secret=KRSXG5DSNFXGOIDB&issuer=ExitPass", displayOnce: true } }; }
 function syntheticPermission(): IdentityPermissionDefinition { return { permissionReference: "81000000-0000-4000-8000-000000000005", code: "user.view", name: "View users", domain: "Identity", action: "VIEW", status: "ACTIVE", isSensitive: false, requiresAudit: true, rowVersion: 1 }; }
 function syntheticMfa(): IdentityMfaStatus { return { requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-03-01T08:00:00Z", resetAt: null, revokedAt: null, rowVersion: 7 }; }
