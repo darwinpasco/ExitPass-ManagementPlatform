@@ -20,7 +20,10 @@ test.describe("governed User Administration", () => {
     await page.getByRole("tab", { name: "Security" }).click();
     await expect(page.getByRole("heading", { name: "Two-Factor Authentication" })).toBeVisible();
     await expect(page.getByText("Required for sign-in")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reset Authenticator App" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Remove Authenticator App" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Active Sessions" })).toBeVisible();
+    expect(await page.locator("body").innerText()).not.toMatch(/otpauth:\/\/|JBSWY3DPEHPK3PXP/i);
     await expect(page.getByText(/Session cookies, secrets, hashes/)).toBeVisible();
 
     await page.getByRole("tab", { name: "Activity Log" }).click();
@@ -169,20 +172,19 @@ test.describe("governed User Administration", () => {
     await expect(page.getByText(/Page 1.*Showing 1-50/)).toBeVisible();
   });
 
-  test("persisted applied Elevated Access requests can be reopened without browser authority", async ({ page }) => {
-    await page.goto("/management-platform/identity-administration?mpScenario=authenticated&mpIdentityScenario=elevated-rediscovery");
+  test("assigns approved roles directly and keeps Global scope labeling", async ({ page }) => {
+    await page.goto(route);
     await page.getByRole("button", { name: /Synthetic Administration User/ }).click();
     await page.getByRole("tab", { name: "Roles & Permissions" }).click();
-    await page.getByLabel("Request reference").fill("synthetic-request-reference");
-    await page.getByRole("button", { name: "Load Request" }).click();
-    await expect(page.getByText("Applied", { exact: true })).toBeVisible();
-    await expect(page.getByText(/target user must sign in again/)).toBeVisible();
-    const storage = await page.evaluate(async () => ({
-      local: Object.fromEntries(Object.entries(localStorage)),
-      session: Object.fromEntries(Object.entries(sessionStorage)),
-      indexedDb: await indexedDB.databases()
-    }));
-    expect(JSON.stringify(storage)).not.toMatch(/synthetic-request-reference|privileged|elevated|authority/i);
+    const form = page.getByRole("heading", { name: "Add Role" }).locator("xpath=ancestor::form");
+    await expect(form.getByRole("option", { name: "System Administrator (Global scope)" })).toBeAttached();
+    await expect(form.getByRole("option", { name: "Executive / Management (Global scope)" })).toBeAttached();
+    await expect(form.getByText(/elevated access approval/i)).toHaveCount(0);
+    await form.getByLabel("Role").selectOption({ label: "System Administrator (Global scope)" });
+    await form.getByLabel("Reason").fill("AUTHORIZED_ROLE_ASSIGNMENT");
+    await form.getByRole("button", { name: "Add Role" }).click();
+    await expect(page.getByText("Role assigned.")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Elevated Access" })).toHaveCount(0);
   });
 
   test("uncertain mutations retain stale read-only data until authoritative refresh succeeds", async ({ page }) => {

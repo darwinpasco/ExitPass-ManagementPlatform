@@ -14,7 +14,6 @@ export const identityAdministrationPermissions = {
   permissionView: "permission.view",
   roleAssignmentManage: "identity.role-assignment.manage",
   scopeAssignmentManage: "identity.scope-assignment.manage",
-  privilegedAccessDecide: "identity.privileged-access.decide",
   accessReviewManage: "identity.access-review.manage",
   sessionView: "human-authentication.session.admin.view",
   sessionRevoke: "human-authentication.session.admin.revoke",
@@ -184,24 +183,6 @@ export interface IdentityAuditEntry {
   correlationReference: string | null;
 }
 
-export interface IdentityPrivilegedAccessRequest {
-  requestReference: string;
-  targetUserReference: string;
-  requestedRoleReference: string;
-  requestedScopeType: string | null;
-  requestedSiteReference: string | null;
-  requestedSiteGroupReference: string | null;
-  status: string;
-  reasonCode: string;
-  requestedEffectiveFrom: string;
-  requestedEffectiveTo: string | null;
-  requestedAt: string;
-  requestedByUserReference: string;
-  expiresAt: string | null;
-  rowVersion: number;
-  decisions: Array<{ sequence: number; decision: string; reasonCode: string; decidedAt: string; decidedByUserReference: string }>;
-}
-
 export interface IdentityAdministrationClient {
   listUsers(filters?: { query?: string; status?: string; offset?: number; limit?: number }, signal?: AbortSignal): Promise<IdentityUserSummary[]>;
   getUser(userReference: string, signal?: AbortSignal): Promise<IdentityUserDetail>;
@@ -215,9 +196,6 @@ export interface IdentityAdministrationClient {
   revokeRole(userReference: string, assignmentReference: string, body: Record<string, unknown>): Promise<IdentityRoleAssignment>;
   grantScope(userReference: string, assignmentReference: string, body: Record<string, unknown>): Promise<IdentityScopeGrant>;
   revokeScope(userReference: string, assignmentReference: string, grantReference: string, body: Record<string, unknown>): Promise<IdentityScopeGrant>;
-  createPrivilegedAccessRequest(body: Record<string, unknown>): Promise<IdentityPrivilegedAccessRequest>;
-  getPrivilegedAccessRequest(requestReference: string): Promise<IdentityPrivilegedAccessRequest>;
-  decidePrivilegedAccess(requestReference: string, body: Record<string, unknown>): Promise<IdentityPrivilegedAccessRequest>;
   reviewAccess(userReference: string, body: Record<string, unknown>): Promise<boolean>;
   listSessions(userReference: string, signal?: AbortSignal): Promise<IdentitySessionSummary[]>;
   revokeSession(userReference: string, sessionReference: string | null, reasonCode: string): Promise<void>;
@@ -226,12 +204,12 @@ export interface IdentityAdministrationClient {
   listAuditEvents(userReference: string, signal?: AbortSignal): Promise<IdentityAuditEntry[]>;
 }
 
-export type IdentityAdministrationScenarioName = "populated" | "empty" | "permission-denied" | "conflict" | "unavailable" | "partial-failure" | "global-readonly" | "paginated" | "elevated-rediscovery" | "mutation-uncertain";
+export type IdentityAdministrationScenarioName = "populated" | "empty" | "permission-denied" | "conflict" | "unavailable" | "partial-failure" | "global-readonly" | "paginated" | "mutation-uncertain";
 
 export function resolveIdentityAdministrationScenario(enabled: boolean, search: string): { name: IdentityAdministrationScenarioName; client: IdentityAdministrationClient } | undefined {
   if (!import.meta.env.DEV || !enabled) return undefined;
   const value = new URLSearchParams(search).get("mpIdentityScenario");
-  const supported: IdentityAdministrationScenarioName[] = ["populated", "empty", "permission-denied", "conflict", "unavailable", "partial-failure", "global-readonly", "paginated", "elevated-rediscovery", "mutation-uncertain"];
+  const supported: IdentityAdministrationScenarioName[] = ["populated", "empty", "permission-denied", "conflict", "unavailable", "partial-failure", "global-readonly", "paginated", "mutation-uncertain"];
   const name: IdentityAdministrationScenarioName = supported.includes(value as IdentityAdministrationScenarioName) ? value as IdentityAdministrationScenarioName : "populated";
   const error = name === "permission-denied"
     ? createUiError("permission-denied", "IDENTITY_ADMIN_FORBIDDEN", "You do not have permission for this Management Platform action.", "support-identity-denied")
@@ -258,7 +236,6 @@ export function resolveIdentityAdministrationScenario(enabled: boolean, search: 
     assignRole: async () => syntheticAssignment(), revokeRole: async () => ({ ...syntheticAssignment(), status: "REVOKED" }),
     grantScope: async (_user, assignment, body) => ({ ...syntheticGrant(), assignmentReference: assignment, scopeType: String(body.scopeType), siteReference: body.siteReference ? String(body.siteReference) : null, siteGroupReference: body.siteGroupReference ? String(body.siteGroupReference) : null }),
     revokeScope: async () => ({ ...syntheticGrant(), status: "REVOKED" }),
-    createPrivilegedAccessRequest: async () => syntheticPrivilegedRequest("PENDING_DECISION"), getPrivilegedAccessRequest: async () => syntheticPrivilegedRequest(name === "elevated-rediscovery" ? "APPLIED" : "PENDING_DECISION"), decidePrivilegedAccess: async (_reference, body) => syntheticPrivilegedRequest(String(body.decision) === "APPROVE" ? "APPLIED" : "REJECTED"),
     reviewAccess: async () => true,
     listSessions: name === "partial-failure" ? sectionUnavailable : async () => [syntheticSession()], revokeSession: async () => undefined,
     getMfaStatus: name === "partial-failure" ? sectionDenied : async () => syntheticMfa(), changeMfa: async (_reference, action) => ({ ...syntheticMfa(), enrolled: false, status: action === "reset" ? "RESET_REQUIRED" : "REMOVED", rowVersion: 8 }),
@@ -298,9 +275,6 @@ export function createIdentityAdministrationClient(api: CentralPmsApiClient): Id
     revokeRole: (reference, assignment, body) => mutate<unknown>(`${userPath(reference)}/role-assignments/${encodeURIComponent(assignment)}/revoke`, "POST", body).then(asObject<IdentityRoleAssignment>),
     grantScope: (reference, assignment, body) => mutate<unknown>(`${userPath(reference)}/role-assignments/${encodeURIComponent(assignment)}/scope-grants`, "POST", body).then(asObject<IdentityScopeGrant>),
     revokeScope: (reference, assignment, grant, body) => mutate<unknown>(`${userPath(reference)}/role-assignments/${encodeURIComponent(assignment)}/scope-grants/${encodeURIComponent(grant)}/revoke`, "POST", body).then(asObject<IdentityScopeGrant>),
-    createPrivilegedAccessRequest: (body) => mutate<unknown>(`${identityAdministrationApiRoute}/privileged-access-requests`, "POST", body).then(asObject<IdentityPrivilegedAccessRequest>),
-    getPrivilegedAccessRequest: (reference) => get<unknown>(`${identityAdministrationApiRoute}/privileged-access-requests/${encodeURIComponent(reference)}`).then(asObject<IdentityPrivilegedAccessRequest>),
-    decidePrivilegedAccess: (reference, body) => mutate<unknown>(`${identityAdministrationApiRoute}/privileged-access-requests/${encodeURIComponent(reference)}/decision`, "POST", body).then(asObject<IdentityPrivilegedAccessRequest>),
     reviewAccess: (reference, body) => mutate<unknown>(`${userPath(reference)}/access-reviews`, "POST", body).then(asBoolean),
     listSessions: (reference, signal) => get<unknown>(`${userPath(reference)}/sessions`, signal).then(asArray<IdentitySessionSummary>),
     async revokeSession(reference, session, reasonCode) {
@@ -393,7 +367,7 @@ function syntheticUser(): IdentityUserSummary { return { userReference: "8100000
 function syntheticUserPage(offset: number, count: number): IdentityUserSummary[] { return Array.from({ length: count }, (_, index) => ({ ...syntheticUser(), userReference: `synthetic-user-${offset + index + 1}`, username: `synthetic.user.${offset + index + 1}`, displayName: `Synthetic User ${offset + index + 1}` })); }
 function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: "81000000-0000-4000-8000-000000000016", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
 function syntheticGrant(): IdentityScopeGrant { return { grantReference: "81000000-0000-4000-8000-000000000003", assignmentReference: syntheticAssignment().assignmentReference, scopeType: "SITE", siteReference: "71000000-0000-0000-0000-000000000101", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 2 }; }
-function syntheticRole(): IdentityRoleDefinition { return { ...syntheticOrdinaryRole(), roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_ADMINISTRATOR", name: "System Administrator", description: "Governed Management Platform identity administration", type: "SYSTEM", isPrivileged: true, requiresElevatedApproval: true, allowedUserTypes: ["INTERNAL_ADMIN"], applicationAccess: ["MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" } }; }
+function syntheticRole(): IdentityRoleDefinition { return { ...syntheticOrdinaryRole(), roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_ADMINISTRATOR", name: "System Administrator", description: "Governed Management Platform identity administration", type: "SYSTEM", isPrivileged: true, requiresElevatedApproval: false, allowedUserTypes: ["INTERNAL_ADMIN"], applicationAccess: ["MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" } }; }
 function syntheticOrdinaryRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000014", code: "SITE_OPERATOR", name: "Site Operator", description: "Site operations access", type: "OPERATIONS", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: [], applicationAccess: ["OPERATOR_CONSOLE"], scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" } }; }
 function syntheticDirectRoles(): IdentityRoleDefinition[] {
   const base = syntheticOrdinaryRole();
@@ -412,7 +386,7 @@ function syntheticDirectRoles(): IdentityRoleDefinition[] {
       name: presentation.label,
       description: presentation.summary,
       isPrivileged: ["SYSTEM_ADMINISTRATOR", "OPERATIONS_SUPERVISOR", "COMPLIANCE_POLICY_ADMINISTRATOR"].includes(presentation.code),
-      requiresElevatedApproval: ["SYSTEM_ADMINISTRATOR", "OPERATIONS_SUPERVISOR", "COMPLIANCE_POLICY_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(presentation.code),
+      requiresElevatedApproval: false,
       applicationAccess,
       scopePolicy: {
         allowedScopeTypes,
@@ -429,5 +403,4 @@ function syntheticPermission(): IdentityPermissionDefinition { return { permissi
 function syntheticMfa(): IdentityMfaStatus { return { requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-03-01T08:00:00Z", resetAt: null, revokedAt: null, rowVersion: 7 }; }
 function syntheticSession(): IdentitySessionSummary { return { sessionReference: "81000000-0000-4000-8000-000000000006", audience: "MANAGEMENT_PLATFORM", status: "ACTIVE", assurance: "PASSWORD_TOTP", mfaRequirementSatisfied: true, deviceServiceIdentityReference: null, authenticatedAt: "2030-03-01T08:00:00Z", lastSeenAt: "2030-03-01T08:10:00Z", idleExpiresAt: "2030-03-01T08:30:00Z", absoluteExpiresAt: "2030-03-01T16:00:00Z", revokedAt: null, rowVersion: 1 }; }
 function syntheticAudit(): IdentityAuditEntry { return { auditReference: "81000000-0000-4000-8000-000000000007", eventType: "ROLE_ASSIGNED", result: "SUCCESS", reasonCode: "GOVERNED_ASSIGNMENT", actorUserReference: null, summary: "Role added through governed administration.", occurredAt: "2030-03-01T08:00:00Z", correlationReference: "support-identity-0001" }; }
-function syntheticPrivilegedRequest(status: string): IdentityPrivilegedAccessRequest { return { requestReference: "81000000-0000-4000-8000-000000000008", targetUserReference: syntheticUser().userReference, requestedRoleReference: syntheticRole().roleReference, requestedScopeType: null, requestedSiteReference: null, requestedSiteGroupReference: null, status, reasonCode: "TEMPORARY_ADMINISTRATION", requestedEffectiveFrom: "2030-03-01T08:00:00Z", requestedEffectiveTo: null, requestedAt: "2030-03-01T08:00:00Z", requestedByUserReference: "81000000-0000-4000-8000-000000000009", expiresAt: null, rowVersion: status === "PENDING_DECISION" ? 1 : 2, decisions: [] }; }
 function pitxDelegableScopes(): DelegableScopeCatalog { return { siteGroups: [{ siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }], sites: [{ siteId: "2d1dcdf8-f563-537c-8542-0bde7cc9da97", siteCode: "PITX-LEVEL-3", siteName: "PITX Level 3", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }, { siteId: "b336964f-3b84-5404-8690-97ead0929b1f", siteCode: "PITX-OPEN-LOT", siteName: "PITX Open Lot", siteGroupId: "a6dbadf6-68b5-5bed-a7e0-a75faee70841", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE", effectiveFrom: "2026-08-13T00:00:00+08:00", effectiveTo: null }] }; }
