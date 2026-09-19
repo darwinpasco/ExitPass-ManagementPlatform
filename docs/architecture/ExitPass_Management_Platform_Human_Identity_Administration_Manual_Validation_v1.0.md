@@ -20,7 +20,7 @@ State URLs replace populated with empty, permission-denied, conflict, unavailabl
 ## Walkthrough
 
 1. Verify Users, user detail, Profile and Access Dates, and Account Status confirmation.
-2. Open Add User and confirm there is no password or delivery-channel control. Confirm synthetic H-007 roles are absent, role names are business-facing, user type limits the compatible role choices, and Add User cannot submit until a compatible initial role and an authorized Site or Site Group are selected.
+2. Open Add User and confirm there is no password or delivery-channel control. Confirm a seven-character username shows `Username must be at least 8 characters because it is used as the temporary password.` and an eight-character username is accepted. Confirm the one-time result displays the exact Central PMS temporary password, which equals the returned username, with its expiry, TOTP secret, and QR code.
 3. Inspect Roles & Permissions and Site Access for Site and Site Group. Confirm organization-wide access is unavailable.
 4. Create an Elevated Access request and confirm approval does not activate access.
 5. Inspect Two-Factor Authentication and Active Sessions, then exercise authenticator and session confirmations.

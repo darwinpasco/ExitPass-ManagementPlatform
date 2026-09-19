@@ -102,6 +102,34 @@ describe("IdentityAdministrationPage", () => {
     expect(within(form).queryByRole("option", { name: "Site Operator" })).not.toBeInTheDocument();
     expect(within(form).getByRole("button", { name: "Add User" })).toBeDisabled();
   });
+
+  it("rejects a seven-character username and submits an eight-character username without a client password", async () => {
+    const client = mockClient();
+    renderPage(client);
+    await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
+    const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
+    const username = within(form).getByLabelText("Username");
+    await userEvent.type(username, "Seven77");
+    await userEvent.type(within(form).getByLabelText("Display name"), "Length Test");
+    await userEvent.type(within(form).getByLabelText("Reason"), "USERNAME_POLICY_TEST");
+    await selectInitialAccess(form);
+    await userEvent.click(within(form).getByRole("button", { name: "Add User" }));
+
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Username must be at least 8 characters because it is used as the temporary password."
+    );
+    expect(client.createUser).not.toHaveBeenCalled();
+
+    await userEvent.clear(username);
+    await userEvent.type(username, "User0008");
+    await userEvent.click(within(form).getByRole("button", { name: "Add User" }));
+    await waitFor(() => expect(client.createUser).toHaveBeenCalledOnce());
+    const body = client.createUser.mock.calls[0][0];
+    expect(body).toMatchObject({ username: "User0008" });
+    expect(body).not.toHaveProperty("password");
+    expect(body).not.toHaveProperty("temporaryPassword");
+  });
+
   it("makes Executive / Management explicitly Global-only", async () => {
     const client = mockClient();
     renderPage(client);
@@ -132,16 +160,17 @@ describe("IdentityAdministrationPage", () => {
     await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-site-operator");
     await userEvent.selectOptions(within(form).getByLabelText("Assigned Site"), "site-1");
     await userEvent.click(within(form).getByRole("button", { name: "Add User" }));
-    const provisioning = await screen.findByRole("region", { name: "Provision Alex Rivera" });
-    expect(provisioning).toHaveTextContent("Temporary-Only-72h!");
+    const provisioning = await screen.findByRole("region", { name: "Provision New Operator" });
+    expect(provisioning).toHaveTextContent("new.operator");
+    expect(within(provisioning).getAllByText("new.operator", { selector: "dd" })).toHaveLength(2);
     expect(provisioning).toHaveTextContent("JBSWY3DPEHPK3PXP");
-    expect(await within(provisioning).findByAltText("Authenticator QR code for alex.rivera")).toHaveAttribute("src", expect.stringMatching(/^data:image\/svg\+xml/));
+    expect(await within(provisioning).findByAltText("Authenticator QR code for new.operator")).toHaveAttribute("src", expect.stringMatching(/^data:image\/svg\+xml/));
     expect(provisioning).toHaveTextContent("Account status: Active");
     expect(provisioning).toHaveTextContent("Normal application access remains blocked until the required password change is complete.");
     expect(provisioning).not.toHaveTextContent(/business functions.*ready|ready for use/i);
     expect(localStorage).toHaveLength(0);
     await userEvent.click(within(provisioning).getByRole("button", { name: "I have completed provisioning" }));
-    expect(screen.queryByText("Temporary-Only-72h!")).not.toBeInTheDocument();
+    expect(screen.queryByText("new.operator")).not.toBeInTheDocument();
     await userEvent.click(await screen.findByRole("tab", { name: "Security" }));
     expect(await screen.findByText("Required for sign-in")).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/JBSWY3DPEHPK3PXP|otpauth:/i);
@@ -495,7 +524,13 @@ function mockClient() {
   const user = userDetail();
   return {
     listUsers: vi.fn(async (_filters: { query?: string; status?: string; offset?: number; limit?: number } = {}) => [user.user]), getUser: vi.fn(async (_reference: string) => user),
-    createUser: vi.fn(async (_body: Record<string, unknown>) => ({ user: user.user, provisioning: provisioningMaterial() })), updateUser: vi.fn(async (_reference: string, _body: Record<string, unknown>) => user.user), changeLifecycle: vi.fn(async () => user.user),
+    createUser: vi.fn(async (body: Record<string, unknown>) => {
+      const username = String(body.username);
+      return {
+        user: { ...user.user, username, displayName: String(body.displayName) },
+        provisioning: provisioningMaterial(username)
+      };
+    }), updateUser: vi.fn(async (_reference: string, _body: Record<string, unknown>) => user.user), changeLifecycle: vi.fn(async () => user.user),
     listRoles: vi.fn(async () => [
       role("SYSTEM_ADMINISTRATOR", "System Administrator", "role-system", [], true),
       role("OPERATIONS_SUPERVISOR", "Operations Supervisor", "role-operations"),
@@ -532,7 +567,7 @@ function role(code: string, name: string, reference: string, allowedUserTypes: s
       : { allowedScopeTypes: ["SITE", "SITE_GROUP", "GLOBAL"], assignmentRequired: true, defaultScope: code === "FINANCE_RECONCILIATION_ANALYST" ? null : "GLOBAL" };
   return { roleReference: reference, code, name, description: "Governed role", type: "SYSTEM", status: "ACTIVE", isPrivileged: privileged, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes, applicationAccess, scopePolicy };
 }
-function provisioningMaterial() { return { temporaryPassword: "Temporary-Only-72h!", temporaryPasswordExpiresAt: "2030-01-04T00:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: "otpauth://totp/ExitPass:new.operator?secret=JBSWY3DPEHPK3PXP&issuer=ExitPass", displayOnce: true as const, passwordChangeRequired: true as const }; }
+function provisioningMaterial(username = "alex.rivera") { return { temporaryPassword: username, temporaryPasswordExpiresAt: "2030-01-04T00:00:00Z", totpSecret: "JBSWY3DPEHPK3PXP", totpProvisioningUri: `otpauth://totp/ExitPass:${username}?secret=JBSWY3DPEHPK3PXP&issuer=ExitPass`, displayOnce: true as const, passwordChangeRequired: true as const }; }
 function mfaStatus(): IdentityMfaStatus { return { requiredForPrivilegedManagementPlatform: true, enrolled: true, status: "ACTIVE", enrollmentStartedAt: null, activatedAt: "2030-01-01T00:00:00Z", lastSuccessfullyUsedAt: "2030-01-01T00:00:00Z", resetAt: null, revokedAt: null, rowVersion: 1 }; }
 function mfaProvisioning() { return { mfaStatus: { ...mfaStatus(), rowVersion: 2 }, provisioning: { totpSharedSecret: "KRSXG5DSNFXGOIDB", totpProvisioningUri: "otpauth://totp/ExitPass:alex.rivera?secret=KRSXG5DSNFXGOIDB&issuer=ExitPass", displayOnce: true as const } }; }
 

@@ -54,15 +54,21 @@ test.describe("governed User Administration", () => {
 
     await form.getByLabel("Initial role").selectOption({ label: "Site Operator" });
     await expect(form.getByLabel("Assigned Site").getByRole("option", { name: "PITX Level 3", exact: true })).toBeAttached();
-    await form.getByLabel("Username").fill("new.operator");
+    await form.getByLabel("Username").fill("Seven77");
     await form.getByLabel("Display name").fill("New Operator");
     await form.getByLabel("Reason").fill("AUTHORIZED_PROVISIONING");
     await form.getByLabel("Assigned Site").selectOption({ index: 1 });
     await form.getByRole("button", { name: "Add User" }).click();
-    const provisioning = page.getByRole("region", { name: "Provision Provisioned User" });
+    await expect(form.getByRole("alert")).toHaveText("Username must be at least 8 characters because it is used as the temporary password.");
+    await expect(page.getByRole("region", { name: /Provision/ })).toHaveCount(0);
+
+    await form.getByLabel("Username").fill("new.operator");
+    await form.getByRole("button", { name: "Add User" }).click();
+    const provisioning = page.getByRole("region", { name: "Provision New Operator" });
     await expect(provisioning).toContainText("Temporary password");
+    await expect(provisioning.locator("dd").filter({ hasText: /^new\.operator$/ })).toHaveCount(2);
     await expect(provisioning).toContainText("Manual setup key");
-    await expect(provisioning.getByAltText("Authenticator QR code for provisioned.user")).toHaveAttribute("src", /^data:image\/svg\+xml/);
+    await expect(provisioning.getByAltText("Authenticator QR code for new.operator")).toHaveAttribute("src", /^data:image\/svg\+xml/);
     await expect(provisioning).toContainText("Account status: Active");
     await expect(provisioning).toContainText("Normal application access remains blocked until the required password change is complete.");
     await provisioning.getByRole("button", { name: "I have completed provisioning" }).click();
