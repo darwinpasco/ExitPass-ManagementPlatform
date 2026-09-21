@@ -21,7 +21,7 @@ test("reviews a PHP-only WebPay request with privacy and permission controls", a
   await expect(page.getByLabel("Evidence privacy notice")).toBeVisible();
   await page.getByRole("button", { name: /Person with disability/ }).click();
   await expect(page.getByText(/1,234\.56/)).toBeVisible();
-  await expect(page.getByText("***1234")).toBeVisible();
+  await expect(page.getByText("***1234", { exact: true })).toBeVisible();
   await expect(page.getByText(/USD|currency conversion|multi-currency/i)).toHaveCount(0);
   await expect(page.getByText(/plate/i)).toHaveCount(0);
 });
