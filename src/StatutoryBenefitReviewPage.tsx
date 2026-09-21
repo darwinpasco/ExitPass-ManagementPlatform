@@ -19,6 +19,7 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
   const [queue, setQueue] = useState<StatutoryBenefitReviewQueue>();
   const [detail, setDetail] = useState<StatutoryBenefitReviewDetail>();
   const [evidence, setEvidence] = useState<StatutoryBenefitEvidence>();
+  const [evidenceError, setEvidenceError] = useState<ManagementPlatformUiError>();
   const [error, setError] = useState<ManagementPlatformUiError>();
   const [loading, setLoading] = useState(false);
   const [decisionPending, setDecisionPending] = useState(false);
@@ -46,14 +47,14 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
   async function open(reference: string) {
     if (!canViewDetail) return;
     const sequence = ++requestSequence.current;
-    setLoading(true); setError(undefined); setEvidence(undefined); setNotice(undefined);
+    setLoading(true); setError(undefined); setEvidence(undefined); setEvidenceError(undefined); setNotice(undefined);
     try {
       const value = await client.get(reference);
       if (sequence !== requestSequence.current) return;
       setDetail(value);
       if (canViewEvidence) {
         try { setEvidence(await client.evidence(reference)); }
-        catch (reason) { if (sequence === requestSequence.current) setError(asError(reason)); }
+        catch (reason) { if (sequence === requestSequence.current) setEvidenceError(asError(reason)); }
       }
     } catch (reason) {
       if (sequence === requestSequence.current) setError(asError(reason));
@@ -130,7 +131,7 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
       {notice && <div className="stateMessage" role="status"><h3>Decision recorded</h3><p>{notice}</p></div>}
 
       <div className={`reviewMasterDetail ${detail ? "hasDetail" : ""}`}>
-        {detail && <ReviewDetail client={client} detail={detail} evidence={evidence} canApprove={canApprove} canReject={canReject} pending={decisionPending} rejectionReason={rejectionReason} onReason={setRejectionReason} onDecision={decide} onClose={() => { setDetail(undefined); setEvidence(undefined); setError(undefined); }} />}
+        {detail && <ReviewDetail client={client} detail={detail} evidence={evidence} evidenceError={evidenceError} canViewEvidence={canViewEvidence} canApprove={canApprove} canReject={canReject} pending={decisionPending} rejectionReason={rejectionReason} onReason={setRejectionReason} onDecision={decide} onClose={() => { setDetail(undefined); setEvidence(undefined); setEvidenceError(undefined); setError(undefined); }} />}
         <section className="reviewDirectory" aria-labelledby="review-directory-title">
           <div className="panelHeader"><div><p className="eyebrow">Authoritative queue</p><h3 id="review-directory-title">Requests</h3></div>{queue && <span>{start}-{end} of {queue.totalCount}</span>}</div>
           {queue?.items.length === 0 && <div className="stateMessage" role="status"><h4>No requests found</h4><p>No statutory-benefit requests match the current authorized filters.</p></div>}
@@ -142,12 +143,12 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
   );
 }
 
-function ReviewDetail({ client, detail, evidence, canApprove, canReject, pending, rejectionReason, onReason, onDecision, onClose }: { client: StatutoryBenefitReviewClient; detail: StatutoryBenefitReviewDetail; evidence?: StatutoryBenefitEvidence; canApprove: boolean; canReject: boolean; pending: boolean; rejectionReason: string; onReason: (value: string) => void; onDecision: (value: "APPROVE" | "REJECT") => void; onClose: () => void }) {
+function ReviewDetail({ client, detail, evidence, evidenceError, canViewEvidence, canApprove, canReject, pending, rejectionReason, onReason, onDecision, onClose }: { client: StatutoryBenefitReviewClient; detail: StatutoryBenefitReviewDetail; evidence?: StatutoryBenefitEvidence; evidenceError?: ManagementPlatformUiError; canViewEvidence: boolean; canApprove: boolean; canReject: boolean; pending: boolean; rejectionReason: string; onReason: (value: string) => void; onDecision: (value: "APPROVE" | "REJECT") => void; onClose: () => void }) {
   const isPending = detail.status === "PENDING_REVIEW";
   return <section className="reviewDetail" aria-labelledby="review-detail-title" tabIndex={-1}>
     <div className="panelHeader"><div><p className="eyebrow">Request detail</p><h3 id="review-detail-title">{benefitLabel(detail.benefitType)}</h3></div><button type="button" className="secondaryButton" onClick={onClose}>Close</button></div>
     <dl className="detailGrid"><dt>Benefit type</dt><dd>{benefitLabel(detail.benefitType)}</dd><dt>Request reference</dt><dd>{detail.requestReference}</dd><dt>Site</dt><dd>{detail.siteName} ({detail.siteCode})</dd><dt>Originating channel</dt><dd>{channelLabel(detail.sourceChannel)}</dd><dt>Parking session</dt><dd>{detail.parkingSessionReference}</dd><dt>Ticket reference</dt><dd>{detail.ticketReference ?? "Not recorded"}</dd><dt>ID document type</dt><dd>{displaySafeValue(detail.idDocumentType)}</dd><dt>Issuing authority</dt><dd>{displaySafeValue(detail.issuingAuthority)}</dd><dt>Expiry date</dt><dd>{detail.expiryDate ?? "Not recorded"}</dd><dt>Masked ID reference</dt><dd>{displaySafeValue(detail.maskedIdReference)}</dd><dt>Requester attestation</dt><dd>{detail.requesterAttestation ? "Confirmed" : "Not confirmed"}</dd>{detail.beneficiaryResidencySatisfied !== undefined && <><dt>Residency attestation</dt><dd>{detail.beneficiaryResidencySatisfied ? "Confirmed" : "Not confirmed"}</dd></>}{detail.submissionReason && <><dt>Submitted note</dt><dd>{detail.submissionReason}</dd></>}<dt>Submitted</dt><dd>{formatTime(detail.submittedAt)}</dd><dt>Status</dt><dd>{statusLabel(detail.status)}</dd>{detail.money && <><dt>Original amount</dt><dd>{formatPhp(detail.money.originalAmountMinorUnits)}</dd><dt>Statutory benefit</dt><dd>{formatPhp(detail.money.discountAmountMinorUnits)}</dd><dt>Final payable amount</dt><dd>{formatPhp(detail.money.finalPayableAmountMinorUnits)}</dd></>}</dl>
-    <section aria-labelledby="evidence-title"><h4 id="evidence-title">Evidence for review</h4>{!evidence ? <p>Evidence metadata is unavailable or not permitted for this session.</p> : evidence.items.length === 0 ? <p>No current reviewable evidence is recorded.</p> : <ul className="evidenceList">{evidence.items.map((item, index) => <li key={item.evidenceItemReference ?? `${item.evidenceType}-${index}`}><strong>{(item.documentType ?? item.evidenceType).replaceAll("_", " ")}</strong><span>{item.reviewabilityStatus ?? item.verificationStatus ?? "Review status unavailable"}</span>{item.itemRole && <small>Role: {item.itemRole.replaceAll("_", " ")}</small>}{item.contentType && <small>Media: {item.contentType}</small>}{item.maskedReference && <small>ID: {item.maskedReference}</small>}<small>Upload: {item.uploadStatus ?? "Unavailable"} | Validation: {item.validationStatus ?? "Unavailable"} | Malware scan: {item.malwareScanStatus ?? "Unavailable"}</small>{item.reviewableAt && <small>Reviewable at {formatTime(item.reviewableAt)}</small>}{item.previewPermitted && item.evidenceItemReference && <EvidencePreview client={client} decisionReference={detail.decisionCommandReference} evidenceItemReference={item.evidenceItemReference} />}</li>)}</ul>}</section>
+    <section aria-labelledby="evidence-title"><h4 id="evidence-title">Evidence for review</h4>{evidenceError ? <EvidenceLoadError error={evidenceError} /> : !canViewEvidence ? <p>Evidence is not available for this session.</p> : !evidence ? <p role="status">Loading authoritative evidence metadata...</p> : evidence.items.length === 0 ? <p>No current reviewable evidence is recorded.</p> : <ul className="evidenceList">{evidence.items.map((item, index) => <li key={item.evidenceItemReference ?? `${item.evidenceType}-${index}`}><strong>{(item.documentType ?? item.evidenceType).replaceAll("_", " ")}</strong><span>Status: {item.reviewabilityStatus ?? item.verificationStatus ?? "Unavailable"}</span>{item.itemRole && <small>Role: {item.itemRole.replaceAll("_", " ")}</small>}{item.contentType && <small>Media: {item.contentType}</small>}{item.maskedReference && <small>ID: {item.maskedReference}</small>}<small>Upload: {item.uploadStatus ?? "Unavailable"}</small><small>Validation: {item.validationStatus ?? "Unavailable"}</small><small>Malware scan: {item.malwareScanStatus ?? "Unavailable"}</small>{item.reviewableAt && <small>Reviewable at {formatTime(item.reviewableAt)}</small>}{item.previewPermitted && item.evidenceItemReference && <EvidencePreview client={client} decisionReference={detail.decisionCommandReference} evidenceItemReference={item.evidenceItemReference} />}</li>)}</ul>}</section>
     {detail.decision && <section className="decisionSummary"><h4>Final decision</h4><p><strong>{detail.decision.decision === "APPROVE" ? "Approved" : "Rejected"}</strong> by {detail.decision.reviewerDisplayName} at {formatTime(detail.decision.decidedAt)}.</p>{detail.decision.reason && <p>Reason: {detail.decision.reason}</p>}</section>}
     {isPending && (canApprove || canReject) && <section className="decisionPanel" aria-labelledby="decision-title"><h4 id="decision-title">Record decision</h4>{canReject && <label>Rejection reason<textarea value={rejectionReason} maxLength={512} required onChange={(event) => onReason(event.target.value)} placeholder="Required when rejecting" /></label>}<div className="decisionActions">{canReject && <button type="button" className="dangerButton" disabled={pending || !rejectionReason.trim()} onClick={() => onDecision("REJECT")}>Reject</button>}{canApprove && <button type="button" className="primaryButton" disabled={pending} onClick={() => onDecision("APPROVE")}>Approve</button>}</div></section>}
   </section>;
@@ -177,6 +178,10 @@ function EvidencePreview({ client, decisionReference, evidenceItemReference }: {
   if (previewError) return <p role="alert">{previewError}</p>;
   if (!url) return <p role="status">Loading protected photo...</p>;
   return <img className="statutoryEvidencePreview" src={url} alt="Submitted statutory entitlement evidence" />;
+}
+
+function EvidenceLoadError({ error }: { error: ManagementPlatformUiError }) {
+  return <div className="stateMessage danger" role="alert"><h5>Evidence metadata unavailable</h5><p>{error.message}</p><small>Diagnostic: {error.code}{error.correlationId ? ` | Support reference: ${error.correlationId}` : ""}</small></div>;
 }
 
 function ReviewError({ error }: { error: ManagementPlatformUiError }) { const title = error.kind === "conflict" ? "Decision already recorded" : error.kind === "permission-denied" ? "Permission denied" : error.kind === "authentication-required" ? "Authentication required" : error.kind === "integration-unavailable" ? "Review service unavailable" : "Request failed safely"; return <div className="stateMessage danger" role="alert"><h3>{title}</h3><p>{error.message}{error.correlationId ? ` Support reference: ${error.correlationId}.` : ""}</p></div>; }

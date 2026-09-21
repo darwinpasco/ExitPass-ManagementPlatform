@@ -60,6 +60,61 @@ describe("Statutory Benefit Requests", () => {
     expect(client.evidencePreview).toHaveBeenCalledWith(reference, "60000000-0000-4000-8000-000000000001", expect.any(AbortSignal));
   });
 
+  it.each(["image/jpeg", "image/png"])("renders a protected %s preview", async (contentType) => {
+    const client = makeClient();
+    vi.mocked(client.evidence).mockResolvedValue({
+      contractVersion: statutoryBenefitReviewContractVersion,
+      decisionCommandReference: reference,
+      evidenceRequired: true,
+      evidenceRecorded: true,
+      items: [{
+        evidenceType: "ENTITLEMENT_PHOTO",
+        captureMethod: "PROTECTED_UPLOAD",
+        evidenceItemReference: "60000000-0000-4000-8000-000000000001",
+        documentType: "SENIOR_CITIZEN_ID",
+        contentType,
+        uploadStatus: "UPLOADED",
+        validationStatus: "PASSED",
+        malwareScanStatus: "CLEAN",
+        reviewabilityStatus: "REVIEWABLE",
+        previewPermitted: true
+      }],
+      correlationId: queueValue.correlationId
+    });
+    vi.mocked(client.evidencePreview).mockResolvedValue(new Blob(["image"], { type: contentType }));
+    vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => `blob:${contentType}`), revokeObjectURL: vi.fn() });
+
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
+
+    expect(await screen.findByAltText("Submitted statutory entitlement evidence")).toHaveAttribute("src", `blob:${contentType}`);
+    expect(screen.getByText("Status: REVIEWABLE")).toBeInTheDocument();
+    expect(screen.getByText("Upload: UPLOADED")).toBeInTheDocument();
+    expect(screen.getByText("Validation: PASSED")).toBeInTheDocument();
+    expect(screen.getByText("Malware scan: CLEAN")).toBeInTheDocument();
+  });
+
+  it("shows the safe backend evidence diagnostic without treating evidence as absent", async () => {
+    const client = makeClient();
+    vi.mocked(client.evidence).mockRejectedValue({
+      kind: "integration-unavailable",
+      code: "STATUTORY_BENEFIT_EVIDENCE_UNAVAILABLE",
+      message: "The evidence metadata is temporarily unavailable.",
+      correlationId: "70000000-0000-4000-8000-000000000001",
+      retryable: true,
+      mutationUncertain: false
+    });
+
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
+
+    const diagnostic = await screen.findByRole("alert");
+    expect(diagnostic).toHaveTextContent("Evidence metadata unavailable");
+    expect(diagnostic).toHaveTextContent("STATUTORY_BENEFIT_EVIDENCE_UNAVAILABLE");
+    expect(diagnostic).toHaveTextContent("70000000-0000-4000-8000-000000000001");
+    expect(screen.queryByText(/not permitted for this session/i)).not.toBeInTheDocument();
+  });
+
   it("submits rejection only with a reason and confirms the decision", async () => {
     const client = makeClient();
     vi.spyOn(window, "confirm").mockReturnValue(true);
