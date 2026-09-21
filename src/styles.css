@@ -33,6 +33,7 @@
 .detailGrid dd { margin: 0; overflow-wrap: anywhere; }
 .evidenceList { display: grid; gap: .5rem; list-style: none; padding: 0; }
 .evidenceList li { display: grid; gap: .2rem; padding: .65rem; border: 1px solid #d5dae0; }
+.statutoryEvidencePreview { display: block; width: min(100%, 34rem); max-height: 28rem; object-fit: contain; border: 1px solid #c8ced6; background: #f7f8fa; }
 .decisionPanel, .decisionSummary { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #d5dae0; }
 .decisionPanel textarea { min-height: 6rem; resize: vertical; }
 .dangerButton { min-height: 2.75rem; padding: .55rem .9rem; border: 1px solid #9a2f2f; border-radius: 4px; background: #fff; color: #8d2626; font-weight: 700; }
