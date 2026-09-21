@@ -24,6 +24,31 @@ describe("Management Platform I-020 session shell", () => {
     expect(client.login).toHaveBeenCalledWith("ordinary.user", "ordinary-password", "123456");
   });
 
+  it("presents the exact authorized Site metadata returned by the authenticated session", async () => {
+    const pitxSite = "2d1dcdf8-f563-537c-8542-0bde7cc9da97";
+    const client = mockClient();
+    client.getCurrentSession.mockResolvedValue(successResponse(session({
+      assurance: "PASSWORD_TOTP",
+      mfaRequired: true,
+      mfaSatisfied: true,
+      siteReferences: [pitxSite],
+      siteGroupReferences: [],
+      authorizedSites: [{
+        siteReference: pitxSite,
+        displayName: "PITX Level 3",
+        siteGroupReference: "a6dbadf6-68b5-5bed-a7e0-a75faee70841",
+        siteGroupDisplayName: "PITX"
+      }]
+    })));
+
+    render(<HumanAuthenticationShell client={client} />);
+
+    expect(await screen.findByLabelText("Current Site")).toHaveValue(pitxSite);
+    expect(screen.getByRole("option", { name: "PITX Level 3" })).toBeInTheDocument();
+    expect(screen.getByText("1 Site access grant; 0 Site Group access grants")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: "No authorized Sites" })).not.toBeInTheDocument();
+  });
+
   it("routes a forced password change and always submits TOTP", async () => {
     const client = mockClient();
     client.getCurrentSession.mockResolvedValueOnce(successResponse(session({ passwordChangeRequired: true, mfaRequired: true, mfaSatisfied: true })));
