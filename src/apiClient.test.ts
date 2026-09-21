@@ -58,6 +58,37 @@ describe("ManagementPlatformUi Central PMS API client foundation", () => {
     expect(authorizeUnsafeRequest).toHaveBeenCalledTimes(1);
   });
 
+  it("streams protected JPEG evidence through the same-origin CSRF boundary", async () => {
+    const authorizeUnsafeRequest = vi.fn((headers: Headers) => headers.set("X-CSRF-Token", "runtime-token"));
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      expect(input).toBe("/v1/management-platform/statutory-benefit-requests/request/evidence/preview");
+      expect(init?.method).toBe("POST");
+      expect(new Headers(init?.headers).get("X-CSRF-Token")).toBe("runtime-token");
+      return new Response(new Uint8Array([0xff, 0xd8, 0xff, 0xd9]), {
+        status: 200,
+        headers: { "Content-Type": "image/jpeg", "X-Correlation-Id": "preview-correlation" }
+      });
+    });
+    const client = createCentralPmsApiClient({ fetchImpl, authorizeUnsafeRequest });
+
+    const blob = await client.requestBlob!(
+      "/v1/management-platform/statutory-benefit-requests/request/evidence/preview",
+      { method: "POST", body: { evidenceItemReference: "item" } });
+
+    expect(blob.type).toBe("image/jpeg");
+    expect(authorizeUnsafeRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects a successful non-image evidence preview response", async () => {
+    const client = createCentralPmsApiClient({
+      fetchImpl: vi.fn(async () => jsonResponse({ storageUrl: "must-not-be-used" }, 200, "preview-json")),
+      authorizeUnsafeRequest: () => undefined
+    });
+
+    await expect(client.requestBlob!("/v1/management-platform/evidence/preview", { method: "POST", body: {} }))
+      .rejects.toMatchObject({ code: "MANAGEMENT_PLATFORM_UNEXPECTED_CONTENT_TYPE" });
+  });
+
   it("preserves one logical correlation ID for the caller-supplied request", async () => {
     const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
       expect(new Headers(init?.headers).get("X-Correlation-Id")).toBe("logical-correlation");

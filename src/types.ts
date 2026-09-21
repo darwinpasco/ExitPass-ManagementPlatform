@@ -75,4 +75,5 @@ export interface ApiRequestOptions {
 
 export interface CentralPmsApiClient {
   request<TResponse>(path: string, options?: ApiRequestOptions): Promise<TResponse>;
+  requestBlob?(path: string, options?: ApiRequestOptions): Promise<Blob>;
 }

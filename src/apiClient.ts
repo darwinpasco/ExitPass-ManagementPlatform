@@ -96,6 +96,50 @@ export function createCentralPmsApiClient(options: {
 
       options.onAuthenticatedActivity?.();
       return parsed as TResponse;
+    },
+    async requestBlob(path: string, requestOptions: ApiRequestOptions = {}): Promise<Blob> {
+      const method = requestOptions.method ?? "GET";
+      const url = toCentralPmsPath(basePath, path);
+      const correlationId = requestOptions.correlationId ?? createCorrelationId();
+      const headers = new Headers({ "X-Correlation-Id": correlationId });
+      let body: BodyInit | undefined;
+      if (requestOptions.body !== undefined) {
+        headers.set("Content-Type", "application/json");
+        body = JSON.stringify(requestOptions.body);
+      }
+      if (requestOptions.headers) {
+        for (const [name, value] of new Headers(requestOptions.headers).entries()) {
+          assertBrowserSafeHeaderName(name, correlationId);
+          headers.set(name, value);
+        }
+      }
+      if (!isSafeMethod(method)) options.authorizeUnsafeRequest?.(headers);
+      for (const headerName of headers.keys()) assertBrowserSafeHeaderName(headerName, correlationId);
+
+      let response: Response;
+      try {
+        response = await fetchImpl(url, { method, headers, body, signal: requestOptions.signal, credentials: "same-origin" });
+      } catch (error) {
+        if (isAbortError(error)) {
+          throw createUiError("timeout", "MANAGEMENT_PLATFORM_REQUEST_CANCELLED", "The request was cancelled safely.", correlationId, undefined, false, method !== "GET");
+        }
+        throw createUiError("integration-unavailable", "MANAGEMENT_PLATFORM_API_UNAVAILABLE", "Central PMS is unavailable.", correlationId, undefined, true, method !== "GET");
+      }
+
+      const responseCorrelationId = response.headers.get("X-Correlation-Id") ?? correlationId;
+      if (!response.ok) {
+        const text = await response.text();
+        const parsed = parseResponseBody(text, responseCorrelationId);
+        if (response.status === 401) options.onAuthenticationRequired?.();
+        throw mapErrorResponse(response.status, parsed, responseCorrelationId, method !== "GET");
+      }
+
+      const contentType = response.headers.get("Content-Type")?.split(";", 1)[0].trim().toLowerCase();
+      if (contentType !== "image/jpeg" && contentType !== "image/png") {
+        throw createUiError("malformed-response", "MANAGEMENT_PLATFORM_UNEXPECTED_CONTENT_TYPE", "The evidence preview could not be read safely.", responseCorrelationId);
+      }
+      options.onAuthenticatedActivity?.();
+      return response.blob();
     }
   };
 }

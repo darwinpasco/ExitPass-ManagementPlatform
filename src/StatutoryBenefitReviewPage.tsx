@@ -130,7 +130,7 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
       {notice && <div className="stateMessage" role="status"><h3>Decision recorded</h3><p>{notice}</p></div>}
 
       <div className={`reviewMasterDetail ${detail ? "hasDetail" : ""}`}>
-        {detail && <ReviewDetail detail={detail} evidence={evidence} canApprove={canApprove} canReject={canReject} pending={decisionPending} rejectionReason={rejectionReason} onReason={setRejectionReason} onDecision={decide} onClose={() => { setDetail(undefined); setEvidence(undefined); setError(undefined); }} />}
+        {detail && <ReviewDetail client={client} detail={detail} evidence={evidence} canApprove={canApprove} canReject={canReject} pending={decisionPending} rejectionReason={rejectionReason} onReason={setRejectionReason} onDecision={decide} onClose={() => { setDetail(undefined); setEvidence(undefined); setError(undefined); }} />}
         <section className="reviewDirectory" aria-labelledby="review-directory-title">
           <div className="panelHeader"><div><p className="eyebrow">Authoritative queue</p><h3 id="review-directory-title">Requests</h3></div>{queue && <span>{start}-{end} of {queue.totalCount}</span>}</div>
           {queue?.items.length === 0 && <div className="stateMessage" role="status"><h4>No requests found</h4><p>No statutory-benefit requests match the current authorized filters.</p></div>}
@@ -142,15 +142,41 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
   );
 }
 
-function ReviewDetail({ detail, evidence, canApprove, canReject, pending, rejectionReason, onReason, onDecision, onClose }: { detail: StatutoryBenefitReviewDetail; evidence?: StatutoryBenefitEvidence; canApprove: boolean; canReject: boolean; pending: boolean; rejectionReason: string; onReason: (value: string) => void; onDecision: (value: "APPROVE" | "REJECT") => void; onClose: () => void }) {
+function ReviewDetail({ client, detail, evidence, canApprove, canReject, pending, rejectionReason, onReason, onDecision, onClose }: { client: StatutoryBenefitReviewClient; detail: StatutoryBenefitReviewDetail; evidence?: StatutoryBenefitEvidence; canApprove: boolean; canReject: boolean; pending: boolean; rejectionReason: string; onReason: (value: string) => void; onDecision: (value: "APPROVE" | "REJECT") => void; onClose: () => void }) {
   const isPending = detail.status === "PENDING_REVIEW";
   return <section className="reviewDetail" aria-labelledby="review-detail-title" tabIndex={-1}>
     <div className="panelHeader"><div><p className="eyebrow">Request detail</p><h3 id="review-detail-title">{benefitLabel(detail.benefitType)}</h3></div><button type="button" className="secondaryButton" onClick={onClose}>Close</button></div>
-    <dl className="detailGrid"><dt>Request reference</dt><dd>{detail.requestReference}</dd><dt>Site</dt><dd>{detail.siteName} ({detail.siteCode})</dd><dt>Originating channel</dt><dd>{channelLabel(detail.sourceChannel)}</dd><dt>Parking session</dt><dd>{detail.parkingSessionReference}</dd><dt>Ticket reference</dt><dd>{detail.ticketReference ?? "Not recorded"}</dd><dt>Submitted</dt><dd>{formatTime(detail.submittedAt)}</dd><dt>Status</dt><dd>{statusLabel(detail.status)}</dd>{detail.money && <><dt>Original amount</dt><dd>{formatPhp(detail.money.originalAmountMinorUnits)}</dd><dt>Statutory benefit</dt><dd>{formatPhp(detail.money.discountAmountMinorUnits)}</dd><dt>Final payable amount</dt><dd>{formatPhp(detail.money.finalPayableAmountMinorUnits)}</dd></>}</dl>
-    <section aria-labelledby="evidence-title"><h4 id="evidence-title">Evidence for review</h4>{!evidence ? <p>Evidence metadata is unavailable or not permitted for this session.</p> : evidence.items.length === 0 ? <p>No evidence metadata is recorded.</p> : <ul className="evidenceList">{evidence.items.map((item, index) => <li key={`${item.evidenceType}-${index}`}><strong>{item.evidenceType.replaceAll("_", " ")}</strong><span>{item.verificationStatus ?? "Verification status unavailable"}</span>{item.maskedReference && <small>{item.maskedReference}</small>}</li>)}</ul>}</section>
+    <dl className="detailGrid"><dt>Benefit type</dt><dd>{benefitLabel(detail.benefitType)}</dd><dt>Request reference</dt><dd>{detail.requestReference}</dd><dt>Site</dt><dd>{detail.siteName} ({detail.siteCode})</dd><dt>Originating channel</dt><dd>{channelLabel(detail.sourceChannel)}</dd><dt>Parking session</dt><dd>{detail.parkingSessionReference}</dd><dt>Ticket reference</dt><dd>{detail.ticketReference ?? "Not recorded"}</dd><dt>ID document type</dt><dd>{displaySafeValue(detail.idDocumentType)}</dd><dt>Issuing authority</dt><dd>{displaySafeValue(detail.issuingAuthority)}</dd><dt>Expiry date</dt><dd>{detail.expiryDate ?? "Not recorded"}</dd><dt>Masked ID reference</dt><dd>{displaySafeValue(detail.maskedIdReference)}</dd><dt>Requester attestation</dt><dd>{detail.requesterAttestation ? "Confirmed" : "Not confirmed"}</dd>{detail.beneficiaryResidencySatisfied !== undefined && <><dt>Residency attestation</dt><dd>{detail.beneficiaryResidencySatisfied ? "Confirmed" : "Not confirmed"}</dd></>}{detail.submissionReason && <><dt>Submitted note</dt><dd>{detail.submissionReason}</dd></>}<dt>Submitted</dt><dd>{formatTime(detail.submittedAt)}</dd><dt>Status</dt><dd>{statusLabel(detail.status)}</dd>{detail.money && <><dt>Original amount</dt><dd>{formatPhp(detail.money.originalAmountMinorUnits)}</dd><dt>Statutory benefit</dt><dd>{formatPhp(detail.money.discountAmountMinorUnits)}</dd><dt>Final payable amount</dt><dd>{formatPhp(detail.money.finalPayableAmountMinorUnits)}</dd></>}</dl>
+    <section aria-labelledby="evidence-title"><h4 id="evidence-title">Evidence for review</h4>{!evidence ? <p>Evidence metadata is unavailable or not permitted for this session.</p> : evidence.items.length === 0 ? <p>No current reviewable evidence is recorded.</p> : <ul className="evidenceList">{evidence.items.map((item, index) => <li key={item.evidenceItemReference ?? `${item.evidenceType}-${index}`}><strong>{(item.documentType ?? item.evidenceType).replaceAll("_", " ")}</strong><span>{item.reviewabilityStatus ?? item.verificationStatus ?? "Review status unavailable"}</span>{item.itemRole && <small>Role: {item.itemRole.replaceAll("_", " ")}</small>}{item.contentType && <small>Media: {item.contentType}</small>}{item.maskedReference && <small>ID: {item.maskedReference}</small>}<small>Upload: {item.uploadStatus ?? "Unavailable"} | Validation: {item.validationStatus ?? "Unavailable"} | Malware scan: {item.malwareScanStatus ?? "Unavailable"}</small>{item.reviewableAt && <small>Reviewable at {formatTime(item.reviewableAt)}</small>}{item.previewPermitted && item.evidenceItemReference && <EvidencePreview client={client} decisionReference={detail.decisionCommandReference} evidenceItemReference={item.evidenceItemReference} />}</li>)}</ul>}</section>
     {detail.decision && <section className="decisionSummary"><h4>Final decision</h4><p><strong>{detail.decision.decision === "APPROVE" ? "Approved" : "Rejected"}</strong> by {detail.decision.reviewerDisplayName} at {formatTime(detail.decision.decidedAt)}.</p>{detail.decision.reason && <p>Reason: {detail.decision.reason}</p>}</section>}
     {isPending && (canApprove || canReject) && <section className="decisionPanel" aria-labelledby="decision-title"><h4 id="decision-title">Record decision</h4>{canReject && <label>Rejection reason<textarea value={rejectionReason} maxLength={512} required onChange={(event) => onReason(event.target.value)} placeholder="Required when rejecting" /></label>}<div className="decisionActions">{canReject && <button type="button" className="dangerButton" disabled={pending || !rejectionReason.trim()} onClick={() => onDecision("REJECT")}>Reject</button>}{canApprove && <button type="button" className="primaryButton" disabled={pending} onClick={() => onDecision("APPROVE")}>Approve</button>}</div></section>}
   </section>;
+}
+
+function EvidencePreview({ client, decisionReference, evidenceItemReference }: { client: StatutoryBenefitReviewClient; decisionReference: string; evidenceItemReference: string }) {
+  const [url, setUrl] = useState("");
+  const [previewError, setPreviewError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+    let objectUrl = "";
+    void client.evidencePreview(decisionReference, evidenceItemReference, controller.signal).then((blob) => {
+      if (!controller.signal.aborted) {
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      }
+    }).catch((reason: unknown) => {
+      if (!controller.signal.aborted) setPreviewError(asError(reason).message);
+    });
+    return () => {
+      controller.abort();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [client, decisionReference, evidenceItemReference]);
+
+  if (previewError) return <p role="alert">{previewError}</p>;
+  if (!url) return <p role="status">Loading protected photo...</p>;
+  return <img className="statutoryEvidencePreview" src={url} alt="Submitted statutory entitlement evidence" />;
 }
 
 function ReviewError({ error }: { error: ManagementPlatformUiError }) { const title = error.kind === "conflict" ? "Decision already recorded" : error.kind === "permission-denied" ? "Permission denied" : error.kind === "authentication-required" ? "Authentication required" : error.kind === "integration-unavailable" ? "Review service unavailable" : "Request failed safely"; return <div className="stateMessage danger" role="alert"><h3>{title}</h3><p>{error.message}{error.correlationId ? ` Support reference: ${error.correlationId}.` : ""}</p></div>; }
@@ -159,6 +185,7 @@ function isCancelled(value: unknown) { return typeof value === "object" && value
 function benefitLabel(value: string) { return value === "PWD" ? "Person with disability" : "Senior citizen"; }
 function channelLabel(value: string) { return value === "WEBPAY" ? "WebPay" : "APT"; }
 function statusLabel(value: string) { return value === "PENDING_REVIEW" ? "Pending" : value === "APPROVED" ? "Approved" : "Rejected"; }
+function displaySafeValue(value?: string) { return value?.trim() || "Not recorded"; }
 function formatTime(value: string) { return new Date(value).toLocaleString(); }
 function formatPhp(minorUnits: number) { const value = BigInt(minorUnits); const whole = value / 100n; const fraction = (value % 100n).toString().padStart(2, "0"); return `₱${whole.toLocaleString("en-US")}.${fraction}`; }
 function toUtc(value: string) { return value ? new Date(value).toISOString() : undefined; }

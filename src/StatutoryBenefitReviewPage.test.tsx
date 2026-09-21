@@ -10,7 +10,7 @@ const queueValue: StatutoryBenefitReviewQueue = {
   items: [{ requestReference: "30000000-0000-4000-8000-000000000001", decisionCommandReference: reference, parkingSessionReference: "40000000-0000-4000-8000-000000000001", ticketReference: "SAFE-001", siteReference: site.siteId, siteCode: "SITE-A", siteName: "SITE-A", sourceChannel: "WEBPAY", benefitType: "PWD", status: "PENDING_REVIEW", evidenceRequired: true, evidenceRecorded: true, submittedAt: "2026-08-24T01:00:00Z" }],
   page: 1, pageSize: 25, totalCount: 1, hasMore: false, correlationId: "50000000-0000-4000-8000-000000000001"
 };
-const detail = { ...queueValue.items[0], contractVersion: statutoryBenefitReviewContractVersion, requesterAttestation: true, money: { originalAmountMinorUnits: 123456, discountAmountMinorUnits: 24691, finalPayableAmountMinorUnits: 108765, currency: "PHP" as const }, version: 7 };
+const detail = { ...queueValue.items[0], contractVersion: statutoryBenefitReviewContractVersion, requesterAttestation: true, beneficiaryResidencySatisfied: true, money: { originalAmountMinorUnits: 123456, discountAmountMinorUnits: 24691, finalPayableAmountMinorUnits: 108765, currency: "PHP" as const }, version: 7 };
 
 describe("Statutory Benefit Requests", () => {
   it("parses the stable contract and rejects non-PHP money", () => {
@@ -27,6 +27,37 @@ describe("Statutory Benefit Requests", () => {
     expect(await screen.findByText("₱1,234.56")).toBeInTheDocument();
     expect(screen.getByLabelText("Evidence privacy notice")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
+    expect(screen.getByText("PWD ID")).toBeInTheDocument();
+    expect(screen.getByText("City social welfare office")).toBeInTheDocument();
+    expect(screen.getByText("***1234")).toBeInTheDocument();
+    expect(screen.getByText("Residency attestation")).toBeInTheDocument();
+  });
+
+  it("streams current reviewable evidence through the protected preview client", async () => {
+    const client = makeClient();
+    vi.mocked(client.evidence).mockResolvedValue({
+      contractVersion: statutoryBenefitReviewContractVersion,
+      decisionCommandReference: reference,
+      evidenceRequired: true,
+      evidenceRecorded: true,
+      items: [{
+        evidenceType: "PWD_ID",
+        captureMethod: "PROTECTED_UPLOAD",
+        evidenceItemReference: "60000000-0000-4000-8000-000000000001",
+        documentType: "PWD_ID",
+        uploadStatus: "UPLOADED",
+        validationStatus: "PASSED",
+        malwareScanStatus: "CLEAN",
+        reviewabilityStatus: "REVIEWABLE",
+        previewPermitted: true
+      }],
+      correlationId: queueValue.correlationId
+    });
+    vi.stubGlobal("URL", { ...URL, createObjectURL: vi.fn(() => "blob:review-preview"), revokeObjectURL: vi.fn() });
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
+    expect(await screen.findByAltText("Submitted statutory entitlement evidence")).toHaveAttribute("src", "blob:review-preview");
+    expect(client.evidencePreview).toHaveBeenCalledWith(reference, "60000000-0000-4000-8000-000000000001", expect.any(AbortSignal));
   });
 
   it("submits rejection only with a reason and confirms the decision", async () => {
@@ -92,8 +123,9 @@ function renderPage(client: StatutoryBenefitReviewClient) {
 function makeClient(): StatutoryBenefitReviewClient {
   return {
     list: vi.fn().mockResolvedValue(queueValue),
-    get: vi.fn().mockResolvedValue(detail),
-    evidence: vi.fn().mockResolvedValue({ contractVersion: statutoryBenefitReviewContractVersion, decisionCommandReference: reference, evidenceRequired: true, evidenceRecorded: true, items: [{ evidenceType: "GOVERNMENT_ID", captureMethod: "UPLOAD", maskedReference: "***1234", verificationStatus: "RECORDED" }], correlationId: queueValue.correlationId }),
+    get: vi.fn().mockResolvedValue({ ...detail, idDocumentType: "PWD ID", issuingAuthority: "City social welfare office", expiryDate: "2027-08-24", maskedIdReference: "***1234", submissionReason: "PITX parking privilege request" }),
+    evidence: vi.fn().mockResolvedValue({ contractVersion: statutoryBenefitReviewContractVersion, decisionCommandReference: reference, evidenceRequired: true, evidenceRecorded: true, items: [{ evidenceType: "GOVERNMENT_ID", captureMethod: "UPLOAD", maskedReference: "***1234", verificationStatus: "RECORDED", previewPermitted: false }], correlationId: queueValue.correlationId }),
+    evidencePreview: vi.fn().mockResolvedValue(new Blob(["image"], { type: "image/jpeg" })),
     decide: vi.fn().mockResolvedValue({}),
     clearRuntimeState: vi.fn()
   };

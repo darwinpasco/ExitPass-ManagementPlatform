@@ -47,6 +47,7 @@ export interface StatutoryBenefitReviewDetail extends StatutoryBenefitReviewQueu
   expiryDate?: string;
   maskedIdReference?: string;
   requesterAttestation: boolean;
+  beneficiaryResidencySatisfied?: boolean;
   submissionReason?: string;
   money?: { originalAmountMinorUnits: number; discountAmountMinorUnits: number; finalPayableAmountMinorUnits: number; currency: "PHP" };
   decision?: { decision: "APPROVE" | "REJECT"; reason?: string; reviewerDisplayName: string; decidedAt: string };
@@ -58,8 +59,29 @@ export interface StatutoryBenefitEvidence {
   decisionCommandReference: string;
   evidenceRequired: boolean;
   evidenceRecorded: boolean;
-  items: { evidenceType: string; captureMethod: string; maskedReference?: string; verificationStatus?: string }[];
+  items: StatutoryBenefitEvidenceItem[];
   correlationId: string;
+}
+
+export interface StatutoryBenefitEvidenceItem {
+  evidenceType: string;
+  captureMethod: string;
+  maskedReference?: string;
+  verificationStatus?: string;
+  evidenceItemReference?: string;
+  documentType?: string;
+  itemRole?: string;
+  contentType?: string;
+  uploadStatus?: string;
+  validationStatus?: string;
+  malwareScanStatus?: string;
+  reviewabilityStatus?: string;
+  uploadedAt?: string;
+  finalizedAt?: string;
+  validatedAt?: string;
+  scannedAt?: string;
+  reviewableAt?: string;
+  previewPermitted: boolean;
 }
 
 export interface StatutoryBenefitReviewFilters {
@@ -78,6 +100,7 @@ export interface StatutoryBenefitReviewClient {
   list(filters: StatutoryBenefitReviewFilters, signal?: AbortSignal): Promise<StatutoryBenefitReviewQueue>;
   get(reference: string, signal?: AbortSignal): Promise<StatutoryBenefitReviewDetail>;
   evidence(reference: string, signal?: AbortSignal): Promise<StatutoryBenefitEvidence>;
+  evidencePreview(reference: string, evidenceItemReference: string, signal?: AbortSignal): Promise<Blob>;
   decide(reference: string, body: { decision: "APPROVE" | "REJECT"; rejectionReason?: string; expectedVersion: number; idempotencyKey: string }): Promise<unknown>;
   clearRuntimeState(): void;
 }
@@ -99,6 +122,16 @@ export function createStatutoryBenefitReviewClient(api: CentralPmsApiClient): St
     async evidence(reference, signal) {
       assertUuid(reference, "decisionCommandReference");
       return parseEvidence(await api.request(`/v1/management-platform/statutory-benefit-requests/${encodeURIComponent(reference)}/evidence`, { signal, requireJsonContentType: true }));
+    },
+    async evidencePreview(reference, evidenceItemReference, signal) {
+      assertUuid(reference, "decisionCommandReference");
+      assertUuid(evidenceItemReference, "evidenceItemReference");
+      if (!api.requestBlob) throw malformed("Evidence preview is not supported by this client.");
+      return api.requestBlob(`/v1/management-platform/statutory-benefit-requests/${encodeURIComponent(reference)}/evidence/preview`, {
+        method: "POST",
+        body: { evidenceItemReference },
+        signal
+      });
     },
     async decide(reference, body) {
       assertUuid(reference, "decisionCommandReference");
@@ -138,6 +171,7 @@ export function parseDetail(value: unknown): StatutoryBenefitReviewDetail {
     expiryDate: optionalDate(row.expiryDate),
     maskedIdReference: optionalString(row.maskedIdReference),
     requesterAttestation: boolean(row.requesterAttestation, "requesterAttestation"),
+    beneficiaryResidencySatisfied: optionalBoolean(row.beneficiaryResidencySatisfied, "beneficiaryResidencySatisfied"),
     submissionReason: optionalString(row.submissionReason),
     money,
     decision,
@@ -155,7 +189,26 @@ export function parseEvidence(value: unknown): StatutoryBenefitEvidence {
     evidenceRecorded: boolean(row.evidenceRecorded, "evidenceRecorded"),
     items: array(row.items).map((entry) => {
       const item = object(entry);
-      return { evidenceType: string(item.evidenceType, "evidenceType"), captureMethod: string(item.captureMethod, "captureMethod"), maskedReference: optionalString(item.maskedReference), verificationStatus: optionalString(item.verificationStatus) };
+      return {
+        evidenceType: string(item.evidenceType, "evidenceType"),
+        captureMethod: string(item.captureMethod, "captureMethod"),
+        maskedReference: optionalString(item.maskedReference),
+        verificationStatus: optionalString(item.verificationStatus),
+        evidenceItemReference: optionalUuid(item.evidenceItemReference),
+        documentType: optionalString(item.documentType),
+        itemRole: optionalString(item.itemRole),
+        contentType: optionalString(item.contentType),
+        uploadStatus: optionalString(item.uploadStatus),
+        validationStatus: optionalString(item.validationStatus),
+        malwareScanStatus: optionalString(item.malwareScanStatus),
+        reviewabilityStatus: optionalString(item.reviewabilityStatus),
+        uploadedAt: optionalTimestamp(item.uploadedAt),
+        finalizedAt: optionalTimestamp(item.finalizedAt),
+        validatedAt: optionalTimestamp(item.validatedAt),
+        scannedAt: optionalTimestamp(item.scannedAt),
+        reviewableAt: optionalTimestamp(item.reviewableAt),
+        previewPermitted: item.previewPermitted === true
+      };
     }),
     correlationId: uuid(row.correlationId, "correlationId")
   };
@@ -195,7 +248,9 @@ function object(value: unknown): Record<string, unknown> { if (!value || typeof 
 function array(value: unknown): unknown[] { if (!Array.isArray(value)) throw malformed("Malformed statutory-benefit review collection."); return value; }
 function string(value: unknown, field: string): string { if (typeof value !== "string" || !value.trim()) throw malformed(`Invalid ${field}.`); return value; }
 function optionalString(value: unknown): string | undefined { return value === null || value === undefined ? undefined : string(value, "text"); }
+function optionalUuid(value: unknown): string | undefined { return value === null || value === undefined ? undefined : uuid(value, "uuid"); }
 function boolean(value: unknown, field: string): boolean { if (typeof value !== "boolean") throw malformed(`Invalid ${field}.`); return value; }
+function optionalBoolean(value: unknown, field: string): boolean | undefined { return value === null || value === undefined ? undefined : boolean(value, field); }
 function nonNegativeInteger(value: unknown, field: string): number { if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) throw malformed(`Invalid ${field}.`); return value; }
 function positiveInteger(value: unknown, field: string): number { const result = nonNegativeInteger(value, field); if (result < 1) throw malformed(`Invalid ${field}.`); return result; }
 function timestamp(value: unknown, field: string): string { const result = string(value, field); if (!/^\d{4}-\d{2}-\d{2}T/.test(result) || Number.isNaN(Date.parse(result))) throw malformed(`Invalid ${field}.`); return result; }
