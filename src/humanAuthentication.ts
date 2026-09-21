@@ -58,9 +58,17 @@ export interface HumanSessionDto {
   permissions: string[];
   siteReferences: string[];
   siteGroupReferences: string[];
+  authorizedSites?: HumanAuthorizedSiteDto[];
   hasGlobalScope: boolean;
   deviceServiceIdentityReference: string | null;
   correlationId: string;
+}
+
+export interface HumanAuthorizedSiteDto {
+  siteReference: string;
+  displayName: string;
+  siteGroupReference: string;
+  siteGroupDisplayName: string;
 }
 
 export interface HumanAuthenticationResponse {
@@ -229,9 +237,15 @@ export function toManagementPlatformAuthState(session: HumanSessionDto): Managem
     throw new HumanAuthenticationError("permission-denied", "SESSION_AUDIENCE_MISMATCH", "This session is not available for the Management Platform.", 403);
   }
 
-  // Session scope UUIDs are authorization facts, not presentation metadata. Site names
-  // must come from a dedicated authoritative Central PMS read model.
-  const authorizedSites: ManagementPlatformSite[] = [];
+  const authorizedSiteReferences = new Set(session.siteReferences);
+  const authorizedSites: ManagementPlatformSite[] = (session.authorizedSites ?? [])
+    .filter((site) => authorizedSiteReferences.has(site.siteReference))
+    .map((site) => ({
+      siteId: site.siteReference,
+      siteGroupId: site.siteGroupReference,
+      siteGroupDisplayName: site.siteGroupDisplayName,
+      displayName: site.displayName
+    }));
   const principal: ManagementPlatformPrincipal = {
     authenticated: true,
     subjectRef: session.userReference,
@@ -304,6 +318,7 @@ function isHumanSession(value: unknown): value is HumanSessionDto {
     && isStringArray(value.permissions)
     && isStringArray(value.siteReferences)
     && isStringArray(value.siteGroupReferences)
+    && (value.authorizedSites === undefined || isAuthorizedSites(value.authorizedSites))
     && (value.deviceServiceIdentityReference === null || typeof value.deviceServiceIdentityReference === "string");
 }
 
@@ -378,4 +393,20 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isAuthorizedSites(value: unknown): value is HumanAuthorizedSiteDto[] {
+  return Array.isArray(value) && value.every((item) =>
+    isRecord(item)
+    && isUuid(item.siteReference)
+    && typeof item.displayName === "string"
+    && item.displayName.trim().length > 0
+    && isUuid(item.siteGroupReference)
+    && typeof item.siteGroupDisplayName === "string"
+    && item.siteGroupDisplayName.trim().length > 0);
+}
+
+function isUuid(value: unknown): value is string {
+  return typeof value === "string"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }

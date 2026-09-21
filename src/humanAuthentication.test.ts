@@ -157,12 +157,43 @@ describe("I-020 human authentication client", () => {
   });
 
   it("maps only server-returned permissions and scope into presentation state", () => {
-    const state = toManagementPlatformAuthState(session());
+    const pitxSite = "2d1dcdf8-f563-537c-8542-0bde7cc9da97";
+    const pitxGroup = "a6dbadf6-68b5-5bed-a7e0-a75faee70841";
+    const state = toManagementPlatformAuthState(session({
+      siteReferences: [pitxSite],
+      siteGroupReferences: [],
+      authorizedSites: [
+        { siteReference: pitxSite, displayName: "PITX Level 3", siteGroupReference: pitxGroup, siteGroupDisplayName: "PITX" },
+        { siteReference: "71000000-0000-4000-8000-000000000999", displayName: "Unrelated Site", siteGroupReference: pitxGroup, siteGroupDisplayName: "PITX" }
+      ]
+    }));
     expect(state.principal?.permissions).toEqual(["management-platform.overview.read"]);
-    expect(state.principal?.authorizedSiteReferences).toEqual(["71000000-0000-0000-0000-000000000101"]);
-    expect(state.principal?.authorizedSiteGroupReferences).toEqual(["71000000-0000-0000-0000-000000000900"]);
-    expect(state.principal?.authorizedSites).toEqual([]);
+    expect(state.principal?.authorizedSiteReferences).toEqual([pitxSite]);
+    expect(state.principal?.authorizedSiteGroupReferences).toEqual([]);
+    expect(state.principal?.authorizedSites).toEqual([{
+      siteId: pitxSite,
+      siteGroupId: pitxGroup,
+      siteGroupDisplayName: "PITX",
+      displayName: "PITX Level 3"
+    }]);
     expect(state.principal?.hasGlobalScope).toBe(false);
+  });
+
+  it("rejects malformed authorized Site presentation metadata", async () => {
+    const response = successResponse(session({
+      authorizedSites: [{
+        siteReference: "not-a-site-reference",
+        displayName: "PITX Level 3",
+        siteGroupReference: "a6dbadf6-68b5-5bed-a7e0-a75faee70841",
+        siteGroupDisplayName: "PITX"
+      }]
+    }));
+    const client = createHumanAuthenticationClient({ fetchImpl: vi.fn(async () => jsonResponse(response)) });
+
+    await expect(client.getCurrentSession()).rejects.toMatchObject({
+      kind: "malformed-response",
+      code: "HUMAN_AUTHENTICATION_MALFORMED_RESPONSE"
+    });
   });
 });
 
