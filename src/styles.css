@@ -12,7 +12,7 @@
 .reportNotice p { margin: .35rem 0 0; }
 .reviewFilters { display: grid; grid-template-columns: repeat(4, minmax(10rem, 1fr)); gap: .75rem; align-items: end; }
 .reviewFilters label, .decisionPanel label { display: grid; gap: .35rem; font-weight: 650; min-width: 0; }
-.reviewFilters select, .reviewFilters input, .decisionPanel textarea { width: 100%; min-height: 2.75rem; padding: .55rem .65rem; border: 1px solid #a9b0b8; border-radius: 4px; background: #fff; color: #17202a; font: inherit; }
+.reviewFilters select, .reviewFilters input, .decisionPanel select, .decisionPanel input, .decisionPanel textarea { width: 100%; min-height: 2.75rem; padding: .55rem .65rem; border: 1px solid #a9b0b8; border-radius: 4px; background: #fff; color: #17202a; font: inherit; }
 .reviewSearch { grid-column: span 2; }
 .reviewMasterDetail { display: grid; grid-template-columns: minmax(20rem, 1fr); gap: 1rem; min-width: 0; }
 .reviewMasterDetail.hasDetail { grid-template-columns: minmax(24rem, 1.15fr) minmax(20rem, .85fr); }
@@ -23,6 +23,7 @@
 .reviewListItem span { display: grid; gap: .2rem; min-width: 0; }
 .reviewListItem span:last-child { justify-items: end; text-align: right; }
 .reviewListItem small { overflow-wrap: anywhere; }
+.reviewListIdentity { align-content: start; }
 .statusBadge { display: inline-flex; width: fit-content; padding: .2rem .45rem; border: 1px solid currentColor; border-radius: 3px; font-size: .8rem; }
 .statusBadge.pending_review { color: #765500; background: #fff8dc; }
 .statusBadge.approved { color: #17603c; background: #edf8f1; }
@@ -34,7 +35,24 @@
 .evidenceList { display: grid; gap: .5rem; list-style: none; padding: 0; }
 .evidenceList li { display: grid; gap: .2rem; padding: .65rem; border: 1px solid #d5dae0; }
 .statutoryEvidencePreview { display: block; width: min(100%, 34rem); max-height: 28rem; object-fit: contain; border: 1px solid #c8ced6; background: #f7f8fa; }
+.evidencePreviewButton { display: block; width: fit-content; max-width: 100%; padding: 0; border: 0; background: transparent; cursor: zoom-in; }
+.evidencePreviewButton:focus-visible { outline: 3px solid #2167a5; outline-offset: 3px; }
+.evidenceLightbox { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 1.5rem; background: rgba(12, 18, 24, .86); }
+.evidenceLightboxContent { position: relative; display: grid; place-items: center; width: min(96vw, 88rem); height: min(92vh, 64rem); }
+.evidenceLightboxContent img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.evidenceLightboxClose { position: absolute; top: 0; right: 0; z-index: 1; background: #fff; }
+.ticketPrimary, .detailTicket { font-size: 1.08rem; font-weight: 800; }
+.discountType { margin-top: .35rem; padding-top: .35rem; border-top: 1px solid #d5dae0; }
+.fieldGuidance { color: #4f5964; }
+.fieldError { display: block; color: #9a2f2f; font-weight: 700 !important; }
+.reviewFieldLabel { display: inline-flex; align-items: baseline; gap: .25rem; width: fit-content; }
+.reviewIdField { display: grid; gap: .35rem; min-width: 0; }
+.reviewIdField > label { display: block; }
+.idReferenceExistingRow { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .5rem; align-items: center; }
+.idReferenceExistingRow .secondaryButton { min-height: 2.75rem; }
 .decisionPanel, .decisionSummary { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #d5dae0; }
+.reviewMetadataFields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; margin-bottom: 1rem; }
+.reviewMetadataFields small { font-weight: 400; color: #4f5964; }
 .decisionPanel textarea { min-height: 6rem; resize: vertical; }
 .dangerButton { min-height: 2.75rem; padding: .55rem .9rem; border: 1px solid #9a2f2f; border-radius: 4px; background: #fff; color: #8d2626; font-weight: 700; }
 
@@ -52,6 +70,7 @@
   .detailGrid { grid-template-columns: minmax(0, 1fr); }
   .detailGrid dd { margin-bottom: .5rem; }
   .paginationControls { flex-wrap: wrap; }
+  .reviewMetadataFields { grid-template-columns: minmax(0, 1fr); }
 }
 
 * {

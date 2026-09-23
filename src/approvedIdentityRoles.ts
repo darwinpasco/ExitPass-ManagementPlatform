@@ -1,6 +1,7 @@
 export const approvedIdentityRoleCodes = [
   "SYSTEM_ADMINISTRATOR",
   "OPERATIONS_SUPERVISOR",
+  "STATUTORY_DISCOUNT_PROCESSOR",
   "SITE_OPERATOR",
   "PARKING_ATTENDANT",
   "APT_CASHIER_OPERATOR",
@@ -24,6 +25,7 @@ export interface ApprovedIdentityRolePresentation {
 export const approvedIdentityRoles: readonly ApprovedIdentityRolePresentation[] = [
   { code: "SYSTEM_ADMINISTRATOR", label: "System Administrator", summary: "Identity administration. This label does not grant operational, cashier, statutory-discount approval, or business-workflow authority." },
   { code: "OPERATIONS_SUPERVISOR", label: "Operations Supervisor", summary: "Operations supervision. Central PMS supplies application and scope eligibility." },
+  { code: "STATUTORY_DISCOUNT_PROCESSOR", label: "Statutory Discount Processor", summary: "Reviews and approves or rejects statutory discount requests across all Sites." },
   { code: "SITE_OPERATOR", label: "Site Operator", summary: "Site operations role." },
   { code: "PARKING_ATTENDANT", label: "Parking Attendant", summary: "Parking attendant role." },
   { code: "APT_CASHIER_OPERATOR", label: "APT / Cashier Operator", summary: "APT cashier role." },
