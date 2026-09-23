@@ -402,7 +402,11 @@ function assertLifecycleAction(action: string): string {
 
 function syntheticUser(): IdentityUserSummary { return { userReference: "81000000-0000-4000-8000-000000000001", username: "synthetic.admin", displayName: "Synthetic Administration User", maskedEmail: "s***@example.test", maskedMobileNumber: "***0101", userType: "INTERNAL_ADMIN", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastLoginAt: "2030-03-01T08:00:00Z", rowVersion: 7 }; }
 function syntheticUserPage(offset: number, count: number): IdentityUserSummary[] { return Array.from({ length: count }, (_, index) => ({ ...syntheticUser(), userReference: `synthetic-user-${offset + index + 1}`, username: `synthetic.user.${offset + index + 1}`, displayName: `Synthetic User ${offset + index + 1}` })); }
-function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: "81000000-0000-4000-8000-000000000016", roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
+function syntheticRoleReference(code: string): string {
+  const index = approvedIdentityRoles.findIndex((role) => role.code === code);
+  return `81000000-0000-4000-8000-${String(index + 14).padStart(12, "0")}`;
+}
+function syntheticAssignment(): IdentityRoleAssignment { return { assignmentReference: "81000000-0000-4000-8000-000000000002", userReference: syntheticUser().userReference, roleReference: syntheticRoleReference("SITE_OPERATOR"), roleCode: "SITE_OPERATOR", roleName: "Site Operator", status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 3 }; }
 function syntheticGrant(): IdentityScopeGrant { return { grantReference: "81000000-0000-4000-8000-000000000003", assignmentReference: syntheticAssignment().assignmentReference, scopeType: "SITE", siteReference: "71000000-0000-0000-0000-000000000101", siteGroupReference: null, status: "ACTIVE", effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, lastReviewedAt: "2030-02-01T00:00:00Z", rowVersion: 2 }; }
 function syntheticRole(): IdentityRoleDefinition { return { ...syntheticOrdinaryRole(), roleReference: "81000000-0000-4000-8000-000000000004", code: "SYSTEM_ADMINISTRATOR", name: "System Administrator", description: "Governed Management Platform identity administration", type: "SYSTEM", isPrivileged: true, requiresElevatedApproval: false, allowedUserTypes: ["INTERNAL_ADMIN"], applicationAccess: ["MANAGEMENT_PLATFORM"], scopePolicy: { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" } }; }
 function syntheticOrdinaryRole(): IdentityRoleDefinition { return { roleReference: "81000000-0000-4000-8000-000000000014", code: "SITE_OPERATOR", name: "Site Operator", description: "Site operations access", type: "OPERATIONS", status: "ACTIVE", isPrivileged: false, requiresElevatedApproval: false, effectiveFrom: "2030-01-01T00:00:00Z", effectiveTo: null, rowVersion: 1, provenance: "CANONICAL_ROLE", directAddUserEligible: true, humanAssignable: true, allowedUserTypes: [], applicationAccess: ["OPERATOR_CONSOLE"], scopePolicy: { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" } }; }
@@ -413,12 +417,12 @@ function syntheticDirectRoles(): IdentityRoleDefinition[] {
       : presentation.code === "SITE_OPERATOR" ? ["OPERATOR_CONSOLE"]
         : presentation.code === "PARKING_ATTENDANT" ? ["NATIVE_PARKING_APP"]
           : presentation.code === "APT_CASHIER_OPERATOR" ? ["APT"] : ["MANAGEMENT_PLATFORM"];
-    const allowedScopeTypes: AssignableScopeType[] = ["SYSTEM_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(presentation.code) ? ["GLOBAL"]
+    const allowedScopeTypes: AssignableScopeType[] = ["SYSTEM_ADMINISTRATOR", "STATUTORY_DISCOUNT_PROCESSOR", "EXECUTIVE_MANAGEMENT"].includes(presentation.code) ? ["GLOBAL"]
       : ["FINANCE_RECONCILIATION_ANALYST", "COMPLIANCE_POLICY_ADMINISTRATOR"].includes(presentation.code) ? ["SITE", "SITE_GROUP", "GLOBAL"]
         : ["SITE"];
     return {
       ...base,
-      roleReference: `81000000-0000-4000-8000-${String(index + 14).padStart(12, "0")}`,
+      roleReference: syntheticRoleReference(presentation.code),
       code: presentation.code,
       name: presentation.label,
       description: presentation.summary,
@@ -429,7 +433,7 @@ function syntheticDirectRoles(): IdentityRoleDefinition[] {
         allowedScopeTypes,
         assignmentRequired: allowedScopeTypes.length > 0,
         defaultScope: presentation.code === "FINANCE_RECONCILIATION_ANALYST" ? null
-          : ["SYSTEM_ADMINISTRATOR", "COMPLIANCE_POLICY_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(presentation.code) ? "GLOBAL"
+          : ["SYSTEM_ADMINISTRATOR", "STATUTORY_DISCOUNT_PROCESSOR", "COMPLIANCE_POLICY_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(presentation.code) ? "GLOBAL"
             : "SITE"
       }
     };

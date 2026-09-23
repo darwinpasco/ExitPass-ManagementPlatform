@@ -37,9 +37,9 @@ test.describe("governed User Administration", () => {
     const form = page.getByRole("heading", { name: "Add User" }).locator("xpath=ancestor::form");
     await expect(form.getByLabel("User type")).toHaveCount(0);
     await expect(form.getByLabel("Initial role").locator("option")).toHaveText([
-      "Select a role", "System Administrator", "Operations Supervisor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
+      "Select a role", "System Administrator", "Operations Supervisor", "Statutory Discount Processor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
     ]);
-    for (const label of ["System Administrator", "Operations Supervisor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"]) {
+    for (const label of ["System Administrator", "Operations Supervisor", "Statutory Discount Processor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"]) {
       await form.getByLabel("Initial role").selectOption({ label });
       await expect(form.getByLabel("Initial role")).toHaveValue(/.+/);
     }
@@ -51,6 +51,10 @@ test.describe("governed User Administration", () => {
     await expect(form.getByLabel("Access level")).toHaveValue("GLOBAL");
     await expect(form.getByLabel("Access level")).toBeDisabled();
     await expect(form.getByText(/Global scope required/)).toBeVisible();
+
+    await form.getByLabel("Initial role").selectOption({ label: "Statutory Discount Processor" });
+    await expect(form.getByLabel("Access level")).toHaveValue("GLOBAL");
+    await expect(form.getByLabel("Access level")).toBeDisabled();
 
     await form.getByLabel("Initial role").selectOption({ label: "Site Operator" });
     await expect(form.getByLabel("Assigned Site").getByRole("option", { name: "PITX Level 3", exact: true })).toBeAttached();

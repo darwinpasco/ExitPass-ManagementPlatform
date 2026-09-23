@@ -46,6 +46,7 @@ export interface StatutoryBenefitReviewDetail extends StatutoryBenefitReviewQueu
   issuingAuthority?: string;
   expiryDate?: string;
   maskedIdReference?: string;
+  hasAuthoritativeIdControlReference: boolean;
   requesterAttestation: boolean;
   beneficiaryResidencySatisfied?: boolean;
   submissionReason?: string;
@@ -101,8 +102,35 @@ export interface StatutoryBenefitReviewClient {
   get(reference: string, signal?: AbortSignal): Promise<StatutoryBenefitReviewDetail>;
   evidence(reference: string, signal?: AbortSignal): Promise<StatutoryBenefitEvidence>;
   evidencePreview(reference: string, evidenceItemReference: string, signal?: AbortSignal): Promise<Blob>;
-  decide(reference: string, body: { decision: "APPROVE" | "REJECT"; rejectionReason?: string; expectedVersion: number; idempotencyKey: string }): Promise<unknown>;
+  decide(reference: string, body: StatutoryBenefitDecisionRequest): Promise<unknown>;
   clearRuntimeState(): void;
+}
+
+export interface StatutoryBenefitDecisionRequest {
+  decision: "APPROVE" | "REJECT";
+  rejectionReason?: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+  idDocumentType?: string;
+  issuingAuthority?: string;
+  expiryDate?: string;
+  idControlReference?: string;
+}
+
+export function normalizeIdControlReference(value: string): string | undefined {
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  if (normalized.length < 4) throw new Error("Enter at least 4 characters for the ID No. / Control No.");
+  if (normalized.length > 64 || /\s/.test(normalized) || normalized.includes("*")) throw new Error("Enter a valid ID No. / Control No.");
+  return normalized;
+}
+
+export function toSafeMaskedIdReference(value: string): string | undefined {
+  const normalized = value.trim();
+  if (!normalized) return undefined;
+  if (normalized.length < 4) return normalized;
+  if (normalized.length === 4 || /^\*+[^*\s]{4}$/.test(normalized)) return normalized;
+  return `${"*".repeat(normalized.length - 4)}${normalized.slice(-4)}`;
 }
 
 export function createStatutoryBenefitReviewClient(api: CentralPmsApiClient): StatutoryBenefitReviewClient {
@@ -170,6 +198,7 @@ export function parseDetail(value: unknown): StatutoryBenefitReviewDetail {
     issuingAuthority: optionalString(row.issuingAuthority),
     expiryDate: optionalDate(row.expiryDate),
     maskedIdReference: optionalString(row.maskedIdReference),
+    hasAuthoritativeIdControlReference: boolean(row.hasAuthoritativeIdControlReference, "hasAuthoritativeIdControlReference"),
     requesterAttestation: boolean(row.requesterAttestation, "requesterAttestation"),
     beneficiaryResidencySatisfied: optionalBoolean(row.beneficiaryResidencySatisfied, "beneficiaryResidencySatisfied"),
     submissionReason: optionalString(row.submissionReason),
