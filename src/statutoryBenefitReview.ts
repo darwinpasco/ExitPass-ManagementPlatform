@@ -21,7 +21,7 @@ export interface StatutoryBenefitReviewQueueItem {
   siteReference: string;
   siteCode: string;
   siteName: string;
-  sourceChannel: "WEBPAY" | "ASSISTED_PAYMENT_TERMINAL";
+  sourceChannel: "WEBPAY" | "ASSISTED_PAYMENT_TERMINAL" | "OPERATOR_CONSOLE";
   benefitType: "SENIOR_CITIZEN" | "PWD";
   status: ReviewStatus;
   evidenceRequired: boolean;
@@ -45,6 +45,8 @@ export interface StatutoryBenefitReviewDetail extends StatutoryBenefitReviewQueu
   idDocumentType?: string;
   issuingAuthority?: string;
   expiryDate?: string;
+  birthDate?: string;
+  idControlReference?: string;
   maskedIdReference?: string;
   hasAuthoritativeIdControlReference: boolean;
   requesterAttestation: boolean;
@@ -88,7 +90,7 @@ export interface StatutoryBenefitEvidenceItem {
 export interface StatutoryBenefitReviewFilters {
   status: "PENDING" | "APPROVED" | "REJECTED" | "ALL";
   siteReference?: string;
-  sourceChannel?: "WEBPAY" | "ASSISTED_PAYMENT_TERMINAL";
+  sourceChannel?: "WEBPAY" | "ASSISTED_PAYMENT_TERMINAL" | "OPERATOR_CONSOLE";
   benefitType?: "SENIOR_CITIZEN" | "PWD";
   submittedFrom?: string;
   submittedTo?: string;
@@ -114,6 +116,7 @@ export interface StatutoryBenefitDecisionRequest {
   idDocumentType?: string;
   issuingAuthority?: string;
   expiryDate?: string;
+  birthDate?: string;
   idControlReference?: string;
 }
 
@@ -197,6 +200,8 @@ export function parseDetail(value: unknown): StatutoryBenefitReviewDetail {
     idDocumentType: optionalString(row.idDocumentType),
     issuingAuthority: optionalString(row.issuingAuthority),
     expiryDate: optionalDate(row.expiryDate),
+    birthDate: optionalDate(row.birthDate),
+    idControlReference: optionalString(row.idControlReference),
     maskedIdReference: optionalString(row.maskedIdReference),
     hasAuthoritativeIdControlReference: boolean(row.hasAuthoritativeIdControlReference, "hasAuthoritativeIdControlReference"),
     requesterAttestation: boolean(row.requesterAttestation, "requesterAttestation"),
@@ -245,7 +250,7 @@ export function parseEvidence(value: unknown): StatutoryBenefitEvidence {
 
 function parseQueueItem(value: unknown): StatutoryBenefitReviewQueueItem {
   const row = object(value);
-  const source = enumValue(row.sourceChannel, ["WEBPAY", "ASSISTED_PAYMENT_TERMINAL"] as const, "sourceChannel");
+  const source = enumValue(row.sourceChannel, ["WEBPAY", "ASSISTED_PAYMENT_TERMINAL", "OPERATOR_CONSOLE"] as const, "sourceChannel");
   const benefit = enumValue(row.benefitType, ["SENIOR_CITIZEN", "PWD"] as const, "benefitType");
   const status = enumValue(row.status, ["PENDING_REVIEW", "APPROVED", "REJECTED"] as const, "status");
   return {

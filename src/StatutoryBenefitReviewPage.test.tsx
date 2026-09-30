@@ -239,6 +239,55 @@ describe("Statutory Benefit Requests", () => {
     expect(JSON.stringify(submitted)).not.toContain("****5678");
   });
 
+  it("shows an Operator Console request with complete structured ID details to the authorized processor", async () => {
+    const client = makeClient();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(client.list).mockResolvedValue({
+      ...queueValue,
+      items: [{
+        ...queueValue.items[0],
+        sourceChannel: "OPERATOR_CONSOLE",
+        benefitType: "SENIOR_CITIZEN",
+        ticketReference: "1474119573115"
+      }]
+    });
+    vi.mocked(client.get).mockResolvedValue({
+      ...detail,
+      sourceChannel: "OPERATOR_CONSOLE",
+      benefitType: "SENIOR_CITIZEN",
+      ticketReference: "1474119573115",
+      idDocumentType: "SENIOR_CITIZEN_ID",
+      issuingAuthority: "OSCA",
+      birthDate: "1955-09-30",
+      expiryDate: undefined,
+      idControlReference: "12345678",
+      maskedIdReference: "****5678",
+      hasAuthoritativeIdControlReference: true
+    });
+
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Senior citizen/ }));
+
+    expect(await screen.findByText("Operator Console")).toBeInTheDocument();
+    expect(screen.getByText("SENIOR_CITIZEN_ID")).toBeInTheDocument();
+    expect(screen.getByText("OSCA")).toBeInTheDocument();
+    expect(screen.getByText("1955-09-30")).toBeInTheDocument();
+    expect(screen.getByText("12345678")).toBeInTheDocument();
+    expect(screen.getByLabelText("ID No. / Control No.")).toHaveValue("****5678");
+    expect(screen.getByLabelText(/^Birth date/)).toHaveValue("1955-09-30");
+    expect(screen.getByLabelText(/^Birth date/)).toHaveAttribute("aria-required", "true");
+    expect(screen.queryByLabelText(/^Expiry date/)).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => expect(client.decide).toHaveBeenCalledWith(reference, expect.objectContaining({
+      decision: "APPROVE",
+      birthDate: "1955-09-30",
+      expiryDate: undefined,
+      idControlReference: undefined
+    })));
+  });
+
   it("submits only the rejection reason when approval metadata is empty", async () => {
     const client = makeClient();
     vi.mocked(client.get).mockResolvedValue({ ...detail });
@@ -255,6 +304,7 @@ describe("Statutory Benefit Requests", () => {
     expect(submitted.idDocumentType).toBeUndefined();
     expect(submitted.issuingAuthority).toBeUndefined();
     expect(submitted.expiryDate).toBeUndefined();
+    expect(submitted.birthDate).toBeUndefined();
     expect(submitted.idControlReference).toBeUndefined();
   });
 
@@ -338,7 +388,7 @@ function renderPage(client: StatutoryBenefitReviewClient) {
 function makeClient(): StatutoryBenefitReviewClient {
   return {
     list: vi.fn().mockResolvedValue(queueValue),
-    get: vi.fn().mockResolvedValue({ ...detail, idDocumentType: "PWD_ID", issuingAuthority: "City social welfare office", expiryDate: "2027-08-24", maskedIdReference: "****5678", hasAuthoritativeIdControlReference: true, submissionReason: "PITX parking privilege request" }),
+    get: vi.fn().mockResolvedValue({ ...detail, idDocumentType: "PWD_ID", issuingAuthority: "City social welfare office", expiryDate: "2027-08-24", idControlReference: "12345678", maskedIdReference: "****5678", hasAuthoritativeIdControlReference: true, submissionReason: "PITX parking privilege request" }),
     evidence: vi.fn().mockResolvedValue({ contractVersion: statutoryBenefitReviewContractVersion, decisionCommandReference: reference, evidenceRequired: true, evidenceRecorded: true, items: [{ evidenceType: "GOVERNMENT_ID", captureMethod: "UPLOAD", maskedReference: "***1234", verificationStatus: "RECORDED", previewPermitted: false }], correlationId: queueValue.correlationId }),
     evidencePreview: vi.fn().mockResolvedValue(new Blob(["image"], { type: "image/jpeg" })),
     decide: vi.fn().mockResolvedValue({}),
