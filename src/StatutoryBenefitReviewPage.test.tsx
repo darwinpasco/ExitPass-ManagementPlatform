@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { StatutoryBenefitReviewPage } from "./StatutoryBenefitReviewPage";
-import { normalizeIdControlReference, parseDetail, parseQueue, statutoryBenefitReviewContractVersion, toSafeMaskedIdReference, type StatutoryBenefitReviewClient, type StatutoryBenefitReviewQueue } from "./statutoryBenefitReview";
+import { normalizeIdControlReference, normalizeReviewedDocumentType, parseDetail, parseQueue, statutoryBenefitReviewContractVersion, toSafeMaskedIdReference, type StatutoryBenefitReviewClient, type StatutoryBenefitReviewQueue } from "./statutoryBenefitReview";
 
 const site = { siteId: "10000000-0000-4000-8000-000000000001", displayName: "SITE-A" };
 const reference = "20000000-0000-4000-8000-000000000001";
@@ -10,7 +11,7 @@ const queueValue: StatutoryBenefitReviewQueue = {
   items: [{ requestReference: "30000000-0000-4000-8000-000000000001", decisionCommandReference: reference, parkingSessionReference: "40000000-0000-4000-8000-000000000001", ticketReference: "SAFE-001", siteReference: site.siteId, siteCode: "SITE-A", siteName: "SITE-A", sourceChannel: "WEBPAY", benefitType: "PWD", status: "PENDING_REVIEW", evidenceRequired: true, evidenceRecorded: true, submittedAt: "2026-08-24T01:00:00Z" }],
   page: 1, pageSize: 25, totalCount: 1, hasMore: false, correlationId: "50000000-0000-4000-8000-000000000001"
 };
-const detail = { ...queueValue.items[0], contractVersion: statutoryBenefitReviewContractVersion, requesterAttestation: true, beneficiaryResidencySatisfied: true, hasAuthoritativeIdControlReference: false, money: { originalAmountMinorUnits: 123456, discountAmountMinorUnits: 24691, finalPayableAmountMinorUnits: 108765, currency: "PHP" as const }, version: 7 };
+const detail = { ...queueValue.items[0], contractVersion: statutoryBenefitReviewContractVersion, requesterAttestation: true, beneficiaryResidencyRequired: false, hasAuthoritativeIdControlReference: false, money: { originalAmountMinorUnits: 123456, discountAmountMinorUnits: 24691, finalPayableAmountMinorUnits: 108765, currency: "PHP" as const }, version: 7 };
 
 describe("Statutory Benefit Requests", () => {
   it("parses the stable contract and rejects non-PHP money", () => {
@@ -35,7 +36,8 @@ describe("Statutory Benefit Requests", () => {
     expect(screen.getByLabelText(/Issuing authority/)).toHaveValue("City social welfare office");
     expect(screen.getByLabelText("ID No. / Control No.")).toHaveValue("****5678");
     expect(screen.getByRole("button", { name: "Change" })).toBeInTheDocument();
-    expect(screen.getByText("Residency attestation")).toBeInTheDocument();
+    expect(screen.getByLabelText("I confirm that the required documents and parking-privilege conditions were reviewed.")).toBeInTheDocument();
+    expect(screen.queryByLabelText("I confirm that the beneficiary satisfies the required residency condition.")).not.toBeInTheDocument();
   });
 
   it("shows Not recorded instead of substituting the parking session when a ticket is absent", async () => {
@@ -170,6 +172,7 @@ describe("Statutory Benefit Requests", () => {
     expect(screen.getByLabelText("ID No. / Control No.")).toHaveValue("****5678");
     fireEvent.focus(screen.getByLabelText("ID No. / Control No."));
     expect(screen.getByLabelText("ID No. / Control No.")).toHaveValue("12345678");
+    await confirmApprovalAttestations();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     await waitFor(() => expect(client.decide).toHaveBeenCalledWith(reference, expect.objectContaining({
@@ -177,7 +180,9 @@ describe("Statutory Benefit Requests", () => {
       idDocumentType: "PWD_ID",
       issuingAuthority: "City social welfare office",
       expiryDate: "2027-08-24",
-      idControlReference: "12345678"
+      idControlReference: "12345678",
+      reviewerAttestation: true,
+      beneficiaryResidencySatisfied: undefined
     })));
     expect(JSON.stringify(vi.mocked(client.decide).mock.calls)).not.toContain("****5678");
   });
@@ -196,9 +201,10 @@ describe("Statutory Benefit Requests", () => {
       expect(input).toHaveAttribute("aria-required", "true");
     }
 
+    await confirmApprovalAttestations();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
-    expect(await screen.findByText("Select the ID document type.")).toBeInTheDocument();
+    expect(await screen.findByText("Select a supported ID document type.")).toBeInTheDocument();
     expect(screen.getByText("Enter the issuing authority.")).toBeInTheDocument();
     expect(screen.getByText("Enter the expiry date.")).toBeInTheDocument();
     expect(screen.getByText("Enter at least 4 characters.")).toBeInTheDocument();
@@ -231,6 +237,7 @@ describe("Statutory Benefit Requests", () => {
     await screen.findByRole("heading", { name: "Record decision" });
 
     expect(screen.getByLabelText("ID No. / Control No.")).toHaveValue("****5678");
+    await confirmApprovalAttestations();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     await waitFor(() => expect(client.decide).toHaveBeenCalled());
@@ -256,13 +263,14 @@ describe("Statutory Benefit Requests", () => {
       sourceChannel: "OPERATOR_CONSOLE",
       benefitType: "SENIOR_CITIZEN",
       ticketReference: "1474119573115",
-      idDocumentType: "SENIOR_CITIZEN_ID",
+      idDocumentType: "SENIOR CITIZEN",
       issuingAuthority: "OSCA",
       birthDate: "1955-09-30",
       expiryDate: undefined,
       idControlReference: "12345678",
       maskedIdReference: "****5678",
-      hasAuthoritativeIdControlReference: true
+      hasAuthoritativeIdControlReference: true,
+      beneficiaryResidencyRequired: true
     });
 
     renderPage(client);
@@ -277,14 +285,21 @@ describe("Statutory Benefit Requests", () => {
     expect(screen.getByLabelText(/^Birth date/)).toHaveValue("1955-09-30");
     expect(screen.getByLabelText(/^Birth date/)).toHaveAttribute("aria-required", "true");
     expect(screen.queryByLabelText(/^Expiry date/)).not.toBeInTheDocument();
+    expect(screen.getByText("Processor confirmation required")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+    await screen.findByText("Status: RECORDED");
 
+    await confirmApprovalAttestations(true);
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     await waitFor(() => expect(client.decide).toHaveBeenCalledWith(reference, expect.objectContaining({
       decision: "APPROVE",
+      idDocumentType: "SENIOR_CITIZEN_ID",
       birthDate: "1955-09-30",
       expiryDate: undefined,
-      idControlReference: undefined
+      idControlReference: undefined,
+      reviewerAttestation: true,
+      beneficiaryResidencySatisfied: true
     })));
   });
 
@@ -313,6 +328,53 @@ describe("Statutory Benefit Requests", () => {
     expect(toSafeMaskedIdReference("ABC12345")).toBe("****2345");
     expect(normalizeIdControlReference(" 12345678 ")).toBe("12345678");
     expect(() => normalizeIdControlReference("123")).toThrow(/at least 4/);
+  });
+
+  it.each([
+    ["SENIOR CITIZEN", "SENIOR_CITIZEN_ID"],
+    ["SENIOR_CITIZEN", "SENIOR_CITIZEN_ID"],
+    ["SENIOR_CITIZEN_ID", "SENIOR_CITIZEN_ID"],
+    ["PWD", "PWD_ID"],
+    ["PWD_ID", "PWD_ID"],
+    ["OTHER_SUPPORTING_DOCUMENT", "OTHER_SUPPORTING_DOCUMENT"]
+  ])("normalizes reviewed document type %s to %s", (source, expected) => {
+    expect(normalizeReviewedDocumentType(source)).toBe(expected);
+  });
+
+  it("requires an explicit supported document selection for an unmappable source value", async () => {
+    const client = makeClient();
+    vi.mocked(client.get).mockResolvedValue({
+      ...detail,
+      idDocumentType: "UNSUPPORTED_LEGACY_VALUE",
+      issuingAuthority: "Authority",
+      expiryDate: "2027-08-24",
+      idControlReference: "12345678"
+    });
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
+
+    expect(await screen.findByLabelText(/^ID document type/)).toHaveValue("");
+    await confirmApprovalAttestations();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(await screen.findByText("Select a supported ID document type.")).toBeInTheDocument();
+    expect(client.decide).not.toHaveBeenCalled();
+  });
+
+  it("does not require either processor attestation for rejection", async () => {
+    const client = makeClient();
+    vi.mocked(client.get).mockResolvedValue({ ...detail, beneficiaryResidencyRequired: true });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
+    fireEvent.change(await screen.findByLabelText("Rejection reason"), { target: { value: "IDENTITY_NOT_VERIFIABLE" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reject" }));
+
+    await waitFor(() => expect(client.decide).toHaveBeenCalledWith(reference, expect.objectContaining({
+      decision: "REJECT",
+      reviewerAttestation: undefined,
+      beneficiaryResidencySatisfied: undefined
+    })));
   });
 
   it("shows finalized reviewed metadata masked and never renders the raw ID", async () => {
@@ -363,6 +425,7 @@ describe("Statutory Benefit Requests", () => {
     fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
     fireEvent.click(await screen.findByRole("button", { name: "Change" }));
     fireEvent.change(screen.getByLabelText("ID No. / Control No."), { target: { value: "ABC1234" } });
+    await confirmApprovalAttestations();
     fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
     expect(await screen.findByRole("heading", { name: "Decision already recorded" })).toBeInTheDocument();
     expect(client.get).toHaveBeenCalledTimes(2);
@@ -383,6 +446,19 @@ describe("Statutory Benefit Requests", () => {
 
 function renderPage(client: StatutoryBenefitReviewClient) {
   return render(<StatutoryBenefitReviewPage client={client} authorizedSites={[site]} canViewDetail canViewEvidence canApprove canReject />);
+}
+
+async function confirmApprovalAttestations(includeResidency = false) {
+  const user = userEvent.setup();
+  await user.click(screen.getByLabelText("I confirm that the required documents and parking-privilege conditions were reviewed."));
+  await waitFor(() => expect(screen.getByLabelText("I confirm that the required documents and parking-privilege conditions were reviewed.")).toBeChecked());
+  if (includeResidency) {
+    await user.click(screen.getByLabelText("I confirm that the beneficiary satisfies the required residency condition."));
+    await waitFor(() => expect(screen.getByLabelText("I confirm that the beneficiary satisfies the required residency condition.")).toBeChecked());
+  }
+  await waitFor(() => {
+    expect(screen.getByRole("button", { name: "Approve" })).toBeEnabled();
+  });
 }
 
 function makeClient(): StatutoryBenefitReviewClient {
