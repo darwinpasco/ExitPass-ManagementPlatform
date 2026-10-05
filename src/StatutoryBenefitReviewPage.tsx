@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import type { ManagementPlatformSite, ManagementPlatformUiError } from "./types";
-import { normalizeIdControlReference, toSafeMaskedIdReference, type StatutoryBenefitEvidence, type StatutoryBenefitReviewClient, type StatutoryBenefitReviewDetail, type StatutoryBenefitReviewFilters, type StatutoryBenefitReviewQueue } from "./statutoryBenefitReview";
+import { isSupportedReviewedDocumentType, normalizeIdControlReference, normalizeReviewedDocumentType, toSafeMaskedIdReference, type StatutoryBenefitEvidence, type StatutoryBenefitReviewClient, type StatutoryBenefitReviewDetail, type StatutoryBenefitReviewFilters, type StatutoryBenefitReviewQueue } from "./statutoryBenefitReview";
 
 interface Props {
   client: StatutoryBenefitReviewClient;
@@ -26,6 +26,11 @@ interface ReviewedDocumentDraft {
 
 type ApprovalFieldName = "idDocumentType" | "issuingAuthority" | "expiryDate" | "birthDate" | "idReference";
 type ApprovalFieldErrors = Partial<Record<ApprovalFieldName, string>>;
+
+interface DecisionAttestations {
+  reviewerAttestation: boolean;
+  beneficiaryResidencySatisfied: boolean;
+}
 
 export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDetail, canViewEvidence, canApprove, canReject }: Props) {
   const [filters, setFilters] = useState(initialFilters);
@@ -87,7 +92,11 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
     }
   }
 
-  async function decide(decision: "APPROVE" | "REJECT", reviewedDocument: ReviewedDocumentDraft) {
+  async function decide(
+    decision: "APPROVE" | "REJECT",
+    reviewedDocument: ReviewedDocumentDraft,
+    attestations: DecisionAttestations
+  ) {
     if (!detail || decisionPending) return;
     const reason = rejectionReason.trim();
     if (decision === "REJECT" && !reason) {
@@ -100,7 +109,7 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
     let idControlReference: string | undefined;
     const fieldErrors: ApprovalFieldErrors = {};
     if (decision === "APPROVE") {
-      if (!idDocumentType) fieldErrors.idDocumentType = "Select the ID document type.";
+      if (!isSupportedReviewedDocumentType(idDocumentType)) fieldErrors.idDocumentType = "Select a supported ID document type.";
       if (!issuingAuthority) fieldErrors.issuingAuthority = "Enter the issuing authority.";
       if (requiresBirthDate) {
         if (!reviewedDocument.birthDate) fieldErrors.birthDate = "Enter the birth date.";
@@ -116,6 +125,19 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
         setApprovalFieldErrors(fieldErrors);
         const first = (["idDocumentType", "issuingAuthority", requiresBirthDate ? "birthDate" : "expiryDate", "idReference"] as const).find((name) => fieldErrors[name]);
         if (first) requestAnimationFrame(() => document.getElementById(`review-${first}`)?.focus());
+        return;
+      }
+      if (!attestations.reviewerAttestation ||
+          (detail.beneficiaryResidencyRequired && !attestations.beneficiaryResidencySatisfied)) {
+        setError({
+          kind: "validation",
+          code: !attestations.reviewerAttestation
+            ? "STATUTORY_BENEFIT_REVIEWER_ATTESTATION_REQUIRED"
+            : "STATUTORY_BENEFIT_RESIDENCY_ATTESTATION_REQUIRED",
+          message: "Complete the required processor confirmations before approval.",
+          retryable: false,
+          mutationUncertain: false
+        });
         return;
       }
     }
@@ -135,7 +157,11 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
         issuingAuthority: decision === "APPROVE" ? issuingAuthority || undefined : undefined,
         expiryDate: decision === "APPROVE" && !requiresBirthDate ? reviewedDocument.expiryDate || undefined : undefined,
         birthDate: decision === "APPROVE" && requiresBirthDate ? reviewedDocument.birthDate || undefined : undefined,
-        idControlReference: decision === "APPROVE" ? idControlReference : undefined
+        idControlReference: decision === "APPROVE" ? idControlReference : undefined,
+        reviewerAttestation: decision === "APPROVE" ? attestations.reviewerAttestation : undefined,
+        beneficiaryResidencySatisfied: decision === "APPROVE" && detail.beneficiaryResidencyRequired
+          ? attestations.beneficiaryResidencySatisfied
+          : undefined
       });
       setNotice(`Request ${decision === "APPROVE" ? "approved" : "rejected"}. Central PMS recorded the final decision.`);
       setRejectionReason("");
@@ -187,15 +213,22 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
   );
 }
 
-function ReviewDetail({ client, detail, evidence, evidenceError, canViewEvidence, canApprove, canReject, pending, rejectionReason, approvalFieldErrors, onReason, onDecision, onClose }: { client: StatutoryBenefitReviewClient; detail: StatutoryBenefitReviewDetail; evidence?: StatutoryBenefitEvidence; evidenceError?: ManagementPlatformUiError; canViewEvidence: boolean; canApprove: boolean; canReject: boolean; pending: boolean; rejectionReason: string; approvalFieldErrors: ApprovalFieldErrors; onReason: (value: string) => void; onDecision: (value: "APPROVE" | "REJECT", reviewedDocument: ReviewedDocumentDraft) => void; onClose: () => void }) {
+function ReviewDetail({ client, detail, evidence, evidenceError, canViewEvidence, canApprove, canReject, pending, rejectionReason, approvalFieldErrors, onReason, onDecision, onClose }: { client: StatutoryBenefitReviewClient; detail: StatutoryBenefitReviewDetail; evidence?: StatutoryBenefitEvidence; evidenceError?: ManagementPlatformUiError; canViewEvidence: boolean; canApprove: boolean; canReject: boolean; pending: boolean; rejectionReason: string; approvalFieldErrors: ApprovalFieldErrors; onReason: (value: string) => void; onDecision: (value: "APPROVE" | "REJECT", reviewedDocument: ReviewedDocumentDraft, attestations: DecisionAttestations) => void; onClose: () => void }) {
   const isPending = detail.status === "PENDING_REVIEW";
   const requiresBirthDate = usesBirthDateForDecision(detail);
   const [reviewedDocument, setReviewedDocument] = useState<ReviewedDocumentDraft>(() => toReviewedDocumentDraft(detail));
   const [idReferenceFocused, setIdReferenceFocused] = useState(false);
-  useEffect(() => { setReviewedDocument(toReviewedDocumentDraft(detail)); setIdReferenceFocused(false); }, [detail.decisionCommandReference, detail.version]);
+  const [reviewerAttestation, setReviewerAttestation] = useState(false);
+  const [beneficiaryResidencySatisfied, setBeneficiaryResidencySatisfied] = useState(false);
+  useEffect(() => {
+    setReviewedDocument(toReviewedDocumentDraft(detail));
+    setIdReferenceFocused(false);
+    setReviewerAttestation(false);
+    setBeneficiaryResidencySatisfied(false);
+  }, [detail.decisionCommandReference, detail.version]);
   return <section className="reviewDetail" aria-labelledby="review-detail-title" tabIndex={-1}>
     <div className="panelHeader"><div><p className="eyebrow">Request detail</p><h3 id="review-detail-title" className="detailTicket">{detail.ticketReference ? `Ticket ${detail.ticketReference}` : "Ticket: Not recorded"}</h3></div><button type="button" className="secondaryButton" onClick={onClose}>Close</button></div>
-    <dl className="detailGrid"><dt>Site</dt><dd>{detail.siteName} ({detail.siteCode})</dd><dt>Originating channel</dt><dd>{channelLabel(detail.sourceChannel)}</dd><dt>Parking session</dt><dd>{detail.parkingSessionReference}</dd><dt>Request reference</dt><dd>{detail.requestReference}</dd><dt>Submitted</dt><dd>{formatTime(detail.submittedAt)}</dd><dt>Status</dt><dd>{statusLabel(detail.status)}</dd><dt>Discount type</dt><dd>{benefitLabel(detail.benefitType)}</dd><dt>ID document type</dt><dd>{displaySafeValue(detail.idDocumentType)}</dd><dt>Issuing authority</dt><dd>{displaySafeValue(detail.issuingAuthority)}</dd><dt>Birth date</dt><dd>{detail.birthDate ?? "Not recorded"}</dd><dt>Expiry date</dt><dd>{detail.expiryDate ?? "Not recorded"}</dd><dt>ID No. / Control No.</dt><dd>{displaySafeValue(isPending ? detail.idControlReference : detail.maskedIdReference)}</dd><dt>Requester attestation</dt><dd>{detail.requesterAttestation ? "Confirmed" : "Not confirmed"}</dd>{detail.beneficiaryResidencySatisfied !== undefined && <><dt>Residency attestation</dt><dd>{detail.beneficiaryResidencySatisfied ? "Confirmed" : "Not confirmed"}</dd></>}{detail.submissionReason && <><dt>Submitted note</dt><dd>{detail.submissionReason}</dd></>}{detail.money && <><dt>Original amount</dt><dd>{formatPhp(detail.money.originalAmountMinorUnits)}</dd><dt>Statutory benefit</dt><dd>{formatPhp(detail.money.discountAmountMinorUnits)}</dd><dt>Final payable amount</dt><dd>{formatPhp(detail.money.finalPayableAmountMinorUnits)}</dd></>}</dl>
+    <dl className="detailGrid"><dt>Site</dt><dd>{detail.siteName} ({detail.siteCode})</dd><dt>Originating channel</dt><dd>{channelLabel(detail.sourceChannel)}</dd><dt>Parking session</dt><dd>{detail.parkingSessionReference}</dd><dt>Request reference</dt><dd>{detail.requestReference}</dd><dt>Submitted</dt><dd>{formatTime(detail.submittedAt)}</dd><dt>Status</dt><dd>{statusLabel(detail.status)}</dd><dt>Discount type</dt><dd>{benefitLabel(detail.benefitType)}</dd><dt>ID document type</dt><dd>{displaySafeValue(normalizeReviewedDocumentType(detail.idDocumentType) ?? detail.idDocumentType)}</dd><dt>Issuing authority</dt><dd>{displaySafeValue(detail.issuingAuthority)}</dd><dt>Birth date</dt><dd>{detail.birthDate ?? "Not recorded"}</dd><dt>Expiry date</dt><dd>{detail.expiryDate ?? "Not recorded"}</dd><dt>ID No. / Control No.</dt><dd>{displaySafeValue(isPending ? detail.idControlReference : detail.maskedIdReference)}</dd><dt>Requester attestation</dt><dd>{detail.requesterAttestation ? "Confirmed" : "Not confirmed"}</dd>{detail.beneficiaryResidencyRequired && <><dt>Residency requirement</dt><dd>Processor confirmation required</dd></>}{detail.beneficiaryResidencySatisfied !== undefined && <><dt>Processor residency confirmation</dt><dd>{detail.beneficiaryResidencySatisfied ? "Confirmed" : "Not confirmed"}</dd></>}{detail.submissionReason && <><dt>Submitted note</dt><dd>{detail.submissionReason}</dd></>}{detail.money && <><dt>Original amount</dt><dd>{formatPhp(detail.money.originalAmountMinorUnits)}</dd><dt>Statutory benefit</dt><dd>{formatPhp(detail.money.discountAmountMinorUnits)}</dd><dt>Final payable amount</dt><dd>{formatPhp(detail.money.finalPayableAmountMinorUnits)}</dd></>}</dl>
     <section aria-labelledby="evidence-title"><h4 id="evidence-title">Evidence for review</h4>{evidenceError ? <EvidenceLoadError error={evidenceError} /> : !canViewEvidence ? <p>Evidence is not available for this session.</p> : !evidence ? <p role="status">Loading authoritative evidence metadata...</p> : evidence.items.length === 0 ? <p>No current reviewable evidence is recorded.</p> : <ul className="evidenceList">{evidence.items.map((item, index) => <li key={item.evidenceItemReference ?? `${item.evidenceType}-${index}`}><strong>{(item.documentType ?? item.evidenceType).replaceAll("_", " ")}</strong><span>Status: {item.reviewabilityStatus ?? item.verificationStatus ?? "Unavailable"}</span>{item.itemRole && <small>Role: {item.itemRole.replaceAll("_", " ")}</small>}{item.contentType && <small>Media: {item.contentType}</small>}{item.maskedReference && <small>ID: {item.maskedReference}</small>}<small>Upload: {item.uploadStatus ?? "Unavailable"}</small><small>Validation: {item.validationStatus ?? "Unavailable"}</small><small>Malware scan: {item.malwareScanStatus ?? "Unavailable"}</small>{item.reviewableAt && <small>Reviewable at {formatTime(item.reviewableAt)}</small>}{item.previewPermitted && item.evidenceItemReference && <EvidencePreview client={client} decisionReference={detail.decisionCommandReference} evidenceItemReference={item.evidenceItemReference} />}</li>)}</ul>}</section>
     {detail.decision && <section className="decisionSummary"><h4>Final decision</h4><p><strong>{detail.decision.decision === "APPROVE" ? "Approved" : "Rejected"}</strong> by {detail.decision.reviewerDisplayName} at {formatTime(detail.decision.decidedAt)}.</p>{detail.decision.reason && <p>Reason: {detail.decision.reason}</p>}</section>}
     {isPending && (canApprove || canReject) && <section className="decisionPanel" aria-labelledby="decision-title">
@@ -217,9 +250,13 @@ function ReviewDetail({ client, detail, evidence, evidenceError, canViewEvidence
           {approvalFieldErrors.idReference && <small id="review-idReference-error" className="fieldError">{approvalFieldErrors.idReference}</small>}
         </div>
       </div>
+      {canApprove && <div className="reviewAttestations" aria-label="Processor confirmations">
+        <label htmlFor="review-reviewerAttestation"><input id="review-reviewerAttestation" type="checkbox" checked={reviewerAttestation} onChange={(event) => setReviewerAttestation(event.target.checked)} />I confirm that the required documents and parking-privilege conditions were reviewed.</label>
+        {detail.beneficiaryResidencyRequired && <label htmlFor="review-beneficiaryResidencySatisfied"><input id="review-beneficiaryResidencySatisfied" type="checkbox" checked={beneficiaryResidencySatisfied} onChange={(event) => setBeneficiaryResidencySatisfied(event.target.checked)} />I confirm that the beneficiary satisfies the required residency condition.</label>}
+      </div>}
       {canReject && <label htmlFor="review-rejectionReason">Rejection reason<textarea id="review-rejectionReason" value={rejectionReason} maxLength={512} onChange={(event) => onReason(event.target.value)} /></label>}
       {canReject && <p className="fieldGuidance">Rejection reason is required only when rejecting.</p>}
-      <div className="decisionActions">{canReject && <button type="button" className="dangerButton" disabled={pending || !rejectionReason.trim()} onClick={() => onDecision("REJECT", reviewedDocument)}>Reject</button>}{canApprove && <button type="button" className="primaryButton" disabled={pending} onClick={() => onDecision("APPROVE", reviewedDocument)}>Approve</button>}</div>
+      <div className="decisionActions">{canReject && <button type="button" className="dangerButton" disabled={pending || !rejectionReason.trim()} onClick={() => onDecision("REJECT", reviewedDocument, { reviewerAttestation, beneficiaryResidencySatisfied })}>Reject</button>}{canApprove && <button type="button" className="primaryButton" disabled={pending || !reviewerAttestation || (detail.beneficiaryResidencyRequired && !beneficiaryResidencySatisfied)} onClick={() => onDecision("APPROVE", reviewedDocument, { reviewerAttestation, beneficiaryResidencySatisfied })}>Approve</button>}</div>
     </section>}
   </section>;
 }
@@ -271,7 +308,7 @@ function statusLabel(value: string) { return value === "PENDING_REVIEW" ? "Pendi
 function displaySafeValue(value?: string) { return value?.trim() || "Not recorded"; }
 function toReviewedDocumentDraft(detail: StatutoryBenefitReviewDetail): ReviewedDocumentDraft {
   return {
-    idDocumentType: detail.idDocumentType ?? "",
+    idDocumentType: normalizeReviewedDocumentType(detail.idDocumentType) ?? "",
     issuingAuthority: detail.issuingAuthority ?? "",
     expiryDate: detail.expiryDate ?? "",
     birthDate: detail.birthDate ?? "",

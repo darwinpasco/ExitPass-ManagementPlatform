@@ -3,6 +3,14 @@ import type { CentralPmsApiClient } from "./types";
 export const statutoryBenefitReviewRoute = "/management-platform/statutory-benefit-requests";
 export const statutoryBenefitReviewContractVersion = "management-platform-statutory-benefit-review:v1";
 
+export const supportedReviewedDocumentTypes = [
+  "SENIOR_CITIZEN_ID",
+  "PWD_ID",
+  "OTHER_SUPPORTING_DOCUMENT"
+] as const;
+
+export type ReviewedDocumentType = typeof supportedReviewedDocumentTypes[number];
+
 export const statutoryBenefitReviewPermissions = {
   list: "statutory-discounts.review.queue.read",
   detail: "statutory-discounts.review.detail.read",
@@ -50,6 +58,7 @@ export interface StatutoryBenefitReviewDetail extends StatutoryBenefitReviewQueu
   maskedIdReference?: string;
   hasAuthoritativeIdControlReference: boolean;
   requesterAttestation: boolean;
+  beneficiaryResidencyRequired: boolean;
   beneficiaryResidencySatisfied?: boolean;
   submissionReason?: string;
   money?: { originalAmountMinorUnits: number; discountAmountMinorUnits: number; finalPayableAmountMinorUnits: number; currency: "PHP" };
@@ -118,6 +127,28 @@ export interface StatutoryBenefitDecisionRequest {
   expiryDate?: string;
   birthDate?: string;
   idControlReference?: string;
+  reviewerAttestation?: boolean;
+  beneficiaryResidencySatisfied?: boolean;
+}
+
+export function normalizeReviewedDocumentType(value?: string): ReviewedDocumentType | undefined {
+  switch (value?.trim().toUpperCase()) {
+    case "SENIOR CITIZEN":
+    case "SENIOR_CITIZEN":
+    case "SENIOR_CITIZEN_ID":
+      return "SENIOR_CITIZEN_ID";
+    case "PWD":
+    case "PWD_ID":
+      return "PWD_ID";
+    case "OTHER_SUPPORTING_DOCUMENT":
+      return "OTHER_SUPPORTING_DOCUMENT";
+    default:
+      return undefined;
+  }
+}
+
+export function isSupportedReviewedDocumentType(value: string): value is ReviewedDocumentType {
+  return supportedReviewedDocumentTypes.includes(value as ReviewedDocumentType);
 }
 
 export function normalizeIdControlReference(value: string): string | undefined {
@@ -205,6 +236,7 @@ export function parseDetail(value: unknown): StatutoryBenefitReviewDetail {
     maskedIdReference: optionalString(row.maskedIdReference),
     hasAuthoritativeIdControlReference: boolean(row.hasAuthoritativeIdControlReference, "hasAuthoritativeIdControlReference"),
     requesterAttestation: boolean(row.requesterAttestation, "requesterAttestation"),
+    beneficiaryResidencyRequired: optionalBoolean(row.beneficiaryResidencyRequired, "beneficiaryResidencyRequired") === true,
     beneficiaryResidencySatisfied: optionalBoolean(row.beneficiaryResidencySatisfied, "beneficiaryResidencySatisfied"),
     submissionReason: optionalString(row.submissionReason),
     money,
