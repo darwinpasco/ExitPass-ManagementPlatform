@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { humanSessionRoute } from "./src/humanAuthentication";
 import {
@@ -20,11 +22,21 @@ describe("Management Platform Vite proxy configuration", () => {
       changeOrigin: true,
       secure: false
     });
+    expect(config.preview).toMatchObject({ port: 5178, strictPort: true });
+    expect(config.preview?.proxy?.["/v1"]).toMatchObject({
+      target: "https://localhost:56064",
+      changeOrigin: true,
+      secure: false
+    });
   });
 
   it("uses an explicit safe proxy origin override", () => {
     expect(resolveApiProxyTarget(" https://central-pms.local:8443 ")).toBe("https://central-pms.local:8443");
     expect(createManagementPlatformViteConfig("https://central-pms.local:8443").server?.proxy?.["/v1"]).toMatchObject({
+      target: "https://central-pms.local:8443",
+      secure: true
+    });
+    expect(createManagementPlatformViteConfig("https://central-pms.local:8443").preview?.proxy?.["/v1"]).toMatchObject({
       target: "https://central-pms.local:8443",
       secure: true
     });
@@ -49,5 +61,15 @@ describe("Management Platform Vite proxy configuration", () => {
     expect(humanSessionRoute.startsWith("/v1/")).toBe(true);
     expect(config.server?.proxy).toHaveProperty("/v1");
     expect(config.server?.proxy?.["/v1"]).not.toHaveProperty("headers");
+  });
+
+  it("builds and uses stable preview hosting in the repeatable launcher", () => {
+    const launcher = readFileSync(
+      resolve(process.cwd(), "scripts/Start-ManagementPlatformLocal.ps1"),
+      "utf8");
+
+    expect(launcher).toContain("npm.cmd run build");
+    expect(launcher).toContain("npm.cmd run preview");
+    expect(launcher).not.toMatch(/npm(?:\.cmd)?\s+run\s+dev/i);
   });
 });
