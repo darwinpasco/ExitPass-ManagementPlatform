@@ -114,6 +114,8 @@ test.describe("Management Platform statutory policy coverage read-only workspace
     await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: /Sales Invoice Configuration Sales Invoice Setups/i })).toBeFocused();
     await page.keyboard.press("Tab");
+    await expect(page.getByRole("button", { name: /Configuration Sites, LGUs, policies, tariffs/i })).toBeFocused();
+    await page.keyboard.press("Tab");
     await expect(page.getByRole("button", { name: /Statutory Policy Coverage Read-only/i })).toBeFocused();
     await page.setViewportSize({ width: 1024, height: 768 });
     await expect(page.getByRole("heading", { name: "Coverage rows" })).toBeVisible();

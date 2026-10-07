@@ -202,6 +202,8 @@ describe("Management Platform statutory policy coverage workspace", () => {
       await user.tab();
       expect(document.activeElement).toBe(screen.getByRole("button", { name: "Dashboard" }));
       await user.tab();
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: /Configuration Sites, LGUs, policies, tariffs/i }));
+      await user.tab();
       expect(document.activeElement).toBe(screen.getByRole("button", { name: /Statutory Policy Coverage Read-only/i }));
       expect(screen.getByLabelText("Scope type")).toBeInTheDocument();
       expect(screen.getByLabelText("Entitlement type")).toBeInTheDocument();

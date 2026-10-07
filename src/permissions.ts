@@ -25,6 +25,7 @@ export const statutoryBenefitReviewPermissions = {
 export const managementPlatformIdentityRbacInventoryReadPermission = "management-platform.identity-rbac.inventory.read";
 export const statutoryDiscountPolicyCoverageReadPermission = "statutory-discount-policy.view";
 export const statutoryEvidenceGovernanceReadPermission = "statutory-discounts.evidence-governance.view";
+export const configurationAdministrationPermissions = ["site.view", "jurisdiction.view", "statutory-discount-policy.view", "site-tariff.view"] as const;
 
 export const identityAdministrationPresentationPermissions = [
   "user.view",
