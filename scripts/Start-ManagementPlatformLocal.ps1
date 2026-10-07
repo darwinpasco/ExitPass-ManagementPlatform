@@ -44,7 +44,11 @@ if ($PreflightOnly) {
 
 Push-Location $repoRoot
 try {
-    & npm.cmd run dev -- --host 127.0.0.1 --port 5178 --strictPort
+    & npm.cmd run build
+    if ($LASTEXITCODE -ne 0) {
+        throw "Management Platform production build failed with exit code $LASTEXITCODE."
+    }
+    & npm.cmd run preview -- --host 127.0.0.1 --port 5178 --strictPort
     exit $LASTEXITCODE
 } finally {
     Pop-Location

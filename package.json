@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --strictPort",
+    "preview": "vite preview",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b",
     "test": "vitest run",

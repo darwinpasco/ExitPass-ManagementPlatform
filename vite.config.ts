@@ -34,6 +34,14 @@ export function createManagementPlatformViteConfig(
   apiProxyTarget = defaultApiProxyTarget
 ): UserConfig {
   const resolvedApiProxyTarget = resolveApiProxyTarget(apiProxyTarget);
+  const proxy = {
+    "/v1": {
+      target: resolvedApiProxyTarget,
+      changeOrigin: true,
+      secure: resolvedApiProxyTarget !== defaultApiProxyTarget
+    }
+  };
+  const allowedHosts = [".ngrok-free.app", ".ngrok-free.dev"];
 
   return {
     base: "/management-platform/",
@@ -41,14 +49,14 @@ export function createManagementPlatformViteConfig(
     server: {
       port: defaultDevPort,
       strictPort: true,
-      allowedHosts: [".ngrok-free.app", ".ngrok-free.dev"],
-      proxy: {
-        "/v1": {
-          target: resolvedApiProxyTarget,
-          changeOrigin: true,
-          secure: resolvedApiProxyTarget !== defaultApiProxyTarget
-        }
-      }
+      allowedHosts,
+      proxy
+    },
+    preview: {
+      port: defaultDevPort,
+      strictPort: true,
+      allowedHosts,
+      proxy
     },
     test: {
       environment: "jsdom",
