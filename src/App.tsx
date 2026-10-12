@@ -24,6 +24,8 @@ import { createSalesInvoiceProfileReadClient, resolveSalesInvoiceProfileReadScen
 import { useManagementPlatformSiteSelection } from "./siteContext";
 import { ConfigurationAdministrationPage } from "./ConfigurationAdministrationPage";
 import { configurationAdministrationRoute, createConfigurationAdministrationClient, type ConfigurationAdministrationClient } from "./configurationAdministration";
+import { DeviceAdministrationPage } from "./DeviceAdministrationPage";
+import { createDeviceAdministrationClient, deviceAdministrationPermissions, deviceAdministrationRoute, type DeviceAdministrationClient } from "./deviceAdministration";
 import type { ManagementPlatformAuthState, ManagementPlatformConfig, ManagementPlatformUiError } from "./types";
 
 const routes = {
@@ -37,7 +39,8 @@ const routes = {
   paymentReconciliation: paymentReconciliationRoute,
   fiscalExceptions: fiscalExceptionRoute,
   statutoryBenefitReview: statutoryBenefitReviewRoute,
-  configuration: configurationAdministrationRoute
+  configuration: configurationAdministrationRoute,
+  deviceAdministration: deviceAdministrationRoute
 };
 
 interface AppProps {
@@ -54,6 +57,7 @@ interface AppProps {
   fiscalExceptionReportingClient?: FiscalExceptionReportingClient;
   statutoryBenefitReviewClient?: StatutoryBenefitReviewClient;
   configurationAdministrationClient?: ConfigurationAdministrationClient;
+  deviceAdministrationClient?: DeviceAdministrationClient;
   onAuthenticationRequired?: () => void;
   onAuthenticatedActivity?: () => void;
   authorizeUnsafeRequest?: (headers: Headers) => void;
@@ -85,6 +89,7 @@ export function App({
   fiscalExceptionReportingClient,
   statutoryBenefitReviewClient,
   configurationAdministrationClient,
+  deviceAdministrationClient,
   onAuthenticationRequired,
   onAuthenticatedActivity,
   authorizeUnsafeRequest,
@@ -184,6 +189,10 @@ export function App({
     () => configurationAdministrationClient ?? createConfigurationAdministrationClient(centralPmsClient),
     [centralPmsClient, configurationAdministrationClient]
   );
+  const deviceClient = useMemo(
+    () => deviceAdministrationClient ?? createDeviceAdministrationClient(centralPmsClient),
+    [centralPmsClient, deviceAdministrationClient]
+  );
   const state = authState ?? manualScenario?.authState ?? { status: "unauthenticated" as const };
   const scenarioInitialPath = authState ? undefined : manualScenario?.initialPath;
   const [path, setPath] = useState(initialPath ?? scenarioInitialPath ?? normalizePath(window.location.pathname));
@@ -240,7 +249,9 @@ export function App({
   const canReadEvidenceGovernance = hasPermission(principal.permissions, statutoryEvidenceGovernanceReadPermission);
   const canUseIdentityAdministration = hasAnyPermission(principal.permissions, identityAdministrationPresentationPermissions);
   const canUseConfiguration = hasAnyPermission(principal.permissions, configurationAdministrationPermissions);
-  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.paymentReconciliation || path === routes.fiscalExceptions || path === routes.statutoryBenefitReview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance || path === routes.identityAdministration || path === routes.configuration;
+  const canViewDevices = hasPermission(principal.permissions, deviceAdministrationPermissions.view);
+  const canManageDevices = hasPermission(principal.permissions, deviceAdministrationPermissions.manage);
+  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.paymentReconciliation || path === routes.fiscalExceptions || path === routes.statutoryBenefitReview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance || path === routes.identityAdministration || path === routes.configuration || path === routes.deviceAdministration;
   const shellProps = {
     principalName: principal.displayName,
     username: principal.username,
@@ -260,6 +271,7 @@ export function App({
     canReadEvidenceGovernance,
     canUseIdentityAdministration,
     canUseConfiguration,
+    canViewDevices,
     salesInvoiceFormState,
     environmentName: resolvedConfig.environmentName,
     onLogout,
@@ -282,7 +294,8 @@ export function App({
       canReadSalesInvoiceProfiles,
       canReadPolicyCoverage,
       canReadEvidenceGovernance,
-      canUseConfiguration
+      canUseConfiguration,
+      canViewDevices
     });
     return <Shell {...shellProps}>{authorizedLandingRoute
       ? <AuthorizedLandingRedirect path={authorizedLandingRoute} onNavigate={navigate} />
@@ -326,6 +339,10 @@ export function App({
   }
 
   if (path === routes.configuration && !canUseConfiguration) {
+    return <Shell {...shellProps}><PermissionDenied /></Shell>;
+  }
+
+  if (path === routes.deviceAdministration && !canViewDevices) {
     return <Shell {...shellProps}><PermissionDenied /></Shell>;
   }
 
@@ -395,6 +412,10 @@ export function App({
     return <Shell {...shellProps}><ConfigurationAdministrationPage client={configurationClient} permissions={principal.permissions} /></Shell>;
   }
 
+  if (path === routes.deviceAdministration) {
+    return <Shell {...shellProps}><DeviceAdministrationPage client={deviceClient} canManage={canManageDevices} /></Shell>;
+  }
+
   if (path === routes.paymentReconciliation) {
     return <Shell {...shellProps}><PaymentReconciliationPage key={principal.subjectRef ?? principal.username ?? "authenticated-session"} client={paymentClient} authorizedSites={principal.authorizedSites} authorizedSiteGroupReferences={principal.authorizedSiteGroupReferences ?? []} currentSite={siteSelection.currentSite} /></Shell>;
   }
@@ -432,7 +453,7 @@ export function App({
   );
 }
 
-function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewDashboard, canViewPaymentReconciliation, canViewFiscalExceptions, canViewStatutoryBenefitReview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, canUseConfiguration, salesInvoiceFormState, environmentName, onLogout, onChangePassword, logoutPending, scenarioIndicator, children }: {
+function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewDashboard, canViewPaymentReconciliation, canViewFiscalExceptions, canViewStatutoryBenefitReview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, canUseConfiguration, canViewDevices, salesInvoiceFormState, environmentName, onLogout, onChangePassword, logoutPending, scenarioIndicator, children }: {
   principalName?: string;
   username?: string;
   sessionExpiresAt?: string;
@@ -451,6 +472,7 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
   canReadEvidenceGovernance: boolean;
   canUseIdentityAdministration: boolean;
   canUseConfiguration: boolean;
+  canViewDevices: boolean;
   salesInvoiceFormState: { hasUnsavedChanges: boolean; mutationPending: boolean };
   environmentName: string;
   onLogout?: () => void;
@@ -521,6 +543,11 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
             {canUseIdentityAdministration && (
               <button className={`navLink ${path === routes.identityAdministration ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.identityAdministration)}>
                 User Administration <span className="navMeta">Users and access</span>
+              </button>
+            )}
+            {canViewDevices && (
+              <button className={`navLink ${path === routes.deviceAdministration ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.deviceAdministration)}>
+                Device Administration <span className="navMeta">Trusted device lifecycle</span>
               </button>
             )}
             {canUseConfiguration && (
@@ -654,6 +681,9 @@ function StateMessage({ title, message, tone = "neutral" }: { title: string; mes
 }
 
 function routeTitle(path: string): string {
+  if (path === routes.deviceAdministration) {
+    return "Device Administration - ExitPass Management Platform";
+  }
   if (path === routes.configuration) {
     return "Configuration - ExitPass Management Platform";
   }
@@ -709,11 +739,13 @@ function resolveAuthorizedLandingRoute(access: {
   canViewPaymentReconciliation: boolean;
   canViewFiscalExceptions: boolean;
   canViewStatutoryBenefitReview: boolean;
+  canViewDevices: boolean;
 }): string | undefined {
   if (access.canViewPaymentReconciliation) return routes.paymentReconciliation;
   if (access.canViewFiscalExceptions) return routes.fiscalExceptions;
   if (access.canViewStatutoryBenefitReview) return routes.statutoryBenefitReview;
   if (access.canUseIdentityAdministration) return routes.identityAdministration;
+  if (access.canViewDevices) return routes.deviceAdministration;
   if (access.canUseConfiguration) return routes.configuration;
   if (access.canReadRbacInventory) return routes.rbacInventory;
   if (access.canReadSalesInvoiceProfiles) return routes.salesInvoiceProfiles;

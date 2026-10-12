@@ -7,6 +7,7 @@ import { fiscalExceptionReportingPermission, identityAdministrationPresentationP
 import { paymentReconciliationFixture, type PaymentReconciliationReportingClient } from "./paymentReconciliationReporting";
 import { fiscalExceptionFixture, type FiscalExceptionReportingClient } from "./fiscalExceptionReporting";
 import type { ManagementPlatformAuthState } from "./types";
+import { deviceAdministrationPermissions, type DeviceAdministrationClient } from "./deviceAdministration";
 
 const siteA = {
   siteId: "77000000-0000-0000-0000-000000000002",
@@ -159,6 +160,22 @@ describe("ManagementPlatformUi foundation shell", () => {
 
     rerender(<App authState={authState([managementDashboardPermission, "user.view"])} initialPath="/management-platform" />);
     expect(screen.getByRole("button", { name: /User Administration/ })).toBeInTheDocument();
+  });
+
+  it("shows and guards Device Administration only with device.view", async () => {
+    const client: DeviceAdministrationClient = {
+      list: vi.fn(async () => []), listScopes: vi.fn(async () => []), get: vi.fn(), register: vi.fn(),
+      provision: vi.fn(), cancelProvisioning: vi.fn(), suspend: vi.fn(), reactivate: vi.fn(), revoke: vi.fn(), rotate: vi.fn(), replace: vi.fn()
+    };
+    const { rerender } = render(<App authState={authState([managementDashboardPermission])} initialPath="/management-platform/device-administration" deviceAdministrationClient={client} />);
+    expect(screen.getByRole("alert", { name: "Permission denied" })).toBeInTheDocument();
+    expect(client.list).not.toHaveBeenCalled();
+
+    rerender(<App authState={authState([deviceAdministrationPermissions.view])} initialPath="/management-platform/device-administration" deviceAdministrationClient={client} />);
+    expect(await screen.findByRole("heading", { name: "Device Administration" })).toBeInTheDocument();
+    expect(screen.getByText(/read-only device access/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Register device" })).not.toBeInTheDocument();
+    await waitFor(() => expect(document.title).toBe("Device Administration - ExitPass Management Platform"));
   });
 
   it("shows Payment and Reconciliation navigation only with reconciliation.view", () => {
