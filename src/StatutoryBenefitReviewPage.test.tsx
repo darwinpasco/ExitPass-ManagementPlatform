@@ -282,8 +282,8 @@ describe("Statutory Benefit Requests", () => {
     expect(screen.getByText("1955-09-30")).toBeInTheDocument();
     expect(screen.getByText("12345678")).toBeInTheDocument();
     expect(screen.getByLabelText("ID No. / Control No.")).toHaveValue("****5678");
-    expect(screen.getByLabelText(/^Birth date/)).toHaveValue("1955-09-30");
-    expect(screen.getByLabelText(/^Birth date/)).toHaveAttribute("aria-required", "true");
+    expect(screen.getByLabelText(/^Date of Birth/)).toHaveValue("1955-09-30");
+    expect(screen.getByLabelText(/^Date of Birth/)).toHaveAttribute("aria-required", "true");
     expect(screen.queryByLabelText(/^Expiry date/)).not.toBeInTheDocument();
     expect(screen.getByText("Processor confirmation required")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
@@ -301,6 +301,124 @@ describe("Statutory Benefit Requests", () => {
       reviewerAttestation: true,
       beneficiaryResidencySatisfied: true
     })));
+  });
+
+  it.each([
+    ["WEBPAY", "WebPay"],
+    ["ASSISTED_PAYMENT_TERMINAL", "APT"]
+  ] as const)("uses Date of Birth, not Expiry date, for %s Senior Citizen review", async (sourceChannel, channelName) => {
+    const client = makeClient();
+    vi.mocked(client.list).mockResolvedValue({
+      ...queueValue,
+      items: [{ ...queueValue.items[0], sourceChannel, benefitType: "SENIOR_CITIZEN" }]
+    });
+    vi.mocked(client.get).mockResolvedValue({
+      ...detail,
+      sourceChannel,
+      benefitType: "SENIOR_CITIZEN",
+      idDocumentType: "SENIOR_CITIZEN_ID",
+      issuingAuthority: "OSCA",
+      birthDate: undefined,
+      expiryDate: "2030-01-01",
+      idControlReference: "12345678",
+      maskedIdReference: "****5678",
+      hasAuthoritativeIdControlReference: true
+    });
+
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Senior citizen/ }));
+
+    expect(await screen.findByText(channelName)).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Date of Birth/)).toHaveValue("");
+    expect(screen.getByLabelText(/^Date of Birth/)).toHaveAttribute("aria-required", "true");
+    expect(screen.queryByLabelText(/^Expiry date/)).not.toBeInTheDocument();
+  });
+
+  it("allows the processor to complete missing review metadata for a WebPay Senior Citizen request", async () => {
+    const client = seniorCitizenClient({
+      idDocumentType: undefined,
+      issuingAuthority: undefined,
+      idControlReference: undefined,
+      maskedIdReference: undefined,
+      hasAuthoritativeIdControlReference: false
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    renderPage(client);
+    await user.click(await screen.findByRole("button", { name: /Senior citizen/ }));
+
+    expect(await screen.findByRole("heading", { name: "Record decision" })).toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText(/^ID document type/), "SENIOR_CITIZEN_ID");
+    fireEvent.change(screen.getByLabelText(/^Issuing authority/), { target: { value: "OSCA" } });
+    fireEvent.change(screen.getByLabelText(/^Date of Birth/), { target: { value: sixtyYearCutoff() } });
+    fireEvent.change(screen.getByLabelText("ID No. / Control No."), { target: { value: "12345678" } });
+    await confirmApprovalAttestations();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => expect(client.decide).toHaveBeenCalledWith(reference, expect.objectContaining({
+      decision: "APPROVE",
+      idDocumentType: "SENIOR_CITIZEN_ID",
+      issuingAuthority: "OSCA",
+      birthDate: sixtyYearCutoff(),
+      expiryDate: undefined,
+      idControlReference: "12345678"
+    })));
+  });
+
+  it("allows a Senior Citizen exactly 60 today", async () => {
+    const client = seniorCitizenClient();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Senior citizen/ }));
+
+    fireEvent.change(await screen.findByLabelText(/^Date of Birth/), { target: { value: sixtyYearCutoff() } });
+    await confirmApprovalAttestations();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => expect(client.decide).toHaveBeenCalledWith(reference, expect.objectContaining({
+      decision: "APPROVE",
+      birthDate: sixtyYearCutoff(),
+      expiryDate: undefined
+    })));
+  });
+
+  it("rejects a Senior Citizen one day short of 60 with immediate feedback", async () => {
+    const client = seniorCitizenClient();
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Senior citizen/ }));
+
+    fireEvent.change(await screen.findByLabelText(/^Date of Birth/), { target: { value: addDays(sixtyYearCutoff(), 1) } });
+    await confirmApprovalAttestations();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(await screen.findByText("The beneficiary must be at least 60 years old.")).toBeInTheDocument();
+    expect(client.decide).not.toHaveBeenCalled();
+  });
+
+  it("rejects a future Senior Citizen birth date", async () => {
+    const client = seniorCitizenClient();
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Senior citizen/ }));
+
+    fireEvent.change(await screen.findByLabelText(/^Date of Birth/), { target: { value: `${new Date().getFullYear() + 1}-01-01` } });
+    await confirmApprovalAttestations();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(await screen.findByText("The beneficiary must be at least 60 years old.")).toBeInTheDocument();
+    expect(client.decide).not.toHaveBeenCalled();
+  });
+
+  it("requires Senior Citizen Date of Birth even when historical Expiry date exists", async () => {
+    const client = seniorCitizenClient({ expiryDate: "2030-01-01" });
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Senior citizen/ }));
+
+    await screen.findByLabelText(/^Date of Birth/);
+    await confirmApprovalAttestations();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(await screen.findByText("Enter the birth date.")).toBeInTheDocument();
+    expect(client.decide).not.toHaveBeenCalled();
   });
 
   it("submits only the rejection reason when approval metadata is empty", async () => {
@@ -470,4 +588,38 @@ function makeClient(): StatutoryBenefitReviewClient {
     decide: vi.fn().mockResolvedValue({}),
     clearRuntimeState: vi.fn()
   };
+}
+
+function seniorCitizenClient(overrides: Record<string, unknown> = {}) {
+  const client = makeClient();
+  vi.mocked(client.list).mockResolvedValue({
+    ...queueValue,
+    items: [{ ...queueValue.items[0], benefitType: "SENIOR_CITIZEN" }]
+  });
+  vi.mocked(client.get).mockResolvedValue({
+    ...detail,
+    benefitType: "SENIOR_CITIZEN",
+    idDocumentType: "SENIOR_CITIZEN_ID",
+    issuingAuthority: "OSCA",
+    birthDate: undefined,
+    expiryDate: undefined,
+    idControlReference: "12345678",
+    maskedIdReference: "****5678",
+    hasAuthoritativeIdControlReference: true,
+    ...overrides
+  });
+  return client;
+}
+
+function sixtyYearCutoff(today = new Date()) {
+  const year = today.getFullYear() - 60;
+  const month = today.getMonth();
+  const day = Math.min(today.getDate(), new Date(year, month + 1, 0).getDate());
+  return `${year.toString().padStart(4, "0")}-${(month + 1).toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
+}
+
+function addDays(value: string, days: number) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(year, month - 1, day + days);
+  return `${date.getFullYear().toString().padStart(4, "0")}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`;
 }
