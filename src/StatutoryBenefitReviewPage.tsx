@@ -113,6 +113,9 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
       if (!issuingAuthority) fieldErrors.issuingAuthority = "Enter the issuing authority.";
       if (requiresBirthDate) {
         if (!reviewedDocument.birthDate) fieldErrors.birthDate = "Enter the birth date.";
+        else if (!isAtLeastSixtyYearsOld(reviewedDocument.birthDate)) {
+          fieldErrors.birthDate = "The beneficiary must be at least 60 years old.";
+        }
       } else if (!reviewedDocument.expiryDate) {
         fieldErrors.expiryDate = "Enter the expiry date.";
       }
@@ -239,7 +242,7 @@ function ReviewDetail({ client, detail, evidence, evidenceError, canViewEvidence
         <label htmlFor="review-idDocumentType"><span className="reviewFieldLabel">ID document type <span aria-hidden="true">*</span></span><select id="review-idDocumentType" required aria-required="true" value={reviewedDocument.idDocumentType} aria-invalid={Boolean(approvalFieldErrors.idDocumentType)} aria-describedby={approvalFieldErrors.idDocumentType ? "review-idDocumentType-error" : undefined} onChange={(event) => setReviewedDocument((current) => ({ ...current, idDocumentType: event.target.value }))}><option value="">Select document type</option><option value="SENIOR_CITIZEN_ID">Senior Citizen ID</option><option value="PWD_ID">PWD ID</option><option value="OTHER_SUPPORTING_DOCUMENT">Other supporting document</option></select>{approvalFieldErrors.idDocumentType && <small id="review-idDocumentType-error" className="fieldError">{approvalFieldErrors.idDocumentType}</small>}</label>
         <label htmlFor="review-issuingAuthority"><span className="reviewFieldLabel">Issuing authority <span aria-hidden="true">*</span></span><input id="review-issuingAuthority" required aria-required="true" value={reviewedDocument.issuingAuthority} maxLength={128} aria-invalid={Boolean(approvalFieldErrors.issuingAuthority)} aria-describedby={approvalFieldErrors.issuingAuthority ? "review-issuingAuthority-error" : undefined} onChange={(event) => setReviewedDocument((current) => ({ ...current, issuingAuthority: event.target.value }))} />{approvalFieldErrors.issuingAuthority && <small id="review-issuingAuthority-error" className="fieldError">{approvalFieldErrors.issuingAuthority}</small>}</label>
         {requiresBirthDate
-          ? <label htmlFor="review-birthDate"><span className="reviewFieldLabel">Birth date <span aria-hidden="true">*</span></span><input id="review-birthDate" type="date" required aria-required="true" value={reviewedDocument.birthDate} aria-invalid={Boolean(approvalFieldErrors.birthDate)} aria-describedby={approvalFieldErrors.birthDate ? "review-birthDate-error" : undefined} onChange={(event) => setReviewedDocument((current) => ({ ...current, birthDate: event.target.value }))} />{approvalFieldErrors.birthDate && <small id="review-birthDate-error" className="fieldError">{approvalFieldErrors.birthDate}</small>}</label>
+          ? <label htmlFor="review-birthDate"><span className="reviewFieldLabel">Date of Birth <span aria-hidden="true">*</span></span><input id="review-birthDate" type="date" required aria-required="true" max={seniorCitizenBirthDateCutoff()} value={reviewedDocument.birthDate} aria-invalid={Boolean(approvalFieldErrors.birthDate)} aria-describedby={approvalFieldErrors.birthDate ? "review-birthDate-error" : undefined} onChange={(event) => setReviewedDocument((current) => ({ ...current, birthDate: event.target.value }))} />{approvalFieldErrors.birthDate && <small id="review-birthDate-error" className="fieldError">{approvalFieldErrors.birthDate}</small>}</label>
           : <label htmlFor="review-expiryDate"><span className="reviewFieldLabel">Expiry date <span aria-hidden="true">*</span></span><input id="review-expiryDate" type="date" required aria-required="true" value={reviewedDocument.expiryDate} aria-invalid={Boolean(approvalFieldErrors.expiryDate)} aria-describedby={approvalFieldErrors.expiryDate ? "review-expiryDate-error" : undefined} onChange={(event) => setReviewedDocument((current) => ({ ...current, expiryDate: event.target.value }))} />{approvalFieldErrors.expiryDate && <small id="review-expiryDate-error" className="fieldError">{approvalFieldErrors.expiryDate}</small>}</label>}
         <div className="reviewIdField">
           <label htmlFor="review-idReference"><span className="reviewFieldLabel">ID No. / Control No. <span aria-hidden="true">*</span></span></label>
@@ -319,7 +322,16 @@ function toReviewedDocumentDraft(detail: StatutoryBenefitReviewDetail): Reviewed
   };
 }
 function usesBirthDateForDecision(detail: StatutoryBenefitReviewDetail) {
-  return detail.sourceChannel === "OPERATOR_CONSOLE" && detail.benefitType === "SENIOR_CITIZEN";
+  return detail.benefitType === "SENIOR_CITIZEN";
+}
+function isAtLeastSixtyYearsOld(birthDate: string, today = new Date()) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(birthDate) && birthDate <= seniorCitizenBirthDateCutoff(today);
+}
+function seniorCitizenBirthDateCutoff(today = new Date()) {
+  const year = today.getFullYear() - 60;
+  const month = today.getMonth();
+  const day = Math.min(today.getDate(), new Date(year, month + 1, 0).getDate());
+  return `${year.toString().padStart(4, "0")}-${(month + 1).toString().padStart(2, "0")}-${day.toString().padStart(2, "0")}`;
 }
 function formatTime(value: string) { return new Date(value).toLocaleString(); }
 function formatPhp(minorUnits: number) { const value = BigInt(minorUnits); const whole = value / 100n; const fraction = (value % 100n).toString().padStart(2, "0"); return `₱${whole.toLocaleString("en-US")}.${fraction}`; }
