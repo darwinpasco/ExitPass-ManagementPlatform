@@ -15,7 +15,12 @@ const detail = { ...queueValue.items[0], contractVersion: statutoryBenefitReview
 
 describe("Statutory Benefit Requests", () => {
   it("parses the stable contract and rejects non-PHP money", () => {
-    expect(parseQueue(queueValue).items[0].status).toBe("PENDING_REVIEW");
+    const parsed = parseQueue({
+      ...queueValue,
+      items: [{ ...queueValue.items[0], plateNumber: "SXF****" }]
+    });
+    expect(parsed.items[0].status).toBe("PENDING_REVIEW");
+    expect(parsed.items[0].plateNumber).toBe("SXF****");
     expect(() => parseDetail({ ...detail, money: { ...detail.money, currency: "USD" } })).toThrow(/PHP/);
   });
 
@@ -40,17 +45,42 @@ describe("Statutory Benefit Requests", () => {
     expect(screen.queryByLabelText("I confirm that the beneficiary satisfies the required residency condition.")).not.toBeInTheDocument();
   });
 
-  it("states that no physical ticket was issued without substituting the parking session", async () => {
+  it("uses the authorized plate as the primary identity for an ANPR-only parking session", async () => {
     const client = makeClient();
     vi.mocked(client.list).mockResolvedValue({
       ...queueValue,
-      items: [{ ...queueValue.items[0], ticketReference: undefined }]
+      items: [{ ...queueValue.items[0], ticketReference: undefined, plateNumber: "SXF****" }]
+    });
+    vi.mocked(client.get).mockResolvedValue({
+      ...detail,
+      ticketReference: undefined,
+      plateNumber: "SXF****",
+      idDocumentType: "PWD_ID",
+      issuingAuthority: "City social welfare office",
+      expiryDate: "2027-08-24",
+      idControlReference: "12345678",
+      maskedIdReference: "****5678",
+      hasAuthoritativeIdControlReference: true
     });
 
     renderPage(client);
 
-    expect(await screen.findByText("No physical ticket issued")).toBeInTheDocument();
-    expect(screen.queryByText(`Ticket: ${queueValue.items[0].parkingSessionReference}`)).not.toBeInTheDocument();
+    expect(await screen.findByText("Plate SXF****")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Person with disability/ }));
+    expect((await screen.findAllByText("Plate SXF****")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("No physical ticket issued")).not.toBeInTheDocument();
+  });
+
+  it("falls back to the canonical parking-session reference when ticket and plate are unavailable", async () => {
+    const client = makeClient();
+    vi.mocked(client.list).mockResolvedValue({
+      ...queueValue,
+      items: [{ ...queueValue.items[0], ticketReference: undefined, plateNumber: undefined }]
+    });
+
+    renderPage(client);
+
+    expect(await screen.findByText(`Parking Session ${queueValue.items[0].parkingSessionReference}`)).toBeInTheDocument();
   });
 
   it("streams current reviewable evidence through the protected preview client", async () => {
