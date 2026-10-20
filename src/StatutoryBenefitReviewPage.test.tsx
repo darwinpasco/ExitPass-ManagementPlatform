@@ -40,7 +40,7 @@ describe("Statutory Benefit Requests", () => {
     expect(screen.queryByLabelText("I confirm that the beneficiary satisfies the required residency condition.")).not.toBeInTheDocument();
   });
 
-  it("shows Not recorded instead of substituting the parking session when a ticket is absent", async () => {
+  it("states that no physical ticket was issued without substituting the parking session", async () => {
     const client = makeClient();
     vi.mocked(client.list).mockResolvedValue({
       ...queueValue,
@@ -49,7 +49,7 @@ describe("Statutory Benefit Requests", () => {
 
     renderPage(client);
 
-    expect(await screen.findByText("Ticket: Not recorded")).toBeInTheDocument();
+    expect(await screen.findByText("No physical ticket issued")).toBeInTheDocument();
     expect(screen.queryByText(`Ticket: ${queueValue.items[0].parkingSessionReference}`)).not.toBeInTheDocument();
   });
 
