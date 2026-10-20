@@ -19,14 +19,14 @@ describe("device administration API client", () => {
     await client.list();
     await client.listScopes();
     await client.get("device/encoded");
-    await client.register({ deviceName: "APT", deviceType: "ASSISTED_PAYMENT_TERMINAL", description: null, siteId: "site-1", siteGroupId: null, terminalIdentifier: "APT-01" });
+    await client.register({ deviceName: "APT", deviceType: "ASSISTED_PAYMENT_TERMINAL", description: null, siteId: "site-1", siteGroupId: null, terminalIdentifier: "APT-01", terminalSerialNumber: "APT-HARDWARE-001" });
     await client.provision("device-1");
     await client.cancelProvisioning("device-1", "ADMINISTRATOR_CANCELLED");
     await client.suspend("device-1", "SECURITY_REVIEW");
     await client.reactivate("device-1", "REVIEW_COMPLETE");
     await client.revoke("device-1", "RETIRED");
     await client.rotate("device-1", "ROTATION");
-    await client.replace("device-1", { deviceName: "APT replacement", description: null, siteId: null, siteGroupId: null, terminalIdentifier: "APT-02", reasonCode: "HARDWARE_REPLACEMENT" });
+    await client.replace("device-1", { deviceName: "APT replacement", description: null, siteId: null, siteGroupId: null, terminalIdentifier: "APT-02", terminalSerialNumber: "APT-HARDWARE-002", reasonCode: "HARDWARE_REPLACEMENT" });
 
     expect(calls.map(call => [call.method, call.path])).toEqual([
       ["GET", deviceAdministrationApiRoute],
@@ -43,7 +43,7 @@ describe("device administration API client", () => {
     ]);
     expect(calls[5].body).toEqual({ reasonCode: "ADMINISTRATOR_CANCELLED" });
     expect(calls[6].body).toEqual({ reasonCode: "SECURITY_REVIEW" });
-    expect(calls[10].body).toMatchObject({ reasonCode: "HARDWARE_REPLACEMENT", terminalIdentifier: "APT-02" });
+    expect(calls[10].body).toMatchObject({ reasonCode: "HARDWARE_REPLACEMENT", terminalIdentifier: "APT-02", terminalSerialNumber: "APT-HARDWARE-002" });
     expect(authorizeUnsafeRequest).toHaveBeenCalledTimes(8);
   });
 });

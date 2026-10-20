@@ -18,6 +18,7 @@ export interface DeviceSummary {
   deviceType: DeviceType | string;
   description: string | null;
   terminalIdentifier: string | null;
+  terminalSerialNumber: string | null;
   serviceIdentityId: string;
   siteId: string;
   siteCode: string;
@@ -99,6 +100,7 @@ export interface DeviceProvisioningCredential {
   siteId: string;
   siteGroupId: string;
   terminalIdentifier: string | null;
+  terminalSerialNumber: string | null;
   provisioningCredential: string;
   expiresAt: string;
   purpose: "ENROLLMENT" | "ROTATION" | "REPLACEMENT" | string;
@@ -119,6 +121,7 @@ export interface RegisterDeviceInput {
   siteId: string;
   siteGroupId: string | null;
   terminalIdentifier: string | null;
+  terminalSerialNumber: string | null;
 }
 
 export interface ReplaceDeviceInput {
@@ -127,6 +130,7 @@ export interface ReplaceDeviceInput {
   siteId: string | null;
   siteGroupId: string | null;
   terminalIdentifier: string | null;
+  terminalSerialNumber: string | null;
   reasonCode: string;
 }
 
