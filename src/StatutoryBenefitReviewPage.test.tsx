@@ -387,7 +387,10 @@ describe("Statutory Benefit Requests", () => {
     renderPage(client);
     fireEvent.click(await screen.findByRole("button", { name: /Senior citizen/ }));
 
-    fireEvent.change(await screen.findByLabelText(/^Date of Birth/), { target: { value: addDays(sixtyYearCutoff(), 1) } });
+    const birthDateInput = await screen.findByLabelText(/^Date of Birth/);
+    expect(birthDateInput).toHaveAttribute("max", sixtyYearCutoff());
+    birthDateInput.removeAttribute("max");
+    fireEvent.change(birthDateInput, { target: { value: addDays(sixtyYearCutoff(), 1) } });
     await confirmApprovalAttestations();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
