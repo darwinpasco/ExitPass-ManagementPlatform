@@ -25,7 +25,8 @@ const emptyRegistration: RegisterDeviceInput = {
   description: null,
   siteId: "",
   siteGroupId: null,
-  terminalIdentifier: null
+  terminalIdentifier: null,
+  terminalSerialNumber: null
 };
 
 export function DeviceAdministrationPage({ client, canManage }: DeviceAdministrationPageProps) {
@@ -89,7 +90,8 @@ export function DeviceAdministrationPage({ client, canManage }: DeviceAdministra
       const created = await client.register({
         ...registration,
         siteGroupId: registration.deviceType === "OPERATOR_CONSOLE" ? activeScope.siteGroupId : null,
-        terminalIdentifier: clean(registration.terminalIdentifier)
+        terminalIdentifier: clean(registration.terminalIdentifier),
+        terminalSerialNumber: clean(registration.terminalSerialNumber)
       });
       setRegistration(undefined);
       await refresh(created.deviceId);
@@ -125,6 +127,7 @@ export function DeviceAdministrationPage({ client, canManage }: DeviceAdministra
       siteId: selected.siteId,
       siteGroupId: selected.deviceType === "OPERATOR_CONSOLE" ? selected.siteGroupId : null,
       terminalIdentifier: selected.terminalIdentifier,
+      terminalSerialNumber: null,
       reasonCode: "HARDWARE_REPLACEMENT"
     } : undefined);
   }
@@ -202,6 +205,7 @@ export function DeviceAdministrationPage({ client, canManage }: DeviceAdministra
                 <dt>Site</dt><dd>{details.device.siteName} ({details.device.siteCode})</dd>
                 <dt>Site Group</dt><dd>{details.device.siteGroupName} ({details.device.siteGroupCode})</dd>
                 <dt>Terminal / workstation</dt><dd>{details.device.terminalIdentifier ?? "Not supplied"}</dd>
+                <dt>Terminal serial number</dt><dd>{details.device.terminalSerialNumber ?? "Not supplied"}</dd>
                 <dt>Description</dt><dd>{details.device.description ?? "Not supplied"}</dd>
                 <dt>Credential state</dt><dd>Version {details.device.credentialVersion} · {details.device.credentialStatus}</dd>
                 <dt>Predecessor</dt><dd>{details.predecessorDeviceReference ?? "None"}</dd>
@@ -257,6 +261,7 @@ function RegistrationDialog({ value, scopes, pending, onChange, onCancel, onSubm
     <label>Site<select required value={value.siteId} onChange={event => onChange({ ...value, siteId: event.target.value })}><option value="">Select an active Site</option>{scopes.map(item => <option key={item.siteId} value={item.siteId}>{item.siteName} ({item.siteCode})</option>)}</select></label>
     <label>Site Group<input readOnly value={scope ? `${scope.siteGroupName} (${scope.siteGroupCode})` : "Selected from Site"} /></label>
     <label>Terminal / workstation identifier<input required={value.deviceType === "ASSISTED_PAYMENT_TERMINAL"} maxLength={128} value={value.terminalIdentifier ?? ""} onChange={event => onChange({ ...value, terminalIdentifier: event.target.value })} /></label>
+    <label>Terminal serial number<input required={value.deviceType === "ASSISTED_PAYMENT_TERMINAL"} maxLength={128} value={value.terminalSerialNumber ?? ""} onChange={event => onChange({ ...value, terminalSerialNumber: event.target.value })} /></label>
     <label>Description<textarea maxLength={512} value={value.description ?? ""} onChange={event => onChange({ ...value, description: event.target.value || null })} /></label>
     {scopes.length === 0 && <p className="reportNotice">No active canonical Site is available. Create or activate a Site before registering a device.</p>}
     <div className="formActions"><button type="submit" disabled={pending || !scope}>{pending ? "Registering…" : "Register device"}</button><button className="secondaryButton" type="button" disabled={pending} onClick={onCancel}>Cancel</button></div>
@@ -287,6 +292,7 @@ function ActionDialog({ action, device, reasonCode, replacement, scopes, pending
       <label>Site<select value={replacement.siteId ?? ""} onChange={event => onReplacementChange({ ...replacement, siteId: event.target.value, siteGroupId: scopes.find(scope => scope.siteId === event.target.value)?.siteGroupId ?? null })}>{scopes.map(scope => <option key={scope.siteId} value={scope.siteId}>{scope.siteName}</option>)}</select></label>
       <label>Site Group<input readOnly value={replacementScope?.siteGroupName ?? ""} /></label>
       <label>Terminal / workstation identifier<input value={replacement.terminalIdentifier ?? ""} onChange={event => onReplacementChange({ ...replacement, terminalIdentifier: event.target.value })} /></label>
+      <label>New terminal serial number<input required={device.deviceType === "ASSISTED_PAYMENT_TERMINAL"} value={replacement.terminalSerialNumber ?? ""} onChange={event => onReplacementChange({ ...replacement, terminalSerialNumber: event.target.value })} /></label>
       <label>Description<textarea value={replacement.description ?? ""} onChange={event => onReplacementChange({ ...replacement, description: event.target.value || null })} /></label>
     </div>}
     <label>Reason code<input required maxLength={64} value={reasonCode} onChange={event => onReasonChange(event.target.value.toUpperCase())} /></label>
@@ -302,7 +308,8 @@ function OneTimeMaterialDialog({ material, onClose }: { material: DeviceProvisio
     deviceType: material.deviceType,
     siteId: material.siteId,
     siteGroupId: material.siteGroupId,
-    terminalIdentifier: material.terminalIdentifier
+    terminalIdentifier: material.terminalIdentifier,
+    terminalSerialNumber: material.terminalSerialNumber
   });
   return <div className="modalBackdrop" role="presentation"><section className="deviceDialog oneTimeSecretDialog" role="dialog" aria-modal="true" aria-labelledby="one-time-material-title">
     <div className="panelHeader"><h3 id="one-time-material-title">One-time provisioning credential</h3><span className="statusPill warningPill">Shown once</span></div>

@@ -41,9 +41,13 @@ describe("DeviceAdministrationPage", () => {
     const terminal = within(dialog).getByLabelText("Terminal / workstation identifier");
     expect(terminal).toBeRequired();
     await userEvent.type(terminal, "APT-02");
+    const terminalSerial = within(dialog).getByLabelText("Terminal serial number");
+    expect(terminalSerial).toBeRequired();
+    await userEvent.type(terminalSerial, "APT-HARDWARE-002");
     await userEvent.click(within(dialog).getByRole("button", { name: "Register device" }));
     await waitFor(() => expect(client.register).toHaveBeenLastCalledWith(expect.objectContaining({
-      deviceType: "ASSISTED_PAYMENT_TERMINAL", siteId: "site-pitx", siteGroupId: null, terminalIdentifier: "APT-02"
+      deviceType: "ASSISTED_PAYMENT_TERMINAL", siteId: "site-pitx", siteGroupId: null,
+      terminalIdentifier: "APT-02", terminalSerialNumber: "APT-HARDWARE-002"
     })));
   });
 
@@ -128,7 +132,7 @@ function fakeClient(): DeviceAdministrationClient & Record<keyof DeviceAdministr
 function deviceSummary(): DeviceSummary {
   return {
     deviceId: "device-apt-01", deviceReference: "DEV-APT-01", deviceName: "PITX APT 01",
-    deviceType: "ASSISTED_PAYMENT_TERMINAL", description: "Cashier assisted terminal", terminalIdentifier: "APT-01",
+    deviceType: "ASSISTED_PAYMENT_TERMINAL", description: "Cashier assisted terminal", terminalIdentifier: "APT-01", terminalSerialNumber: "APT-HARDWARE-001",
     serviceIdentityId: "service-apt-01", siteId: "site-pitx", siteCode: "PITX-L3", siteName: "PITX Level 3",
     siteGroupId: "group-pitx", siteGroupCode: "PITX", siteGroupName: "PITX", lifecycleStatus: "ACTIVE",
     lastProvisioningStatus: "CONSUMED", credentialVersion: 1, credentialStatus: "ACTIVE",
@@ -147,5 +151,5 @@ function deviceDetails(device: DeviceSummary): DeviceDetails {
 }
 
 function oneTimeMaterial(device: DeviceSummary): DeviceProvisioningCredential {
-  return { deviceId: device.deviceId, deviceReference: device.deviceReference, deviceType: device.deviceType, siteId: device.siteId, siteGroupId: device.siteGroupId, terminalIdentifier: device.terminalIdentifier, provisioningCredential: "one-time-device-token", expiresAt: "2030-01-01T00:15:00Z", purpose: "ENROLLMENT", displayPolicy: "Shown once", correlationId: "correlation-material" };
+  return { deviceId: device.deviceId, deviceReference: device.deviceReference, deviceType: device.deviceType, siteId: device.siteId, siteGroupId: device.siteGroupId, terminalIdentifier: device.terminalIdentifier, terminalSerialNumber: device.terminalSerialNumber, provisioningCredential: "one-time-device-token", expiresAt: "2030-01-01T00:15:00Z", purpose: "ENROLLMENT", displayPolicy: "Shown once", correlationId: "correlation-material" };
 }
