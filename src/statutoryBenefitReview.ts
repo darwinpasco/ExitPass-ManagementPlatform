@@ -26,6 +26,7 @@ export interface StatutoryBenefitReviewQueueItem {
   decisionCommandReference: string;
   parkingSessionReference: string;
   ticketReference?: string;
+  plateNumber?: string;
   siteReference: string;
   siteCode: string;
   siteName: string;
@@ -290,6 +291,7 @@ function parseQueueItem(value: unknown): StatutoryBenefitReviewQueueItem {
     decisionCommandReference: uuid(row.decisionCommandReference, "decisionCommandReference"),
     parkingSessionReference: uuid(row.parkingSessionReference, "parkingSessionReference"),
     ticketReference: optionalString(row.ticketReference),
+    plateNumber: optionalString(row.plateNumber),
     siteReference: uuid(row.siteReference, "siteReference"),
     siteCode: string(row.siteCode, "siteCode"),
     siteName: string(row.siteName, "siteName"), sourceChannel: source, benefitType: benefit, status,
