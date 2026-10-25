@@ -593,6 +593,64 @@ describe("Statutory Benefit Requests", () => {
     expect(client.get).not.toHaveBeenCalled();
     expect(client.evidence).not.toHaveBeenCalled();
   });
+
+  it("lets an authorized processor complete the canonical PWD sales-book identity before approval", async () => {
+    const client = makeClient();
+    vi.mocked(client.get).mockResolvedValue({
+      ...detail,
+      idDocumentType: "PWD_ID",
+      issuingAuthority: "City social welfare office",
+      expiryDate: "2027-08-24",
+      idControlReference: "12345678",
+      maskedIdReference: "****5678",
+      hasAuthoritativeIdControlReference: true,
+      requiresStatutorySalesBookIdentity: true
+    });
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
+
+    expect(await screen.findByText("BIR statutory sales-book identity")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText(/Full Name/), { target: { value: "  Maria   Santos  " } });
+    await userEvent.selectOptions(screen.getByLabelText(/Statutory ID Type/), "PWD_ID");
+    fireEvent.change(screen.getByLabelText(/PWD ID Number/), { target: { value: "PWD-2026-001" } });
+    fireEvent.change(screen.getByLabelText("TIN (optional)"), { target: { value: "123-456-789-000" } });
+    await confirmApprovalAttestations();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    await waitFor(() => expect(client.decide).toHaveBeenCalledWith(reference, expect.objectContaining({
+      decision: "APPROVE",
+      beneficiaryFullName: "Maria   Santos",
+      statutoryIdType: "PWD_ID",
+      statutoryIdNumber: "PWD-2026-001",
+      beneficiaryTin: "123-456-789-000"
+    })));
+  });
+
+  it("requires name, governed ID type, and ID number but permits a blank beneficiary TIN", async () => {
+    const client = makeClient();
+    vi.mocked(client.get).mockResolvedValue({
+      ...detail,
+      idDocumentType: "PWD_ID",
+      issuingAuthority: "City social welfare office",
+      expiryDate: "2027-08-24",
+      idControlReference: "12345678",
+      maskedIdReference: "****5678",
+      hasAuthoritativeIdControlReference: true,
+      requiresStatutorySalesBookIdentity: true
+    });
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
+    expect(await screen.findByText("BIR statutory sales-book identity")).toBeInTheDocument();
+    await confirmApprovalAttestations();
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+
+    expect(await screen.findByText("Enter the beneficiary full name.")).toBeInTheDocument();
+    expect(screen.getByText("Select the governed statutory ID type.")).toBeInTheDocument();
+    expect(screen.getByText("Enter the statutory ID number.")).toBeInTheDocument();
+    expect(client.decide).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("TIN (optional)")).toHaveValue("");
+  });
 });
 
 function renderPage(client: StatutoryBenefitReviewClient) {

@@ -65,6 +65,11 @@ export interface StatutoryBenefitReviewDetail extends StatutoryBenefitReviewQueu
   money?: { originalAmountMinorUnits: number; discountAmountMinorUnits: number; finalPayableAmountMinorUnits: number; currency: "PHP" };
   decision?: { decision: "APPROVE" | "REJECT"; reason?: string; reviewerDisplayName: string; decidedAt: string };
   version: number;
+  requiresStatutorySalesBookIdentity?: boolean;
+  beneficiaryFullName?: string;
+  statutoryIdType?: string;
+  statutoryIdNumber?: string;
+  beneficiaryTin?: string;
 }
 
 export interface StatutoryBenefitEvidence {
@@ -130,6 +135,10 @@ export interface StatutoryBenefitDecisionRequest {
   idControlReference?: string;
   reviewerAttestation?: boolean;
   beneficiaryResidencySatisfied?: boolean;
+  beneficiaryFullName?: string;
+  statutoryIdType?: string;
+  statutoryIdNumber?: string;
+  beneficiaryTin?: string;
 }
 
 export function normalizeReviewedDocumentType(value?: string): ReviewedDocumentType | undefined {
@@ -242,7 +251,12 @@ export function parseDetail(value: unknown): StatutoryBenefitReviewDetail {
     submissionReason: optionalString(row.submissionReason),
     money,
     decision,
-    version: positiveInteger(row.version, "version")
+    version: positiveInteger(row.version, "version"),
+    requiresStatutorySalesBookIdentity: optionalBoolean(row.requiresStatutorySalesBookIdentity, "requiresStatutorySalesBookIdentity") === true,
+    beneficiaryFullName: optionalString(row.beneficiaryFullName),
+    statutoryIdType: optionalString(row.statutoryIdType),
+    statutoryIdNumber: optionalString(row.statutoryIdNumber),
+    beneficiaryTin: optionalString(row.beneficiaryTin)
   };
 }
 
