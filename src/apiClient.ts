@@ -135,8 +135,9 @@ export function createCentralPmsApiClient(options: {
       }
 
       const contentType = response.headers.get("Content-Type")?.split(";", 1)[0].trim().toLowerCase();
-      if (contentType !== "image/jpeg" && contentType !== "image/png") {
-        throw createUiError("malformed-response", "MANAGEMENT_PLATFORM_UNEXPECTED_CONTENT_TYPE", "The evidence preview could not be read safely.", responseCorrelationId);
+      const allowed = requestOptions.allowedBlobContentTypes?.map((value) => value.toLowerCase()) ?? ["image/jpeg", "image/png"];
+      if (!contentType || !allowed.includes(contentType)) {
+        throw createUiError("malformed-response", "MANAGEMENT_PLATFORM_UNEXPECTED_CONTENT_TYPE", "The downloaded content could not be read safely.", responseCorrelationId);
       }
       options.onAuthenticatedActivity?.();
       return response.blob();

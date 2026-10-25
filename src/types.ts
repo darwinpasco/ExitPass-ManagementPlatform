@@ -71,6 +71,7 @@ export interface ApiRequestOptions {
   signal?: AbortSignal;
   correlationId?: string;
   requireJsonContentType?: boolean;
+  allowedBlobContentTypes?: readonly string[];
 }
 
 export interface CentralPmsApiClient {
