@@ -22,13 +22,13 @@ describe("IdentityAdministrationPage", () => {
     expect(await screen.findByText("No users match the current search.")).toBeInTheDocument();
   });
 
-  it("displays the eight approved roles without a user-type gate", async () => {
+  it("displays all thirteen approved roles without a user-type gate", async () => {
     renderPage();
     await userEvent.click(await screen.findByRole("button", { name: "Add User" }));
     const form = screen.getByRole("heading", { name: "Add User" }).closest("form")!;
     expect(within(form).queryByLabelText("User type")).not.toBeInTheDocument();
     expect(Array.from((within(form).getByLabelText("Initial role") as HTMLSelectElement).options).map((option) => option.text)).toEqual([
-      "Select a role", "System Administrator", "Operations Supervisor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
+      "Select a role", "System Administrator", "Operations Supervisor", "Statutory Discount Processor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "APT Cash Custody Movement Operator", "APT Cash Custody Supervisor", "APT Site Custodian", "APT Cash Collector", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
     ]);
     await userEvent.selectOptions(within(form).getByLabelText("Initial role"), "role-system");
     expect(within(form).getByRole("note", { name: "System Administrator access" })).toHaveTextContent("does not grant operational, cashier, statutory-discount approval, or business-workflow authority");
@@ -534,9 +534,14 @@ function mockClient() {
     listRoles: vi.fn(async () => [
       role("SYSTEM_ADMINISTRATOR", "System Administrator", "role-system", [], true),
       role("OPERATIONS_SUPERVISOR", "Operations Supervisor", "role-operations"),
+      role("STATUTORY_DISCOUNT_PROCESSOR", "Statutory Discount Processor", "role-statutory"),
       role("SITE_OPERATOR", "Site Operator", "role-site-operator"),
       role("PARKING_ATTENDANT", "Parking Attendant", "role-attendant"),
       role("APT_CASHIER_OPERATOR", "APT / Cashier Operator", "role-apt"),
+      role("APT_CASH_CUSTODY_MOVEMENT_OPERATOR", "APT Cash Custody Movement Operator", "role-apt-movement-operator"),
+      role("APT_CASH_CUSTODY_SUPERVISOR", "APT Cash Custody Supervisor", "role-apt-movement-supervisor"),
+      role("APT_SITE_CUSTODIAN", "APT Site Custodian", "role-apt-site-custodian"),
+      role("APT_CASH_COLLECTOR", "APT Cash Collector", "role-apt-cash-collector"),
       role("FINANCE_RECONCILIATION_ANALYST", "Finance / Reconciliation Analyst", "role-finance"),
       role("COMPLIANCE_POLICY_ADMINISTRATOR", "Compliance / Policy Administrator", "role-compliance"),
       role("EXECUTIVE_MANAGEMENT", "Executive / Management", "role-executive")
@@ -558,10 +563,13 @@ function mockClient() {
 }
 
 function role(code: string, name: string, reference: string, allowedUserTypes: string[] = [], privileged = false): IdentityRoleDefinition {
-  const siteScoped = ["OPERATIONS_SUPERVISOR", "SITE_OPERATOR", "PARKING_ATTENDANT", "APT_CASHIER_OPERATOR"].includes(code);
-  const applicationAccess: IdentityRoleDefinition["applicationAccess"] = code === "OPERATIONS_SUPERVISOR" ? ["OPERATOR_CONSOLE", "MANAGEMENT_PLATFORM"] : code === "SITE_OPERATOR" ? ["OPERATOR_CONSOLE"] : code === "PARKING_ATTENDANT" ? ["NATIVE_PARKING_APP"] : code === "APT_CASHIER_OPERATOR" ? ["APT"] : ["MANAGEMENT_PLATFORM"];
+  const aptRole = code === "APT_CASHIER_OPERATOR" || code.startsWith("APT_");
+  const siteScoped = ["OPERATIONS_SUPERVISOR", "SITE_OPERATOR", "PARKING_ATTENDANT"].includes(code) || aptRole;
+  const applicationAccess: IdentityRoleDefinition["applicationAccess"] = code === "OPERATIONS_SUPERVISOR" ? ["OPERATOR_CONSOLE", "MANAGEMENT_PLATFORM"] : code === "SITE_OPERATOR" ? ["OPERATOR_CONSOLE"] : code === "PARKING_ATTENDANT" ? ["NATIVE_PARKING_APP"] : aptRole ? ["APT"] : ["MANAGEMENT_PLATFORM"];
   const scopePolicy: IdentityRoleDefinition["scopePolicy"] = ["SYSTEM_ADMINISTRATOR", "EXECUTIVE_MANAGEMENT"].includes(code)
     ? { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" }
+    : code === "STATUTORY_DISCOUNT_PROCESSOR"
+      ? { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" }
     : siteScoped
       ? { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" }
       : { allowedScopeTypes: ["SITE", "SITE_GROUP", "GLOBAL"], assignmentRequired: true, defaultScope: code === "FINANCE_RECONCILIATION_ANALYST" ? null : "GLOBAL" };
