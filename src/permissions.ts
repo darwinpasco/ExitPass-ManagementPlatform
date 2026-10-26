@@ -15,7 +15,6 @@ export const managementDashboardPermission = "dashboard.view";
 export const managementReportCatalogPermission = "reports.view";
 export const paymentReconciliationPermission = "reconciliation.view";
 export const fiscalExceptionReportingPermission = "sales-invoice-report.view";
-export const statutorySalesBookReadPermission = "fiscal-reporting.z.read";
 export const statutoryBenefitReviewPermissions = {
   list: "statutory-discounts.review.queue.read",
   detail: "statutory-discounts.review.detail.read",

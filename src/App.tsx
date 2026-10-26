@@ -12,7 +12,7 @@ import { PaymentReconciliationPage } from "./PaymentReconciliationPage";
 import { createPaymentReconciliationReportingClient, paymentReconciliationRoute, resolvePaymentReconciliationScenario, type PaymentReconciliationReportingClient } from "./paymentReconciliationReporting";
 import { FiscalExceptionReportPage } from "./FiscalExceptionReportPage";
 import { createFiscalExceptionReportingClient, fiscalExceptionRoute, resolveFiscalExceptionScenario, type FiscalExceptionReportingClient } from "./fiscalExceptionReporting";
-import { configurationAdministrationPermissions, fiscalExceptionReportingPermission, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementReportCatalogPermission, paymentReconciliationPermission, futureSalesInvoiceProfilePermissions, hasAnyPermission, hasPermission, identityAdministrationPresentationPermissions, statutoryBenefitReviewPermissions, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission, statutorySalesBookReadPermission } from "./permissions";
+import { configurationAdministrationPermissions, fiscalExceptionReportingPermission, managementDashboardPermission, managementPlatformIdentityRbacInventoryReadPermission, managementReportCatalogPermission, paymentReconciliationPermission, futureSalesInvoiceProfilePermissions, hasAnyPermission, hasPermission, identityAdministrationPresentationPermissions, statutoryBenefitReviewPermissions, statutoryDiscountPolicyCoverageReadPermission, statutoryEvidenceGovernanceReadPermission } from "./permissions";
 import { StatutoryBenefitReviewPage } from "./StatutoryBenefitReviewPage";
 import { createStatutoryBenefitReviewClient, statutoryBenefitReviewRoute, type StatutoryBenefitReviewClient } from "./statutoryBenefitReview";
 import { PolicyCoveragePage } from "./PolicyCoveragePage";
@@ -26,8 +26,6 @@ import { ConfigurationAdministrationPage } from "./ConfigurationAdministrationPa
 import { configurationAdministrationRoute, createConfigurationAdministrationClient, type ConfigurationAdministrationClient } from "./configurationAdministration";
 import { DeviceAdministrationPage } from "./DeviceAdministrationPage";
 import { createDeviceAdministrationClient, deviceAdministrationPermissions, deviceAdministrationRoute, type DeviceAdministrationClient } from "./deviceAdministration";
-import { StatutorySalesBooksPage } from "./StatutorySalesBooksPage";
-import { createStatutorySalesBookClient, statutorySalesBooksRoute, type StatutorySalesBookClient } from "./statutorySalesBooks";
 import type { ManagementPlatformAuthState, ManagementPlatformConfig, ManagementPlatformUiError } from "./types";
 
 const routes = {
@@ -42,8 +40,7 @@ const routes = {
   fiscalExceptions: fiscalExceptionRoute,
   statutoryBenefitReview: statutoryBenefitReviewRoute,
   configuration: configurationAdministrationRoute,
-  deviceAdministration: deviceAdministrationRoute,
-  statutorySalesBooks: statutorySalesBooksRoute
+  deviceAdministration: deviceAdministrationRoute
 };
 
 interface AppProps {
@@ -61,7 +58,6 @@ interface AppProps {
   statutoryBenefitReviewClient?: StatutoryBenefitReviewClient;
   configurationAdministrationClient?: ConfigurationAdministrationClient;
   deviceAdministrationClient?: DeviceAdministrationClient;
-  statutorySalesBookClient?: StatutorySalesBookClient;
   onAuthenticationRequired?: () => void;
   onAuthenticatedActivity?: () => void;
   authorizeUnsafeRequest?: (headers: Headers) => void;
@@ -94,7 +90,6 @@ export function App({
   statutoryBenefitReviewClient,
   configurationAdministrationClient,
   deviceAdministrationClient,
-  statutorySalesBookClient,
   onAuthenticationRequired,
   onAuthenticatedActivity,
   authorizeUnsafeRequest,
@@ -198,10 +193,6 @@ export function App({
     () => deviceAdministrationClient ?? createDeviceAdministrationClient(centralPmsClient),
     [centralPmsClient, deviceAdministrationClient]
   );
-  const salesBookClient = useMemo(
-    () => statutorySalesBookClient ?? createStatutorySalesBookClient(centralPmsClient),
-    [centralPmsClient, statutorySalesBookClient]
-  );
   const state = authState ?? manualScenario?.authState ?? { status: "unauthenticated" as const };
   const scenarioInitialPath = authState ? undefined : manualScenario?.initialPath;
   const [path, setPath] = useState(initialPath ?? scenarioInitialPath ?? normalizePath(window.location.pathname));
@@ -260,8 +251,7 @@ export function App({
   const canUseConfiguration = hasAnyPermission(principal.permissions, configurationAdministrationPermissions);
   const canViewDevices = hasPermission(principal.permissions, deviceAdministrationPermissions.view);
   const canManageDevices = hasPermission(principal.permissions, deviceAdministrationPermissions.manage);
-  const canViewStatutorySalesBooks = hasPermission(principal.permissions, statutorySalesBookReadPermission);
-  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.paymentReconciliation || path === routes.fiscalExceptions || path === routes.statutoryBenefitReview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance || path === routes.identityAdministration || path === routes.configuration || path === routes.deviceAdministration || path === routes.statutorySalesBooks;
+  const isKnownRoute = path === routes.root || path === routes.overview || path === routes.paymentReconciliation || path === routes.fiscalExceptions || path === routes.statutoryBenefitReview || path === routes.salesInvoiceProfiles || path === routes.rbacInventory || path === routes.policyCoverage || path === routes.evidenceGovernance || path === routes.identityAdministration || path === routes.configuration || path === routes.deviceAdministration;
   const shellProps = {
     principalName: principal.displayName,
     username: principal.username,
@@ -282,7 +272,6 @@ export function App({
     canUseIdentityAdministration,
     canUseConfiguration,
     canViewDevices,
-    canViewStatutorySalesBooks,
     salesInvoiceFormState,
     environmentName: resolvedConfig.environmentName,
     onLogout,
@@ -306,8 +295,7 @@ export function App({
       canReadPolicyCoverage,
       canReadEvidenceGovernance,
       canUseConfiguration,
-      canViewDevices,
-      canViewStatutorySalesBooks
+      canViewDevices
     });
     return <Shell {...shellProps}>{authorizedLandingRoute
       ? <AuthorizedLandingRedirect path={authorizedLandingRoute} onNavigate={navigate} />
@@ -355,10 +343,6 @@ export function App({
   }
 
   if (path === routes.deviceAdministration && !canViewDevices) {
-    return <Shell {...shellProps}><PermissionDenied /></Shell>;
-  }
-
-  if (path === routes.statutorySalesBooks && !canViewStatutorySalesBooks) {
     return <Shell {...shellProps}><PermissionDenied /></Shell>;
   }
 
@@ -432,10 +416,6 @@ export function App({
     return <Shell {...shellProps}><DeviceAdministrationPage client={deviceClient} canManage={canManageDevices} /></Shell>;
   }
 
-  if (path === routes.statutorySalesBooks) {
-    return <Shell {...shellProps}><StatutorySalesBooksPage client={salesBookClient} currentSite={siteSelection.currentSite} /></Shell>;
-  }
-
   if (path === routes.paymentReconciliation) {
     return <Shell {...shellProps}><PaymentReconciliationPage key={principal.subjectRef ?? principal.username ?? "authenticated-session"} client={paymentClient} authorizedSites={principal.authorizedSites} authorizedSiteGroupReferences={principal.authorizedSiteGroupReferences ?? []} currentSite={siteSelection.currentSite} /></Shell>;
   }
@@ -473,7 +453,7 @@ export function App({
   );
 }
 
-function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewDashboard, canViewPaymentReconciliation, canViewFiscalExceptions, canViewStatutoryBenefitReview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, canUseConfiguration, canViewDevices, canViewStatutorySalesBooks, salesInvoiceFormState, environmentName, onLogout, onChangePassword, logoutPending, scenarioIndicator, children }: {
+function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount, hasGlobalScope, siteSelection, path, navigate, canViewDashboard, canViewPaymentReconciliation, canViewFiscalExceptions, canViewStatutoryBenefitReview, canReadSalesInvoiceProfiles, canReadRbacInventory, canReadPolicyCoverage, canReadEvidenceGovernance, canUseIdentityAdministration, canUseConfiguration, canViewDevices, salesInvoiceFormState, environmentName, onLogout, onChangePassword, logoutPending, scenarioIndicator, children }: {
   principalName?: string;
   username?: string;
   sessionExpiresAt?: string;
@@ -493,7 +473,6 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
   canUseIdentityAdministration: boolean;
   canUseConfiguration: boolean;
   canViewDevices: boolean;
-  canViewStatutorySalesBooks: boolean;
   salesInvoiceFormState: { hasUnsavedChanges: boolean; mutationPending: boolean };
   environmentName: string;
   onLogout?: () => void;
@@ -544,11 +523,6 @@ function Shell({ principalName, username, sessionExpiresAt, siteGroupScopeCount,
             {canViewFiscalExceptions && (
               <button className={`navLink reportNavLink ${path === routes.fiscalExceptions ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.fiscalExceptions)}>
                 Sales Invoice Exceptions <span className="navMeta">Fiscal exception reporting</span>
-              </button>
-            )}
-            {canViewStatutorySalesBooks && (
-              <button className={`navLink reportNavLink ${path === routes.statutorySalesBooks ? "navLinkActive" : ""}`} type="button" onClick={() => navigate(routes.statutorySalesBooks)}>
-                Annex E-2 / E-3 <span className="navMeta">Statutory sales books</span>
               </button>
             )}
             {canViewStatutoryBenefitReview && (
@@ -707,9 +681,6 @@ function StateMessage({ title, message, tone = "neutral" }: { title: string; mes
 }
 
 function routeTitle(path: string): string {
-  if (path === routes.statutorySalesBooks) {
-    return "Annex E-2 and E-3 - ExitPass Management Platform";
-  }
   if (path === routes.deviceAdministration) {
     return "Device Administration - ExitPass Management Platform";
   }
@@ -769,9 +740,7 @@ function resolveAuthorizedLandingRoute(access: {
   canViewFiscalExceptions: boolean;
   canViewStatutoryBenefitReview: boolean;
   canViewDevices: boolean;
-  canViewStatutorySalesBooks: boolean;
 }): string | undefined {
-  if (access.canViewStatutorySalesBooks) return routes.statutorySalesBooks;
   if (access.canViewPaymentReconciliation) return routes.paymentReconciliation;
   if (access.canViewFiscalExceptions) return routes.fiscalExceptions;
   if (access.canViewStatutoryBenefitReview) return routes.statutoryBenefitReview;
