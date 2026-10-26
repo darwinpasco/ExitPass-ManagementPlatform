@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createCentralPmsApiClient } from "./apiClient";
+import { approvedIdentityRoleCodes } from "./approvedIdentityRoles";
 import { createIdentityAdministrationClient, delegableScopesApiRoute, identityAdministrationApiRoute } from "./identityAdministration";
 
 describe("identity administration API client", () => {
@@ -80,6 +81,26 @@ describe("identity administration API client", () => {
       return json(payload);
     });
     const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl }));
+    await expect(client.listRoles()).resolves.toEqual(payload);
+  });
+
+  it("accepts the complete thirteen-role canonical catalog including Stage 2B APT roles", async () => {
+    const payload = approvedIdentityRoleCodes.map((code, index) => {
+      const aptRole = code === "APT_CASHIER_OPERATOR" || code.startsWith("APT_");
+      const globalRole = ["SYSTEM_ADMINISTRATOR", "STATUTORY_DISCOUNT_PROCESSOR", "EXECUTIVE_MANAGEMENT"].includes(code);
+      return {
+        ...authoritativeRole(),
+        roleReference: `role-${index + 1}`,
+        code,
+        name: code,
+        applicationAccess: aptRole ? ["APT"] : ["MANAGEMENT_PLATFORM"],
+        scopePolicy: globalRole
+          ? { allowedScopeTypes: ["GLOBAL"], assignmentRequired: true, defaultScope: "GLOBAL" }
+          : { allowedScopeTypes: ["SITE"], assignmentRequired: true, defaultScope: "SITE" }
+      };
+    });
+    const client = createIdentityAdministrationClient(createCentralPmsApiClient({ fetchImpl: vi.fn(async () => json(payload)) }));
+
     await expect(client.listRoles()).resolves.toEqual(payload);
   });
 

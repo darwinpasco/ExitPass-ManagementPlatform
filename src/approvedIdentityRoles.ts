@@ -5,6 +5,10 @@ export const approvedIdentityRoleCodes = [
   "SITE_OPERATOR",
   "PARKING_ATTENDANT",
   "APT_CASHIER_OPERATOR",
+  "APT_CASH_CUSTODY_MOVEMENT_OPERATOR",
+  "APT_CASH_CUSTODY_SUPERVISOR",
+  "APT_SITE_CUSTODIAN",
+  "APT_CASH_COLLECTOR",
   "FINANCE_RECONCILIATION_ANALYST",
   "COMPLIANCE_POLICY_ADMINISTRATOR",
   "EXECUTIVE_MANAGEMENT"
@@ -29,6 +33,10 @@ export const approvedIdentityRoles: readonly ApprovedIdentityRolePresentation[] 
   { code: "SITE_OPERATOR", label: "Site Operator", summary: "Site operations role." },
   { code: "PARKING_ATTENDANT", label: "Parking Attendant", summary: "Parking attendant role." },
   { code: "APT_CASHIER_OPERATOR", label: "APT / Cashier Operator", summary: "APT cashier role." },
+  { code: "APT_CASH_CUSTODY_MOVEMENT_OPERATOR", label: "APT Cash Custody Movement Operator", summary: "APT cash-custody movement operator role. Central PMS supplies application and scope eligibility." },
+  { code: "APT_CASH_CUSTODY_SUPERVISOR", label: "APT Cash Custody Supervisor", summary: "APT cash-custody supervisor role. Central PMS supplies application and scope eligibility." },
+  { code: "APT_SITE_CUSTODIAN", label: "APT Site Custodian", summary: "APT site-custodian role. Central PMS supplies application and scope eligibility." },
+  { code: "APT_CASH_COLLECTOR", label: "APT Cash Collector", summary: "APT cash-collector role. Central PMS supplies application and scope eligibility." },
   { code: "FINANCE_RECONCILIATION_ANALYST", label: "Finance / Reconciliation Analyst", summary: "Finance and reconciliation role." },
   { code: "COMPLIANCE_POLICY_ADMINISTRATOR", label: "Compliance / Policy Administrator", summary: "Compliance and policy administration role." },
   { code: "EXECUTIVE_MANAGEMENT", label: "Executive / Management", summary: "Executive and management role." }

@@ -37,9 +37,9 @@ test.describe("governed User Administration", () => {
     const form = page.getByRole("heading", { name: "Add User" }).locator("xpath=ancestor::form");
     await expect(form.getByLabel("User type")).toHaveCount(0);
     await expect(form.getByLabel("Initial role").locator("option")).toHaveText([
-      "Select a role", "System Administrator", "Operations Supervisor", "Statutory Discount Processor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
+      "Select a role", "System Administrator", "Operations Supervisor", "Statutory Discount Processor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "APT Cash Custody Movement Operator", "APT Cash Custody Supervisor", "APT Site Custodian", "APT Cash Collector", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"
     ]);
-    for (const label of ["System Administrator", "Operations Supervisor", "Statutory Discount Processor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"]) {
+    for (const label of ["System Administrator", "Operations Supervisor", "Statutory Discount Processor", "Site Operator", "Parking Attendant", "APT / Cashier Operator", "APT Cash Custody Movement Operator", "APT Cash Custody Supervisor", "APT Site Custodian", "APT Cash Collector", "Finance / Reconciliation Analyst", "Compliance / Policy Administrator", "Executive / Management"]) {
       await form.getByLabel("Initial role").selectOption({ label });
       await expect(form.getByLabel("Initial role")).toHaveValue(/.+/);
     }
