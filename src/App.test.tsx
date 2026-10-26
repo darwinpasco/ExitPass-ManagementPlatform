@@ -59,6 +59,14 @@ describe("ManagementPlatformUi foundation shell", () => {
     expect(screen.getByRole("status", { name: "Management Platform route not found" })).toBeInTheDocument();
   });
 
+  it("retires Annex E-2 and E-3 report generation and its legacy deep link", () => {
+    render(<App authState={authState([managementDashboardPermission, "fiscal-reporting.z.read"])} initialPath="/management-platform/fiscal-reporting/statutory-sales-books" />);
+
+    expect(screen.getByRole("status", { name: "Management Platform route not found" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Annex E-2 \/ E-3/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Statutory sales books/i)).not.toBeInTheDocument();
+  });
+
   it("does not display protected content while authentication is loading", () => {
     render(<App authState={{ status: "loading" }} initialPath="/management-platform" />);
 
