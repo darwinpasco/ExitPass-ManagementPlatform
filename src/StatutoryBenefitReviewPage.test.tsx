@@ -24,6 +24,25 @@ describe("Statutory Benefit Requests", () => {
     expect(() => parseDetail({ ...detail, money: { ...detail.money, currency: "USD" } })).toThrow(/PHP/);
   });
 
+  it("shows the retained beneficiary name on finalized review details", async () => {
+    const client = makeClient();
+    vi.mocked(client.get).mockResolvedValue({
+      ...detail,
+      status: "APPROVED",
+      beneficiaryFullName: "Maria Santos",
+      statutoryIdType: undefined,
+      statutoryIdNumber: undefined,
+      beneficiaryTin: undefined,
+    });
+
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
+
+    expect(await screen.findByText("Beneficiary name")).toBeInTheDocument();
+    expect(screen.getByText("Maria Santos")).toBeInTheDocument();
+    expect(screen.queryByText(/Statutory ID Type/)).not.toBeInTheDocument();
+  });
+
   it("loads pending by default, renders identifiable queue facts without the evidence notice", async () => {
     const client = makeClient();
     renderPage(client);
