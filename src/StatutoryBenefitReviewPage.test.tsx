@@ -11,7 +11,7 @@ const queueValue: StatutoryBenefitReviewQueue = {
   items: [{ requestReference: "30000000-0000-4000-8000-000000000001", decisionCommandReference: reference, parkingSessionReference: "40000000-0000-4000-8000-000000000001", ticketReference: "SAFE-001", siteReference: site.siteId, siteCode: "SITE-A", siteName: "SITE-A", sourceChannel: "WEBPAY", benefitType: "PWD", status: "PENDING_REVIEW", evidenceRequired: true, evidenceRecorded: true, submittedAt: "2026-08-24T01:00:00Z" }],
   page: 1, pageSize: 25, totalCount: 1, hasMore: false, correlationId: "50000000-0000-4000-8000-000000000001"
 };
-const detail = { ...queueValue.items[0], contractVersion: statutoryBenefitReviewContractVersion, requesterAttestation: true, beneficiaryResidencyRequired: false, hasAuthoritativeIdControlReference: false, money: { originalAmountMinorUnits: 123456, discountAmountMinorUnits: 24691, finalPayableAmountMinorUnits: 108765, currency: "PHP" as const }, version: 7 };
+const detail = { ...queueValue.items[0], contractVersion: statutoryBenefitReviewContractVersion, requesterAttestation: true, beneficiaryResidencyRequired: false, hasAuthoritativeIdControlReference: false, money: { originalAmountMinorUnits: 123456, discountAmountMinorUnits: 24691, finalPayableAmountMinorUnits: 108765, currency: "PHP" as const }, version: 7, beneficiaryFullName: "Maria Santos", statutoryIdType: "PWD_ID", statutoryIdNumber: "PWD-2026-001" };
 
 describe("Statutory Benefit Requests", () => {
   it("parses the stable contract and rejects non-PHP money", () => {
@@ -56,7 +56,7 @@ describe("Statutory Benefit Requests", () => {
     expect(screen.getByText("Channel: WebPay")).toBeInTheDocument();
     expect(screen.getByText(/Submitted:/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();
-    expect(screen.getByText("PWD ID")).toBeInTheDocument();
+    expect(screen.getAllByText("PWD ID")).not.toHaveLength(0);
     expect(screen.getByLabelText(/Issuing authority/)).toHaveValue("City social welfare office");
     expect(screen.getByLabelText("ID No. / Control No.")).toHaveValue("****5678");
     expect(screen.getByRole("button", { name: "Change" })).toBeInTheDocument();
@@ -452,7 +452,10 @@ describe("Statutory Benefit Requests", () => {
     renderPage(client);
     fireEvent.click(await screen.findByRole("button", { name: /Senior citizen/ }));
 
-    fireEvent.change(await screen.findByLabelText(/^Date of Birth/), { target: { value: `${new Date().getFullYear() + 1}-01-01` } });
+    const birthDateInput = await screen.findByLabelText(/^Date of Birth/);
+    expect(birthDateInput).toHaveAttribute("max", sixtyYearCutoff());
+    birthDateInput.removeAttribute("max");
+    fireEvent.change(birthDateInput, { target: { value: `${new Date().getFullYear() + 1}-01-01` } });
     await confirmApprovalAttestations();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
@@ -646,6 +649,21 @@ describe("Statutory Benefit Requests", () => {
     })));
   });
 
+  it("requires beneficiary identity for PWD approval even when the legacy sales-book flag is false", async () => {
+    const client = makeClient();
+    vi.mocked(client.get).mockResolvedValue({
+      ...detail,
+      beneficiaryFullName: undefined,
+      statutoryIdType: undefined,
+      statutoryIdNumber: undefined,
+      requiresStatutorySalesBookIdentity: false
+    });
+    renderPage(client);
+    fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
+
+    expect(await screen.findByText("BIR statutory sales-book identity")).toBeInTheDocument();
+  });
+
   it("requires name, governed ID type, and ID number but permits a blank beneficiary TIN", async () => {
     const client = makeClient();
     vi.mocked(client.get).mockResolvedValue({
@@ -656,7 +674,10 @@ describe("Statutory Benefit Requests", () => {
       idControlReference: "12345678",
       maskedIdReference: "****5678",
       hasAuthoritativeIdControlReference: true,
-      requiresStatutorySalesBookIdentity: true
+      requiresStatutorySalesBookIdentity: true,
+      beneficiaryFullName: undefined,
+      statutoryIdType: undefined,
+      statutoryIdNumber: undefined
     });
     renderPage(client);
     fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
@@ -709,6 +730,9 @@ function seniorCitizenClient(overrides: Record<string, unknown> = {}) {
   vi.mocked(client.get).mockResolvedValue({
     ...detail,
     benefitType: "SENIOR_CITIZEN",
+    beneficiaryFullName: "Maria Santos",
+    statutoryIdType: "SENIOR_CITIZEN_ID",
+    statutoryIdNumber: "SC-2026-001",
     idDocumentType: "SENIOR_CITIZEN_ID",
     issuingAuthority: "OSCA",
     birthDate: undefined,

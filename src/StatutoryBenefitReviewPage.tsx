@@ -128,7 +128,7 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
         catch { fieldErrors.idReference = "Enter at least 4 characters."; }
         if (!idControlReference) fieldErrors.idReference = "Enter at least 4 characters.";
       }
-      if (detail.requiresStatutorySalesBookIdentity) {
+      if (requiresBeneficiaryIdentity(detail)) {
         if (!reviewedDocument.beneficiaryFullName.trim()) fieldErrors.beneficiaryFullName = "Enter the beneficiary full name.";
         if (!reviewedDocument.statutoryIdType.trim()) fieldErrors.statutoryIdType = "Select the governed statutory ID type.";
         if (!reviewedDocument.statutoryIdNumber.trim()) fieldErrors.statutoryIdNumber = "Enter the statutory ID number.";
@@ -174,10 +174,10 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
         beneficiaryResidencySatisfied: decision === "APPROVE" && detail.beneficiaryResidencyRequired
           ? attestations.beneficiaryResidencySatisfied
           : undefined,
-        beneficiaryFullName: decision === "APPROVE" && detail.requiresStatutorySalesBookIdentity ? reviewedDocument.beneficiaryFullName.trim() : undefined,
-        statutoryIdType: decision === "APPROVE" && detail.requiresStatutorySalesBookIdentity ? reviewedDocument.statutoryIdType.trim() : undefined,
-        statutoryIdNumber: decision === "APPROVE" && detail.requiresStatutorySalesBookIdentity ? reviewedDocument.statutoryIdNumber.trim() : undefined,
-        beneficiaryTin: decision === "APPROVE" && detail.requiresStatutorySalesBookIdentity ? reviewedDocument.beneficiaryTin.trim() || undefined : undefined
+        beneficiaryFullName: decision === "APPROVE" && requiresBeneficiaryIdentity(detail) ? reviewedDocument.beneficiaryFullName.trim() : undefined,
+        statutoryIdType: decision === "APPROVE" && requiresBeneficiaryIdentity(detail) ? reviewedDocument.statutoryIdType.trim() : undefined,
+        statutoryIdNumber: decision === "APPROVE" && requiresBeneficiaryIdentity(detail) ? reviewedDocument.statutoryIdNumber.trim() : undefined,
+        beneficiaryTin: decision === "APPROVE" && requiresBeneficiaryIdentity(detail) ? reviewedDocument.beneficiaryTin.trim() || undefined : undefined
       });
       setNotice(`Request ${decision === "APPROVE" ? "approved" : "rejected"}. Central PMS recorded the final decision.`);
       setRejectionReason("");
@@ -266,7 +266,7 @@ function ReviewDetail({ client, detail, evidence, evidenceError, canViewEvidence
           {approvalFieldErrors.idReference && <small id="review-idReference-error" className="fieldError">{approvalFieldErrors.idReference}</small>}
         </div>
       </div>
-      {detail.requiresStatutorySalesBookIdentity && <fieldset className="reviewMetadataFields"><legend>BIR statutory sales-book identity</legend>
+      {requiresBeneficiaryIdentity(detail) && <fieldset className="reviewMetadataFields"><legend>BIR statutory sales-book identity</legend>
         <p className="fieldGuidance">Restricted values are retained only in the canonical review state and final POS fiscal snapshot.</p>
         <label htmlFor="review-beneficiaryFullName"><span className="reviewFieldLabel">Full Name <span aria-hidden="true">*</span></span><input id="review-beneficiaryFullName" autoComplete="off" value={reviewedDocument.beneficiaryFullName} aria-invalid={Boolean(approvalFieldErrors.beneficiaryFullName)} onChange={(event) => setReviewedDocument((current) => ({ ...current, beneficiaryFullName: event.target.value }))} />{approvalFieldErrors.beneficiaryFullName && <small className="fieldError">{approvalFieldErrors.beneficiaryFullName}</small>}</label>
         <label htmlFor="review-statutoryIdType"><span className="reviewFieldLabel">Statutory ID Type <span aria-hidden="true">*</span></span><select id="review-statutoryIdType" value={reviewedDocument.statutoryIdType} aria-invalid={Boolean(approvalFieldErrors.statutoryIdType)} onChange={(event) => setReviewedDocument((current) => ({ ...current, statutoryIdType: event.target.value }))}><option value="">Select ID type</option>{detail.benefitType === "SENIOR_CITIZEN" ? <><option value="OSCA_ID">OSCA ID</option><option value="SENIOR_CITIZEN_ID">Senior Citizen ID</option></> : <option value="PWD_ID">PWD ID</option>}</select>{approvalFieldErrors.statutoryIdType && <small className="fieldError">{approvalFieldErrors.statutoryIdType}</small>}</label>
@@ -352,6 +352,9 @@ function toReviewedDocumentDraft(detail: StatutoryBenefitReviewDetail): Reviewed
 }
 function usesBirthDateForDecision(detail: StatutoryBenefitReviewDetail) {
   return detail.benefitType === "SENIOR_CITIZEN";
+}
+function requiresBeneficiaryIdentity(detail: StatutoryBenefitReviewDetail) {
+  return detail.benefitType === "SENIOR_CITIZEN" || detail.benefitType === "PWD";
 }
 function isAtLeastSixtyYearsOld(birthDate: string, today = new Date()) {
   return /^\d{4}-\d{2}-\d{2}$/.test(birthDate) && birthDate <= seniorCitizenBirthDateCutoff(today);
