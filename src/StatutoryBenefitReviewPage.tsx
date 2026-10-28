@@ -23,12 +23,10 @@ interface ReviewedDocumentDraft {
   hasAuthoritativeIdReference: boolean;
   replaceIdReference: boolean;
   beneficiaryFullName: string;
-  statutoryIdType: string;
-  statutoryIdNumber: string;
   beneficiaryTin: string;
 }
 
-type ApprovalFieldName = "idDocumentType" | "issuingAuthority" | "expiryDate" | "birthDate" | "idReference" | "beneficiaryFullName" | "statutoryIdType" | "statutoryIdNumber";
+type ApprovalFieldName = "idDocumentType" | "issuingAuthority" | "expiryDate" | "birthDate" | "idReference" | "beneficiaryFullName";
 type ApprovalFieldErrors = Partial<Record<ApprovalFieldName, string>>;
 
 interface DecisionAttestations {
@@ -130,12 +128,10 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
       }
       if (requiresBeneficiaryIdentity(detail)) {
         if (!reviewedDocument.beneficiaryFullName.trim()) fieldErrors.beneficiaryFullName = "Enter the beneficiary full name.";
-        if (!reviewedDocument.statutoryIdType.trim()) fieldErrors.statutoryIdType = "Select the governed statutory ID type.";
-        if (!reviewedDocument.statutoryIdNumber.trim()) fieldErrors.statutoryIdNumber = "Enter the statutory ID number.";
       }
       if (Object.keys(fieldErrors).length) {
         setApprovalFieldErrors(fieldErrors);
-        const first = (["idDocumentType", "issuingAuthority", requiresBirthDate ? "birthDate" : "expiryDate", "idReference", "beneficiaryFullName", "statutoryIdType", "statutoryIdNumber"] as const).find((name) => fieldErrors[name]);
+        const first = (["idDocumentType", "issuingAuthority", requiresBirthDate ? "birthDate" : "expiryDate", "idReference", "beneficiaryFullName"] as const).find((name) => fieldErrors[name]);
         if (first) requestAnimationFrame(() => document.getElementById(`review-${first}`)?.focus());
         return;
       }
@@ -175,8 +171,6 @@ export function StatutoryBenefitReviewPage({ client, authorizedSites, canViewDet
           ? attestations.beneficiaryResidencySatisfied
           : undefined,
         beneficiaryFullName: decision === "APPROVE" && requiresBeneficiaryIdentity(detail) ? reviewedDocument.beneficiaryFullName.trim() : undefined,
-        statutoryIdType: decision === "APPROVE" && requiresBeneficiaryIdentity(detail) ? reviewedDocument.statutoryIdType.trim() : undefined,
-        statutoryIdNumber: decision === "APPROVE" && requiresBeneficiaryIdentity(detail) ? reviewedDocument.statutoryIdNumber.trim() : undefined,
         beneficiaryTin: decision === "APPROVE" && requiresBeneficiaryIdentity(detail) ? reviewedDocument.beneficiaryTin.trim() || undefined : undefined
       });
       setNotice(`Request ${decision === "APPROVE" ? "approved" : "rejected"}. Central PMS recorded the final decision.`);
@@ -266,11 +260,9 @@ function ReviewDetail({ client, detail, evidence, evidenceError, canViewEvidence
           {approvalFieldErrors.idReference && <small id="review-idReference-error" className="fieldError">{approvalFieldErrors.idReference}</small>}
         </div>
       </div>
-      {requiresBeneficiaryIdentity(detail) && <fieldset className="reviewMetadataFields"><legend>BIR statutory sales-book identity</legend>
-        <p className="fieldGuidance">Restricted values are retained only in the canonical review state and final POS fiscal snapshot.</p>
+      {requiresBeneficiaryIdentity(detail) && <fieldset className="reviewMetadataFields"><legend>Beneficiary identity</legend>
+        <p className="fieldGuidance">The reviewed ID type and ID No. / Control No. above are used for the statutory sales-book identity. Restricted values are retained only in the canonical review state and final POS fiscal snapshot.</p>
         <label htmlFor="review-beneficiaryFullName"><span className="reviewFieldLabel">Full Name <span aria-hidden="true">*</span></span><input id="review-beneficiaryFullName" autoComplete="off" value={reviewedDocument.beneficiaryFullName} aria-invalid={Boolean(approvalFieldErrors.beneficiaryFullName)} onChange={(event) => setReviewedDocument((current) => ({ ...current, beneficiaryFullName: event.target.value }))} />{approvalFieldErrors.beneficiaryFullName && <small className="fieldError">{approvalFieldErrors.beneficiaryFullName}</small>}</label>
-        <label htmlFor="review-statutoryIdType"><span className="reviewFieldLabel">Statutory ID Type <span aria-hidden="true">*</span></span><select id="review-statutoryIdType" value={reviewedDocument.statutoryIdType} aria-invalid={Boolean(approvalFieldErrors.statutoryIdType)} onChange={(event) => setReviewedDocument((current) => ({ ...current, statutoryIdType: event.target.value }))}><option value="">Select ID type</option>{detail.benefitType === "SENIOR_CITIZEN" ? <><option value="OSCA_ID">OSCA ID</option><option value="SENIOR_CITIZEN_ID">Senior Citizen ID</option></> : <option value="PWD_ID">PWD ID</option>}</select>{approvalFieldErrors.statutoryIdType && <small className="fieldError">{approvalFieldErrors.statutoryIdType}</small>}</label>
-        <label htmlFor="review-statutoryIdNumber"><span className="reviewFieldLabel">{detail.benefitType === "SENIOR_CITIZEN" ? "OSCA / Senior Citizen ID Number" : "PWD ID Number"} <span aria-hidden="true">*</span></span><input id="review-statutoryIdNumber" autoComplete="off" value={reviewedDocument.statutoryIdNumber} aria-invalid={Boolean(approvalFieldErrors.statutoryIdNumber)} onChange={(event) => setReviewedDocument((current) => ({ ...current, statutoryIdNumber: event.target.value }))} />{approvalFieldErrors.statutoryIdNumber && <small className="fieldError">{approvalFieldErrors.statutoryIdNumber}</small>}</label>
         <label htmlFor="review-beneficiaryTin"><span className="reviewFieldLabel">TIN (optional)</span><input id="review-beneficiaryTin" autoComplete="off" value={reviewedDocument.beneficiaryTin} onChange={(event) => setReviewedDocument((current) => ({ ...current, beneficiaryTin: event.target.value }))} /></label>
       </fieldset>}
       {canApprove && <div className="reviewAttestations" aria-label="Processor confirmations">
@@ -345,8 +337,6 @@ function toReviewedDocumentDraft(detail: StatutoryBenefitReviewDetail): Reviewed
     hasAuthoritativeIdReference: detail.hasAuthoritativeIdControlReference,
     replaceIdReference: !detail.hasAuthoritativeIdControlReference,
     beneficiaryFullName: detail.beneficiaryFullName ?? "",
-    statutoryIdType: detail.statutoryIdType ?? "",
-    statutoryIdNumber: detail.statutoryIdNumber ?? "",
     beneficiaryTin: detail.beneficiaryTin ?? ""
   };
 }

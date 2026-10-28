@@ -616,7 +616,7 @@ describe("Statutory Benefit Requests", () => {
     expect(client.evidence).not.toHaveBeenCalled();
   });
 
-  it("lets an authorized processor complete the canonical PWD sales-book identity before approval", async () => {
+  it("uses the reviewed PWD ID fields once while completing the beneficiary identity", async () => {
     const client = makeClient();
     vi.mocked(client.get).mockResolvedValue({
       ...detail,
@@ -632,19 +632,19 @@ describe("Statutory Benefit Requests", () => {
     renderPage(client);
     fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
 
-    expect(await screen.findByText("BIR statutory sales-book identity")).toBeInTheDocument();
+    expect(await screen.findByText("Beneficiary identity")).toBeInTheDocument();
     fireEvent.change(screen.getByLabelText(/Full Name/), { target: { value: "  Maria   Santos  " } });
-    await userEvent.selectOptions(screen.getByLabelText(/Statutory ID Type/), "PWD_ID");
-    fireEvent.change(screen.getByLabelText(/PWD ID Number/), { target: { value: "PWD-2026-001" } });
     fireEvent.change(screen.getByLabelText("TIN (optional)"), { target: { value: "123-456-789-000" } });
+    expect(screen.getAllByLabelText(/ID document type/)).toHaveLength(1);
+    expect(screen.getAllByLabelText(/ID No\. \/ Control No\./)).toHaveLength(1);
+    expect(screen.queryByLabelText(/Statutory ID Type/)).not.toBeInTheDocument();
+    expect(screen.queryByLabelText(/PWD ID Number/)).not.toBeInTheDocument();
     await confirmApprovalAttestations();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     await waitFor(() => expect(client.decide).toHaveBeenCalledWith(reference, expect.objectContaining({
       decision: "APPROVE",
       beneficiaryFullName: "Maria   Santos",
-      statutoryIdType: "PWD_ID",
-      statutoryIdNumber: "PWD-2026-001",
       beneficiaryTin: "123-456-789-000"
     })));
   });
@@ -661,10 +661,10 @@ describe("Statutory Benefit Requests", () => {
     renderPage(client);
     fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
 
-    expect(await screen.findByText("BIR statutory sales-book identity")).toBeInTheDocument();
+    expect(await screen.findByText("Beneficiary identity")).toBeInTheDocument();
   });
 
-  it("requires name, governed ID type, and ID number but permits a blank beneficiary TIN", async () => {
+  it("requires the beneficiary name and reuses the governed ID fields while permitting a blank TIN", async () => {
     const client = makeClient();
     vi.mocked(client.get).mockResolvedValue({
       ...detail,
@@ -681,15 +681,22 @@ describe("Statutory Benefit Requests", () => {
     });
     renderPage(client);
     fireEvent.click(await screen.findByRole("button", { name: /Person with disability/ }));
-    expect(await screen.findByText("BIR statutory sales-book identity")).toBeInTheDocument();
+    expect(await screen.findByText("Beneficiary identity")).toBeInTheDocument();
     await confirmApprovalAttestations();
     fireEvent.click(screen.getByRole("button", { name: "Approve" }));
 
     expect(await screen.findByText("Enter the beneficiary full name.")).toBeInTheDocument();
-    expect(screen.getByText("Select the governed statutory ID type.")).toBeInTheDocument();
-    expect(screen.getByText("Enter the statutory ID number.")).toBeInTheDocument();
     expect(client.decide).not.toHaveBeenCalled();
     expect(screen.getByLabelText("TIN (optional)")).toHaveValue("");
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.change(screen.getByLabelText(/Full Name/), { target: { value: "Maria Santos" } });
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(client.decide).toHaveBeenCalledWith(reference, expect.objectContaining({
+      decision: "APPROVE",
+      beneficiaryFullName: "Maria Santos",
+      beneficiaryTin: undefined
+    })));
   });
 });
 
